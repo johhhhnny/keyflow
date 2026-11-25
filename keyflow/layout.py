@@ -16,6 +16,7 @@ from keyflow.schema import (
     ProportionBarSpec,
     SceneSpec,
     TrendDirection,
+    compute_dag_layers,
 )
 
 
@@ -818,19 +819,10 @@ def _solve_flow_dag(
     if not nodes:
         return _LayoutOutcome({}, 1.0)
 
-    order_idx = {node.id: i for i, node in enumerate(nodes)}
-    parents: dict[str, list[str]] = {n.id: [] for n in nodes}
-    for edge in scene.edges:
-        if edge.from_id in order_idx and edge.to_id in order_idx:
-            if order_idx[edge.from_id] < order_idx[edge.to_id]:
-                parents[edge.to_id].append(edge.from_id)
-
-    layer_of: dict[str, int] = {}
-    for node in nodes:
-        if not parents[node.id]:
-            layer_of[node.id] = 0
-        else:
-            layer_of[node.id] = 1 + max(layer_of.get(p, 0) for p in parents[node.id])
+    layer_of, _ = compute_dag_layers(
+        [n.id for n in nodes],
+        [(e.from_id, e.to_id) for e in scene.edges],
+    )
 
     num_layers = max(layer_of.values(), default=0) + 1
     layers: list[list[NodeSpec]] = [[] for _ in range(num_layers)]

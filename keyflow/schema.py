@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, Sequence
 
 from keyflow.themes import THEMES
 
@@ -408,6 +409,64 @@ def _check_label_density(
                 warnings.append(f"{target}: {field_name} '{val}' exceeds {limit} chars; tighten for readability.")
 
 
+def compute_dag_layers(
+    node_ids: Sequence[str],
+    edge_pairs: Sequence[tuple[str, str]],
+) -> tuple[dict[str, int], list[str]]:
+    """Compute dependency layer depth via Kahn's topological sort, independent of input order.
+
+    Returns ``(layers, cyclic_node_ids)`` where ``cyclic_node_ids`` lists any nodes
+    participating in or blocked by directed cycles (sorted in input order).
+    """
+    unique_ids: list[str] = []
+    seen_ids: set[str] = set()
+    for nid in node_ids:
+        if nid not in seen_ids:
+            seen_ids.add(nid)
+            unique_ids.append(nid)
+
+    if not unique_ids:
+        return {}, []
+
+    children: dict[str, list[str]] = {nid: [] for nid in unique_ids}
+    parents: dict[str, list[str]] = {nid: [] for nid in unique_ids}
+    indegree: dict[str, int] = {nid: 0 for nid in unique_ids}
+    seen_edges: set[tuple[str, str]] = set()
+
+    for src, dst in edge_pairs:
+        if src in seen_ids and dst in seen_ids and src != dst and (src, dst) not in seen_edges:
+            seen_edges.add((src, dst))
+            children[src].append(dst)
+            parents[dst].append(src)
+            indegree[dst] += 1
+
+    queue: deque[str] = deque(nid for nid in unique_ids if indegree[nid] == 0)
+    layers: dict[str, int] = {nid: 0 for nid in queue}
+
+    while queue:
+        u = queue.popleft()
+        for v in children[u]:
+            layers[v] = max(layers.get(v, 0), layers[u] + 1)
+            indegree[v] -= 1
+            if indegree[v] == 0:
+                queue.append(v)
+
+    cyclic = [nid for nid in unique_ids if nid not in layers]
+    if cyclic:
+        max_layer = max(layers.values(), default=-1)
+        for nid in cyclic:
+            resolved_parents = [layers[p] for p in parents[nid] if p in layers]
+            layers[nid] = (1 + max(resolved_parents)) if resolved_parents else (max_layer + 1)
+
+    return layers, cyclic
+
+
+def _as_float(val: Any) -> float | None:
+    if isinstance(val, bool) or not isinstance(val, (int, float)):
+        return None
+    return float(val)
+
+
 def validate_deck(raw: dict[str, Any]) -> ValidationResult:
     """Validate structural integrity, references, and visual density rules."""
     errors: list[str] = []
@@ -416,41 +475,66 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
     if not isinstance(raw, dict):
         return ValidationResult(valid=False, errors=["Top-level JSON must be an object."])
 
-    if not raw.get("title"):
-        errors.append("Missing required top-level 'title'.")
+    title = raw.get("title")
+    if not isinstance(title, str) or not title.strip():
+        errors.append("Missing or invalid top-level 'title'.")
 
     theme = raw.get("theme", "slate_dark")
-    if theme not in THEMES:
+    if not isinstance(theme, str) or theme not in THEMES:
         errors.append(f"Unknown theme '{theme}'. Valid options: {', '.join(sorted(THEMES))}.")
 
     pf_node_ids: set[str] = set()
     if raw.get("pinned_flow") is not None:
         pf = raw["pinned_flow"]
-        pf_nodes = pf.get("nodes", [])
-        if not isinstance(pf_nodes, list) or not pf_nodes:
-            errors.append("pinned_flow.nodes must be a non-empty list.")
+        if not isinstance(pf, dict):
+            errors.append("'pinned_flow' must be an object.")
         else:
-            for idx, n in enumerate(pf_nodes):
-                nid = n.get("id")
-                if not nid:
-                    errors.append(f"pinned_flow.nodes[{idx}]: missing 'id'.")
-                elif nid in pf_node_ids:
-                    errors.append(f"pinned_flow: duplicate node id '{nid}'.")
+            pf_nodes = pf.get("nodes", [])
+            if not isinstance(pf_nodes, list) or not pf_nodes:
+                errors.append("pinned_flow.nodes must be a non-empty list.")
+            else:
+                for idx, n in enumerate(pf_nodes):
+                    if not isinstance(n, dict):
+                        errors.append(f"pinned_flow.nodes[{idx}]: must be an object.")
+                        continue
+                    nid = n.get("id")
+                    if not isinstance(nid, str) or not nid:
+                        errors.append(f"pinned_flow.nodes[{idx}]: missing 'id'.")
+                    elif nid in pf_node_ids:
+                        errors.append(f"pinned_flow: duplicate node id '{nid}'.")
+                    else:
+                        pf_node_ids.add(nid)
+                    if not isinstance(n.get("label"), str) or not n.get("label"):
+                        errors.append(f"pinned_flow.nodes[{idx}]: missing 'label'.")
+                pf_edges = pf.get("edges", [])
+                if not isinstance(pf_edges, list):
+                    errors.append("pinned_flow.edges must be a list.")
                 else:
-                    pf_node_ids.add(nid)
-                if not n.get("label"):
-                    errors.append(f"pinned_flow.nodes[{idx}]: missing 'label'.")
-            for e_idx, e in enumerate(pf.get("edges", [])):
-                if e.get("from") not in pf_node_ids:
-                    errors.append(f"pinned_flow.edges[{e_idx}]: unknown 'from' node '{e.get('from')}'.")
-                if e.get("to") not in pf_node_ids:
-                    errors.append(f"pinned_flow.edges[{e_idx}]: unknown 'to' node '{e.get('to')}'.")
-            for g_idx, g in enumerate(pf.get("groups", [])):
-                if not g.get("label"):
-                    errors.append(f"pinned_flow.groups[{g_idx}]: missing 'label'.")
-                for nid in g.get("node_ids", []):
-                    if nid not in pf_node_ids:
-                        errors.append(f"pinned_flow.groups[{g_idx}]: unknown node '{nid}'.")
+                    for e_idx, e in enumerate(pf_edges):
+                        if not isinstance(e, dict):
+                            errors.append(f"pinned_flow.edges[{e_idx}]: must be an object.")
+                            continue
+                        if e.get("from") not in pf_node_ids:
+                            errors.append(f"pinned_flow.edges[{e_idx}]: unknown 'from' node '{e.get('from')}'.")
+                        if e.get("to") not in pf_node_ids:
+                            errors.append(f"pinned_flow.edges[{e_idx}]: unknown 'to' node '{e.get('to')}'.")
+                pf_groups = pf.get("groups", [])
+                if not isinstance(pf_groups, list):
+                    errors.append("pinned_flow.groups must be a list.")
+                else:
+                    for g_idx, g in enumerate(pf_groups):
+                        if not isinstance(g, dict):
+                            errors.append(f"pinned_flow.groups[{g_idx}]: must be an object.")
+                            continue
+                        if not isinstance(g.get("label"), str) or not g.get("label"):
+                            errors.append(f"pinned_flow.groups[{g_idx}]: missing 'label'.")
+                        g_nids = g.get("node_ids", [])
+                        if not isinstance(g_nids, list):
+                            errors.append(f"pinned_flow.groups[{g_idx}]: 'node_ids' must be a list.")
+                        else:
+                            for nid in g_nids:
+                                if nid not in pf_node_ids:
+                                    errors.append(f"pinned_flow.groups[{g_idx}]: unknown node '{nid}'.")
 
     raw_scenes = raw.get("scenes")
     if not isinstance(raw_scenes, list) or not raw_scenes:
@@ -476,31 +560,39 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
 
     for s_idx, s in enumerate(raw_scenes):
         prefix = f"scenes[{s_idx}]"
+        if not isinstance(s, dict):
+            errors.append(f"{prefix}: scene entry must be an object.")
+            continue
+
         sid = s.get("id")
-        if not sid:
-            errors.append(f"{prefix}: missing 'id'.")
+        if not isinstance(sid, str) or not sid:
+            errors.append(f"{prefix}: missing or invalid 'id'.")
         elif sid in scene_ids:
             errors.append(f"{prefix}: duplicate scene id '{sid}'.")
         else:
             scene_ids.add(sid)
 
-        if not s.get("title"):
-            errors.append(f"{prefix}: missing 'title'.")
+        stitle = s.get("title")
+        if not isinstance(stitle, str) or not stitle:
+            errors.append(f"{prefix}: missing or invalid 'title'.")
 
         layout = s.get("layout", "horizontal_flow")
-        if layout not in valid_layouts:
+        if not isinstance(layout, str) or layout not in valid_layouts:
             errors.append(f"{prefix}: invalid layout '{layout}'.")
 
         active_fn = s.get("active_flow_node")
-        if active_fn:
-            if not pf_node_ids:
-                errors.append(f"{prefix}: 'active_flow_node' set to '{active_fn}' without top-level 'pinned_flow'.")
-            elif active_fn not in pf_node_ids:
-                errors.append(f"{prefix}: unknown active_flow_node '{active_fn}'.")
+        if active_fn is not None:
+            if not isinstance(active_fn, str):
+                errors.append(f"{prefix}: 'active_flow_node' must be a string.")
+            elif active_fn:
+                if not pf_node_ids:
+                    errors.append(f"{prefix}: 'active_flow_node' set to '{active_fn}' without top-level 'pinned_flow'.")
+                elif active_fn not in pf_node_ids:
+                    errors.append(f"{prefix}: unknown active_flow_node '{active_fn}'.")
 
         has_frames = "frames" in s and s["frames"] is not None
         pacing = s.get("pacing", "manual" if has_frames else "auto")
-        if pacing not in valid_pacing:
+        if not isinstance(pacing, str) or pacing not in valid_pacing:
             errors.append(f"{prefix}: invalid pacing '{pacing}'.")
 
         nodes = s.get("nodes", [])
@@ -509,29 +601,35 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
             continue
 
         node_map: dict[str, dict[str, Any]] = {}
+        node_order: list[str] = []
         for n_idx, n in enumerate(nodes):
+            if not isinstance(n, dict):
+                errors.append(f"{prefix}.nodes[{n_idx}]: must be an object.")
+                continue
             nid = n.get("id")
-            if not nid:
+            if not isinstance(nid, str) or not nid:
                 errors.append(f"{prefix}.nodes[{n_idx}]: missing 'id'.")
                 continue
             if nid in node_map:
                 errors.append(f"{prefix}: duplicate node id '{nid}'.")
+            else:
+                node_order.append(nid)
             node_map[nid] = n
 
             variant = n.get("variant", "primary")
             if variant not in valid_variants:
                 errors.append(f"{prefix}.nodes['{nid}']: invalid variant '{variant}'.")
 
-            label = str(n.get("label", ""))
-            if not label:
+            raw_label = n.get("label")
+            if not isinstance(raw_label, str) or not raw_label:
                 errors.append(f"{prefix}.nodes[{n_idx}] ('{nid}'): missing 'label'.")
             else:
                 _check_label_density(
                     f"{prefix}.nodes['{nid}']",
-                    label,
-                    n.get("sublabel"),
-                    n.get("badge"),
-                    n.get("metric"),
+                    raw_label,
+                    n.get("sublabel") if isinstance(n.get("sublabel"), str) else None,
+                    n.get("badge") if isinstance(n.get("badge"), str) else None,
+                    n.get("metric") if isinstance(n.get("metric"), str) else None,
                     warnings,
                 )
 
@@ -540,6 +638,9 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
                 errors.append(f"{prefix}.nodes['{nid}']: invalid child_layout '{child_layout}'.")
 
             children = n.get("children", [])
+            if not isinstance(children, list):
+                errors.append(f"{prefix}.nodes['{nid}'].children must be a list.")
+                children = []
             if n.get("kind") == "group_dashed" and not children:
                 errors.append(f"{prefix}.nodes['{nid}']: kind='group_dashed' requires non-empty 'children'.")
             if layout == "horizontal_flow" and len(children) >= 4 and child_layout == "row":
@@ -549,8 +650,11 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
 
             child_ids: set[str] = set()
             for c_idx, c in enumerate(children):
+                if not isinstance(c, dict):
+                    errors.append(f"{prefix}.nodes['{nid}'].children[{c_idx}]: must be an object.")
+                    continue
                 cid = c.get("id")
-                if not cid:
+                if not isinstance(cid, str) or not cid:
                     errors.append(f"{prefix}.nodes['{nid}'].children[{c_idx}]: missing 'id'.")
                 elif cid in child_ids:
                     errors.append(f"{prefix}.nodes['{nid}']: duplicate child id '{cid}'.")
@@ -561,16 +665,16 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
                 if cvar not in valid_variants:
                     errors.append(f"{prefix}.nodes['{nid}'].children['{cid}']: invalid variant '{cvar}'.")
 
-                clabel = str(c.get("label", ""))
-                if not clabel:
+                clabel = c.get("label")
+                if not isinstance(clabel, str) or not clabel:
                     errors.append(f"{prefix}.nodes['{nid}'].children[{c_idx}]: missing 'label'.")
                 else:
                     _check_label_density(
                         f"{prefix}.nodes['{nid}'].children['{cid}']",
                         clabel,
-                        c.get("sublabel"),
-                        c.get("badge"),
-                        c.get("metric"),
+                        c.get("sublabel") if isinstance(c.get("sublabel"), str) else None,
+                        c.get("badge") if isinstance(c.get("badge"), str) else None,
+                        c.get("metric") if isinstance(c.get("metric"), str) else None,
                         warnings,
                     )
 
@@ -581,54 +685,94 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
 
         edges = s.get("edges", [])
         edge_ids: set[str] = set()
-        for e_idx, e in enumerate(edges):
-            eid = e.get("id")
-            if not eid:
-                errors.append(f"{prefix}.edges[{e_idx}]: missing 'id'.")
-            elif eid in edge_ids:
-                errors.append(f"{prefix}: duplicate edge id '{eid}'.")
-            else:
-                edge_ids.add(eid)
-            if e.get("from") not in node_map:
-                errors.append(f"{prefix}.edges['{eid}']: unknown 'from' node '{e.get('from')}'.")
-            if e.get("to") not in node_map:
-                errors.append(f"{prefix}.edges['{eid}']: unknown 'to' node '{e.get('to')}'.")
+        valid_edge_pairs: list[tuple[str, str]] = []
+        if not isinstance(edges, list):
+            errors.append(f"{prefix}.edges must be a list.")
+        else:
+            for e_idx, e in enumerate(edges):
+                if not isinstance(e, dict):
+                    errors.append(f"{prefix}.edges[{e_idx}]: must be an object.")
+                    continue
+                eid = e.get("id")
+                if not isinstance(eid, str) or not eid:
+                    errors.append(f"{prefix}.edges[{e_idx}]: missing 'id'.")
+                elif eid in edge_ids:
+                    errors.append(f"{prefix}: duplicate edge id '{eid}'.")
+                else:
+                    edge_ids.add(eid)
+                src = e.get("from")
+                dst = e.get("to")
+                if src not in node_map:
+                    errors.append(f"{prefix}.edges['{eid}']: unknown 'from' node '{src}'.")
+                if dst not in node_map:
+                    errors.append(f"{prefix}.edges['{eid}']: unknown 'to' node '{dst}'.")
+                if isinstance(src, str) and isinstance(dst, str) and src in node_map and dst in node_map:
+                    if src == dst and layout == "flow_dag":
+                        errors.append(f"{prefix}.edges['{eid}']: self-loop '{src} -> {dst}' is not allowed in flow_dag.")
+                    valid_edge_pairs.append((src, dst))
+
+        if layout == "flow_dag" and node_order and valid_edge_pairs:
+            _, cyclic_nodes = compute_dag_layers(node_order, valid_edge_pairs)
+            if cyclic_nodes:
+                errors.append(
+                    f"{prefix}: flow_dag contains cyclic dependencies involving: {', '.join(cyclic_nodes)}."
+                )
 
         item_ids: set[str] = set()
         if layout == "proportion_bar":
             pb = s.get("proportion_bar")
-            if not isinstance(pb, dict) or not pb.get("items"):
-                errors.append(f"{prefix}: layout='proportion_bar' requires 'proportion_bar.items'.")
+            if not isinstance(pb, dict) or not isinstance(pb.get("items"), list) or not pb.get("items"):
+                errors.append(f"{prefix}: layout='proportion_bar' requires 'proportion_bar.items' list.")
             else:
-                if float(pb.get("axis_max", 100.0)) <= float(pb.get("axis_min", 0.0)):
+                ax_min = _as_float(pb.get("axis_min", 0.0))
+                ax_max = _as_float(pb.get("axis_max", 100.0))
+                if ax_min is None or ax_max is None:
+                    errors.append(f"{prefix}.proportion_bar: 'axis_min' and 'axis_max' must be numeric.")
+                elif ax_max <= ax_min:
                     errors.append(f"{prefix}.proportion_bar: 'axis_max' must exceed 'axis_min'.")
                 for it_idx, it in enumerate(pb.get("items", [])):
+                    if not isinstance(it, dict):
+                        errors.append(f"{prefix}.proportion_bar.items[{it_idx}]: must be an object.")
+                        continue
                     iid = it.get("id")
-                    if not iid:
+                    if not isinstance(iid, str) or not iid:
                         errors.append(f"{prefix}.proportion_bar.items[{it_idx}]: missing 'id'.")
                     elif iid in item_ids:
                         errors.append(f"{prefix}.proportion_bar: duplicate item id '{iid}'.")
                     else:
                         item_ids.add(iid)
-                    if float(it.get("value", 0)) < 0:
-                        errors.append(f"{prefix}.proportion_bar.items['{iid}']: 'value' must be non-negative.")
+                    if not isinstance(it.get("label"), str) or not it.get("label"):
+                        errors.append(f"{prefix}.proportion_bar.items[{it_idx}]: missing 'label'.")
+                    val = _as_float(it.get("value", 0))
+                    if val is None or val < 0:
+                        errors.append(f"{prefix}.proportion_bar.items['{iid}']: 'value' must be a non-negative number.")
 
         col_ids: set[str] = set()
         if layout == "comparison_matrix":
             mx = s.get("matrix")
-            if not isinstance(mx, dict) or not mx.get("columns"):
-                errors.append(f"{prefix}: layout='comparison_matrix' requires 'matrix.columns'.")
+            if not isinstance(mx, dict) or not isinstance(mx.get("columns"), list) or not mx.get("columns"):
+                errors.append(f"{prefix}: layout='comparison_matrix' requires 'matrix.columns' list.")
             else:
                 for c_idx, col in enumerate(mx.get("columns", [])):
+                    if not isinstance(col, dict):
+                        errors.append(f"{prefix}.matrix.columns[{c_idx}]: must be an object.")
+                        continue
                     cid = col.get("id")
-                    if not cid:
+                    if not isinstance(cid, str) or not cid:
                         errors.append(f"{prefix}.matrix.columns[{c_idx}]: missing 'id'.")
                     elif cid in col_ids:
                         errors.append(f"{prefix}.matrix: duplicate column id '{cid}'.")
                     else:
                         col_ids.add(cid)
-                    if not col.get("rows"):
+                    if not isinstance(col.get("caption"), str) or not col.get("caption"):
+                        errors.append(f"{prefix}.matrix.columns['{cid}']: missing 'caption'.")
+                    rows = col.get("rows")
+                    if not isinstance(rows, list) or not rows:
                         errors.append(f"{prefix}.matrix.columns['{cid}']: must have at least one row.")
+                    else:
+                        for r_idx, row in enumerate(rows):
+                            if not isinstance(row, dict):
+                                errors.append(f"{prefix}.matrix.columns['{cid}'].rows[{r_idx}]: must be an object.")
 
         frames = s.get("frames")
         if frames is None:
@@ -646,17 +790,27 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
             )
 
         for f_idx, f in enumerate(frames):
+            if not isinstance(f, dict):
+                errors.append(f"{prefix}.frames[{f_idx}]: frame entry must be an object.")
+                continue
             vis = f.get("visible_nodes", [])
             exp = f.get("expanded_nodes", [])
+            if not isinstance(vis, list):
+                errors.append(f"{prefix}.frames[{f_idx}]: 'visible_nodes' must be a list.")
+                vis = []
+            if not isinstance(exp, list):
+                errors.append(f"{prefix}.frames[{f_idx}]: 'expanded_nodes' must be a list.")
+                exp = []
+
             for nid in vis:
-                if nid not in node_map:
+                if not isinstance(nid, str) or nid not in node_map:
                     errors.append(f"{prefix}.frames[{f_idx}]: unknown visible node '{nid}'.")
             for nid in exp:
-                if nid not in node_map:
+                if not isinstance(nid, str) or nid not in node_map:
                     errors.append(f"{prefix}.frames[{f_idx}]: unknown expanded node '{nid}'.")
                 elif nid not in vis:
                     errors.append(f"{prefix}.frames[{f_idx}]: expanded node '{nid}' must also be in 'visible_nodes'.")
-                elif not node_map[nid].get("children"):
+                elif not isinstance(node_map[nid].get("children"), list) or not node_map[nid].get("children"):
                     errors.append(f"{prefix}.frames[{f_idx}]: expanded node '{nid}' has no 'children' to unpack.")
 
             vis_edges = f.get("visible_edges", "auto")
@@ -665,23 +819,22 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
                     errors.append(f"{prefix}.frames[{f_idx}]: 'visible_edges' must be 'auto' or a list of edge ids.")
                 else:
                     for eid in vis_edges:
-                        if eid not in edge_ids:
+                        if not isinstance(eid, str) or eid not in edge_ids:
                             errors.append(f"{prefix}.frames[{f_idx}]: unknown visible edge '{eid}'.")
 
-            if f.get("focus_nodes") is not None:
-                for nid in f["focus_nodes"]:
-                    if nid not in node_map:
-                        errors.append(f"{prefix}.frames[{f_idx}]: unknown focus node '{nid}'.")
-
-            if f.get("visible_items") is not None:
-                for iid in f["visible_items"]:
-                    if iid not in item_ids:
-                        errors.append(f"{prefix}.frames[{f_idx}]: unknown visible_items id '{iid}'.")
-
-            if f.get("visible_columns") is not None:
-                for cid in f["visible_columns"]:
-                    if cid not in col_ids:
-                        errors.append(f"{prefix}.frames[{f_idx}]: unknown visible_columns id '{cid}'.")
+            for list_field, valid_pool in (
+                ("focus_nodes", node_map),
+                ("visible_items", item_ids),
+                ("visible_columns", col_ids),
+            ):
+                field_val = f.get(list_field)
+                if field_val is not None:
+                    if not isinstance(field_val, list):
+                        errors.append(f"{prefix}.frames[{f_idx}]: '{list_field}' must be a list.")
+                    else:
+                        for item_id in field_val:
+                            if not isinstance(item_id, str) or item_id not in valid_pool:
+                                errors.append(f"{prefix}.frames[{f_idx}]: unknown {list_field} id '{item_id}'.")
 
             if not f.get("notes"):
                 warnings.append(

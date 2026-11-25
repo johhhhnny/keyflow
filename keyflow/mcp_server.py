@@ -83,6 +83,16 @@ TOOLS: list[dict[str, Any]] = [
                 "output_path": {"type": "string", "description": "Destination .keyx file path."},
                 "theme": {"type": "string", "enum": sorted(THEMES), "description": "Optional theme override."},
                 "preview_dir": {"type": "string", "description": "Optional directory to export PNG previews via Keynote."},
+                "fail_on_audit": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Abort compilation (compiled: false) when Tier 1 visual audit reports errors.",
+                },
+                "strict": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Treat visual warnings as errors and block compilation if audit fails.",
+                },
             },
         },
     },
@@ -163,7 +173,15 @@ def dispatch_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         val = validate_deck(raw)
         if not val.valid:
             return {"compiled": False, **val.to_dict()}
-        report = audit_deck(raw)
+        strict = bool(args.get("strict", False))
+        fail_on_audit = bool(args.get("fail_on_audit", False)) or strict
+        report = audit_deck(raw, strict=strict)
+        if fail_on_audit and not report.passed:
+            return {
+                "compiled": False,
+                "error": "Visual audit failed.",
+                "audit": report.to_dict(),
+            }
         out = compile_deck(raw, args["output_path"], theme_override=args.get("theme"))
         pngs: list[Path] | None = None
         if args.get("preview_dir"):

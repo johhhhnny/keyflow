@@ -42,11 +42,11 @@ Once the Stage 1 full-state topology looks right, run a **2-round visual self-ch
 
 1. **Tier 1 Geometry Audit (Fast, Cross-Platform)**:
    - Run `audit_storyboard` (MCP) or `uv run keyflow audit -i stage1.json` before rendering.
-   - If `errors` or `warnings` appear (e.g., `out_of_bounds`, `overlap`, `cramped_scale`, `text_overflow`, `crowded_proportion`), apply the returned JSON `suggestion` fixes right away (shorten labels, enable `child_layout: "grid"`, split overcrowded scenes, or merge narrow segments).
+   - If `errors` or `warnings` appear (e.g., `out_of_bounds`, `overlap`, `cramped_scale`, `text_overflow`, `crowded_proportion`, `anchor_jitter`), apply the targeted fixes right away using `target_id`, `suggested_action`, and `suggestion` (shorten labels, enable `child_layout: "grid"`, split overcrowded scenes, or merge narrow segments).
 2. **Tier 2 Keynote Render & Targeted PNG Inspection (macOS)**:
-   - Expand and compile via `pace_storyboard` -> `compile_keyx(..., preview_dir=...)`, or directly:
+   - Expand and compile via `pace_storyboard` -> `compile_keyx(..., preview_dir=..., fail_on_audit=True)`, or directly:
      ```bash
      uv run keyflow pace -i stage1.json -o storyboard.json --density standard
-     uv run keyflow compile -i storyboard.json -o output.keyx --preview-dir ./preview
+     uv run keyflow compile -i storyboard.json -o output.keyx --fail-on-audit --preview-dir ./preview
      ```
    - Inspect only the PNGs listed in `audit.review_pngs` (all flagged slides plus slide 1 and each scene's final slide) to verify text wrapping, breathing room, and connector routing; refine and recompile once if any visual flaw remains.

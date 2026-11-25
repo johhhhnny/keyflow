@@ -49,7 +49,24 @@ def _cmd_compile(args: argparse.Namespace) -> int:
         print(json.dumps(res.to_dict(), ensure_ascii=False, indent=2), file=sys.stderr)
         return 1
 
-    report = audit_deck(raw)
+    strict = bool(getattr(args, "strict", False))
+    fail_on_audit = bool(getattr(args, "fail_on_audit", False)) or strict
+    report = audit_deck(raw, strict=strict)
+    if fail_on_audit and not report.passed:
+        print(
+            json.dumps(
+                {
+                    "compiled": False,
+                    "error": "Visual audit failed.",
+                    "audit": report.to_dict(),
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            file=sys.stderr,
+        )
+        return 1
+
     out = compile_deck(raw, args.output, theme_override=args.theme)
     pngs: list[Path] | None = None
     if args.preview_dir:
@@ -152,6 +169,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_comp.add_argument("-o", "--output", required=True, help="Output .keyx path.")
     p_comp.add_argument("--theme", choices=sorted(THEMES), help="Override theme preset.")
     p_comp.add_argument("--preview-dir", help="Optional directory to export PNG slide previews via Keynote.")
+    p_comp.add_argument(
+        "--fail-on-audit",
+        action="store_true",
+        help="Abort compilation when Tier 1 visual audit reports errors.",
+    )
+    p_comp.add_argument(
+        "--strict",
+        action="store_true",
+        help="Treat visual audit warnings as errors and block compilation if any fail.",
+    )
     p_comp.set_defaults(func=_cmd_compile)
 
     p_prev = sub.add_parser("preview", help="Export slide PNG previews from a .keyx file via Keynote.")

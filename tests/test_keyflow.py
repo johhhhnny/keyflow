@@ -10,10 +10,22 @@ from pathlib import Path
 import pytest
 
 from keyflow import __version__, audit_deck
-from keyflow.audit import _audit_scene_anchor_stability
+from keyflow.audit import _audit_deck_pinned_flow_stability, _audit_scene_anchor_stability
 from keyflow.cli import main as cli_main
 from keyflow.compiler import compile_deck, export_slide_pngs
-from keyflow.layout import BoxRect, PlacedBox, ResolvedFrame, resolve_scene
+from keyflow.layout import (
+    BoxRect,
+    PlacedBox,
+    PlacedComparisonMatrix,
+    PlacedEdge,
+    PlacedMatrixColumn,
+    PlacedPinnedFlow,
+    PlacedProportionBar,
+    PlacedProportionItem,
+    PlacedRibbonNode,
+    ResolvedFrame,
+    resolve_scene,
+)
 from keyflow.mcp_server import dispatch_tool, handle_request, main as mcp_main
 from keyflow.outline import extract_markdown_outline
 from keyflow.pace import expand_scene_frames, pace_deck
@@ -677,3 +689,388 @@ flowchart TD
     assert report.errors == []
     assert report.warnings == []
     assert report.min_scale >= 0.72
+
+
+def test_flow_dag_topological_sort_independent_of_node_order_and_rejects_cycles(tmp_path: Path) -> None:
+    """DAG pacing and layout must follow edges even when downstream nodes appear first in JSON."""
+    out_of_order_dag = {
+        "title": "Out-of-order DAG",
+        "scenes": [
+            {
+                "id": "dag",
+                "title": "Reversed Nodes",
+                "layout": "flow_dag",
+                "nodes": [
+                    {"id": "C", "label": "阶段 C"},
+                    {"id": "B", "label": "阶段 B"},
+                    {"id": "A", "label": "阶段 A"},
+                ],
+                "edges": [
+                    {"id": "e1", "from": "A", "to": "B"},
+                    {"id": "e2", "from": "B", "to": "C"},
+                ],
+            }
+        ],
+    }
+    assert validate_deck(out_of_order_dag).valid is True
+
+    paced = pace_deck(out_of_order_dag)
+    frames = paced["scenes"][0]["frames"]
+    assert [f["visible_nodes"] for f in frames] == [["A"], ["A", "B"], ["A", "B", "C"]]
+
+    parsed = parse_deck(paced)
+    resolved = resolve_scene(parsed.scenes[0], parsed.slide_width, parsed.slide_height)
+    final_boxes = {b.id: b.rect for b in resolved[-1].boxes}
+    assert final_boxes["A"].x < final_boxes["B"].x < final_boxes["C"].x
+
+    cyclic_dag = {
+        "title": "Cyclic DAG",
+        "scenes": [
+            {
+                "id": "cyc",
+                "title": "Has Cycle",
+                "layout": "flow_dag",
+                "nodes": [
+                    {"id": "A", "label": "A"},
+                    {"id": "B", "label": "B"},
+                ],
+                "edges": [
+                    {"id": "e1", "from": "A", "to": "B"},
+                    {"id": "e2", "from": "B", "to": "A"},
+                ],
+            }
+        ],
+    }
+    val_cyc = validate_deck(cyclic_dag)
+    assert val_cyc.valid is False
+    assert any("cyclic dependencies" in err for err in val_cyc.errors)
+
+
+def test_schema_handles_malformed_types_gracefully() -> None:
+    """Malformed non-dict/non-numeric inputs from LLMs must yield clean ValidationResult errors, not exceptions."""
+    bad_inputs = [
+        [],
+        {"title": 123, "theme": 456, "pinned_flow": "not_a_dict", "scenes": ["not_a_scene"]},
+        {
+            "title": "Bad Proportion & Matrix",
+            "scenes": [
+                {
+                    "id": "s1",
+                    "title": "Prop",
+                    "layout": "proportion_bar",
+                    "nodes": ["bad_node"],
+                    "edges": ["bad_edge"],
+                    "proportion_bar": {
+                        "axis_min": "zero",
+                        "axis_max": True,
+                        "items": [{"id": "i1", "label": "L", "value": "NaN"}],
+                    },
+                },
+                {
+                    "id": "s2",
+                    "title": "Matrix",
+                    "layout": "comparison_matrix",
+                    "matrix": {"columns": [{"id": "c1", "caption": "C", "rows": ["bad_row"]}]},
+                    "frames": ["bad_frame"],
+                },
+            ],
+        },
+    ]
+    for payload in bad_inputs:
+        res = validate_deck(payload)  # type: ignore[arg-type]
+        assert res.valid is False
+        assert len(res.errors) >= 1
+
+
+def test_export_slide_pngs_passes_paths_via_osascript_argv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ensure paths containing quotes/spaces are passed as argv rather than interpolated into AppleScript."""
+    monkeypatch.setattr("keyflow.compiler.sys.platform", "darwin")
+    monkeypatch.setattr("keyflow.compiler.shutil.which", lambda _: "/usr/bin/osascript")
+    captured: dict[str, object] = {}
+
+    def _fake_run(cmd: list[str], **kwargs: object) -> object:
+        captured["cmd"] = cmd
+        return type("Proc", (), {"returncode": 0, "stderr": ""})()
+
+    monkeypatch.setattr("keyflow.compiler.subprocess.run", _fake_run)
+    keyx_file = tmp_path / 'tricky "quote" deck.keyx'
+    keyx_file.write_bytes(b"zip")
+    out_dir = tmp_path / 'out "png" dir'
+    export_slide_pngs(keyx_file, out_dir)
+
+    cmd = captured["cmd"]
+    assert isinstance(cmd, list)
+    assert cmd[:2] == ["osascript", "-e"]
+    assert "on run argv" in cmd[2]
+    assert 'tricky "quote"' not in cmd[2]
+    assert cmd[3] == str(keyx_file.resolve())
+    assert cmd[4] == str(out_dir.resolve())
+
+
+def test_audit_findings_include_target_id_and_suggested_action() -> None:
+    """Findings must expose machine-readable target_id and suggested_action for Agent auto-fix loops."""
+    deck = {
+        "title": "Structured Hints",
+        "scenes": [
+            {
+                "id": "s_overflow",
+                "title": "Overflow Node",
+                "layout": "horizontal_flow",
+                "nodes": [
+                    {"id": "long_node", "label": "这是一个特别特别特别长肯定会在窄卡片里折行溢出的节点标题名称"},
+                    {"id": "short_node", "label": "短节点"},
+                    {"id": "third_node", "label": "第三步"},
+                    {"id": "fourth_node", "label": "第四步"},
+                ],
+                "edges": [],
+            },
+            {
+                "id": "s_prop",
+                "title": "Tiny Proportion",
+                "layout": "proportion_bar",
+                "proportion_bar": {
+                    "axis_min": 0,
+                    "axis_max": 100,
+                    "items": [
+                        {"id": "main", "label": "Main", "value": 99.6},
+                        {"id": "tiny_seg", "label": "Tail", "value": 0.4},
+                    ],
+                },
+            },
+        ],
+    }
+    report = audit_deck(deck)
+    overflow = [w for w in report.warnings if w.category == "text_overflow"]
+    assert overflow and overflow[0].target_id == "long_node"
+    assert overflow[0].suggested_action == "shorten_label"
+
+    tiny = [w for w in report.warnings if w.category == "crowded_proportion"]
+    assert tiny and tiny[0].target_id == "tiny_seg"
+    assert tiny[0].suggested_action == "merge_small_segments"
+    serialized = report.to_dict()
+    assert serialized["warnings"][0]["suggested_action"]
+
+
+def test_audit_extended_stability_checks_edges_charts_matrices_and_pinned_flow() -> None:
+    """Cross-frame stability must cover edges, proportion bars, matrices, and pinned_flow transitions."""
+    box_a = PlacedBox(id="a", label="A", rect=BoxRect(100, 200, 200, 100), kind="card", variant="primary")
+    box_b = PlacedBox(id="b", label="B", rect=BoxRect(400, 200, 200, 100), kind="card", variant="primary")
+
+    f0 = ResolvedFrame(
+        scene_id="s1",
+        frame_index=0,
+        title="T",
+        subtitle=None,
+        title_rect=None,
+        subtitle_rect=None,
+        boxes=[box_a, box_b],
+        edges=[PlacedEdge(id="e1", from_id="a", to_id="b", tail_center=(200, 250), head_center=(500, 250))],
+        proportion_bar=PlacedProportionBar(
+            axis_start=(100, 400),
+            axis_end=(800, 400),
+            ticks=[(100, "0"), (800, "100")],
+            bar_y=360,
+            bar_h=40,
+            items=[
+                PlacedProportionItem(
+                    id="p1",
+                    label="P1",
+                    display_value="50%",
+                    color_index=0,
+                    visible=True,
+                    seg_rect=BoxRect(100, 360, 350, 40),
+                    label_rect=BoxRect(100, 300, 120, 36),
+                    arrow_tail=(160, 336),
+                    arrow_head=(160, 360),
+                )
+            ],
+        ),
+        comparison_matrix=PlacedComparisonMatrix(
+            formula="Y = X",
+            formula_rect=BoxRect(300, 240, 400, 60),
+            columns=[
+                PlacedMatrixColumn(
+                    id="col1",
+                    box_rect=BoxRect(200, 350, 300, 300),
+                    caption="Col 1",
+                    caption_rect=BoxRect(200, 660, 300, 40),
+                    cells=[],
+                )
+            ],
+        ),
+        pinned_flow=PlacedPinnedFlow(
+            nodes=[PlacedRibbonNode(id="r1", label="R1", rect=BoxRect(300, 460, 200, 100), is_active=True)],
+            groups=[],
+            edges=[],
+            is_centered=True,
+        ),
+    )
+    f1 = ResolvedFrame(
+        scene_id="s1",
+        frame_index=1,
+        title="T",
+        subtitle=None,
+        title_rect=None,
+        subtitle_rect=None,
+        boxes=[box_a, box_b],
+        edges=[PlacedEdge(id="e1", from_id="a", to_id="b", tail_center=(215, 250), head_center=(500, 250))],
+        proportion_bar=PlacedProportionBar(
+            axis_start=(100, 400),
+            axis_end=(800, 400),
+            ticks=[(100, "0"), (800, "100")],
+            bar_y=360,
+            bar_h=40,
+            items=[
+                PlacedProportionItem(
+                    id="p1",
+                    label="P1",
+                    display_value="50%",
+                    color_index=0,
+                    visible=True,
+                    seg_rect=BoxRect(120, 360, 350, 40),
+                    label_rect=BoxRect(100, 300, 120, 36),
+                    arrow_tail=(160, 336),
+                    arrow_head=(160, 360),
+                )
+            ],
+        ),
+        comparison_matrix=PlacedComparisonMatrix(
+            formula="Y = X",
+            formula_rect=BoxRect(300, 240, 400, 60),
+            columns=[
+                PlacedMatrixColumn(
+                    id="col1",
+                    box_rect=BoxRect(212, 350, 300, 300),
+                    caption="Col 1",
+                    caption_rect=BoxRect(200, 660, 300, 40),
+                    cells=[],
+                )
+            ],
+        ),
+        pinned_flow=PlacedPinnedFlow(
+            nodes=[PlacedRibbonNode(id="r1", label="R1", rect=BoxRect(300, 64, 180, 80), is_active=True)],
+            groups=[],
+            edges=[],
+            is_centered=False,
+        ),
+    )
+    findings: list = []
+    _audit_scene_anchor_stability([f0, f1], start_slide_num=1, findings=findings)
+    targets = {f.target_id for f in findings}
+    assert {"e1", "p1", "col1"}.issubset(targets)
+    assert "r1" not in targets  # Intentional centered -> top-dock shrink passes cleanly
+
+    # Cross-scene docked -> docked drift on pinned_flow must be flagged
+    f2_docked_shifted = ResolvedFrame(
+        scene_id="s2",
+        frame_index=0,
+        title="T2",
+        subtitle=None,
+        title_rect=None,
+        subtitle_rect=None,
+        pinned_flow=PlacedPinnedFlow(
+            nodes=[PlacedRibbonNode(id="r1", label="R1", rect=BoxRect(320, 64, 180, 80), is_active=True)],
+            groups=[],
+            edges=[],
+            is_centered=False,
+        ),
+    )
+    cross_findings: list = []
+    _audit_deck_pinned_flow_stability([f1, f2_docked_shifted], cross_findings)
+    assert len(cross_findings) == 1
+    assert cross_findings[0].category == "anchor_jitter"
+    assert cross_findings[0].target_id == "r1"
+
+
+def test_compile_audit_gate_blocks_cli_and_mcp_when_enabled(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Compile quality gates (--fail-on-audit / --strict) must block bad decks while keeping default permissive."""
+    # Deck with a pure warning (text_overflow) and a deck with a layout collision (out_of_bounds via cramped grid/long deck)
+    warning_deck = {
+        "title": "Warning Gate",
+        "scenes": [
+            {
+                "id": "warn_scene",
+                "title": "Warn",
+                "layout": "horizontal_flow",
+                "nodes": [
+                    {"id": "w1", "label": "这是一个特别特别特别长肯定会在窄卡片里折行溢出的节点标题名称"},
+                    {"id": "w2", "label": "短节点"},
+                    {"id": "w3", "label": "第三步"},
+                    {"id": "w4", "label": "第四步"},
+                ],
+                "edges": [],
+            }
+        ],
+    }
+    warn_json = tmp_path / "warn.json"
+    warn_json.write_text(json.dumps(warning_deck, ensure_ascii=False), encoding="utf-8")
+
+    # --fail-on-audit allows warnings-only decks (errors == 0), whereas --strict blocks warnings
+    out_ok = tmp_path / "warn_ok.keyx"
+    assert cli_main(["compile", "-i", str(warn_json), "-o", str(out_ok), "--fail-on-audit"]) == 0
+    assert out_ok.exists()
+    capsys.readouterr()
+
+    out_strict = tmp_path / "warn_blocked.keyx"
+    assert cli_main(["compile", "-i", str(warn_json), "-o", str(out_strict), "--strict"]) == 1
+    assert not out_strict.exists()
+    capsys.readouterr()
+
+    # MCP compile_keyx respects strict=True / fail_on_audit=True
+    mcp_blocked = dispatch_tool(
+        "compile_keyx",
+        {
+            "storyboard": warning_deck,
+            "output_path": str(tmp_path / "mcp_blocked.keyx"),
+            "strict": True,
+        },
+    )
+    assert mcp_blocked["compiled"] is False
+    assert mcp_blocked["audit"]["passed"] is False
+    assert not (tmp_path / "mcp_blocked.keyx").exists()
+
+    # Deck with an audit error (out_of_bounds matrix extending past slide_size.height): fail_on_audit=True blocks compilation
+    error_deck = {
+        "title": "Error Gate",
+        "slide_size": {"width": 1280, "height": 360},
+        "scenes": [
+            {
+                "id": "oob",
+                "title": "Too Tall Matrix",
+                "layout": "comparison_matrix",
+                "matrix": {
+                    "columns": [
+                        {
+                            "id": "c1",
+                            "caption": "C1",
+                            "headers": ["Val"],
+                            "rows": [{"chip": f"R{i}", "values": [str(i)]} for i in range(1, 6)],
+                        }
+                    ]
+                },
+            }
+        ],
+    }
+    err_json = tmp_path / "err.json"
+    err_json.write_text(json.dumps(error_deck, ensure_ascii=False), encoding="utf-8")
+    out_cli_err = tmp_path / "cli_err.keyx"
+    assert cli_main(["compile", "-i", str(err_json), "-o", str(out_cli_err), "--fail-on-audit"]) == 1
+    assert not out_cli_err.exists()
+    capsys.readouterr()
+
+    mcp_err_blocked = dispatch_tool(
+        "compile_keyx",
+        {
+            "storyboard": error_deck,
+            "output_path": str(tmp_path / "mcp_err.keyx"),
+            "fail_on_audit": True,
+        },
+    )
+    assert mcp_err_blocked["compiled"] is False
+    assert mcp_err_blocked["audit"]["error_count"] >= 1
+    assert not (tmp_path / "mcp_err.keyx").exists()

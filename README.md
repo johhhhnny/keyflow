@@ -89,8 +89,8 @@ Available MCP tools:
 - `extract_outline`: Extracts a section outline, Mermaid flowcharts, and a draft storyboard from Markdown.
 - `pace_storyboard`: Expands a Stage 1 full-state diagram into step-by-step presentation frames.
 - `validate_storyboard`: Validates schema structure, node/edge references, and card text-density warnings.
-- `audit_storyboard`: Runs deterministic visual self-checks (bounds, overlaps, cross-frame anchor lock, scale, overflow) with JSON fix hints.
-- `compile_keyx`: Compiles a deck into `.keyx`, returning visual `audit` metrics and optional `review_pngs` paths for targeted visual inspection.
+- `audit_storyboard`: Runs deterministic visual self-checks (bounds, overlaps, cross-frame anchor lock across boxes/edges/`pinned_flow`/matrices, scale, overflow) with structured `target_id` and `suggested_action` fix hints.
+- `compile_keyx`: Compiles a deck into `.keyx`, returning visual `audit` metrics and optional `review_pngs` paths; supports `fail_on_audit` and `strict` quality gates.
 - `preview_keyx`: Exports an existing `.keyx` presentation into per-slide PNG images.
 - `list_themes`: Lists built-in visual themes.
 

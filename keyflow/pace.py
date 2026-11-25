@@ -5,6 +5,8 @@ from __future__ import annotations
 import copy
 from typing import Any, Literal
 
+from keyflow.schema import compute_dag_layers
+
 DensityMode = Literal["standard", "compact"]
 
 
@@ -86,17 +88,9 @@ def _pace_flow_dag(scene: dict[str, Any], density: DensityMode) -> list[dict[str
     if not nodes:
         return [{"visible_nodes": [], "expanded_nodes": [], "notes": str(scene.get("title", ""))}]
 
-    order = {str(n["id"]): i for i, n in enumerate(nodes)}
-    parents: dict[str, list[str]] = {str(n["id"]): [] for n in nodes}
-    for e in edges:
-        f_id, t_id = str(e["from"]), str(e["to"])
-        if f_id in order and t_id in order and order[f_id] < order[t_id]:
-            parents[t_id].append(f_id)
-
-    depth: dict[str, int] = {}
-    for n in nodes:
-        nid = str(n["id"])
-        depth[nid] = 0 if not parents[nid] else 1 + max(depth.get(p, 0) for p in parents[nid])
+    node_ids = [str(n["id"]) for n in nodes]
+    edge_pairs = [(str(e["from"]), str(e["to"])) for e in edges]
+    depth, _ = compute_dag_layers(node_ids, edge_pairs)
 
     max_depth = max(depth.values(), default=0)
     frames: list[dict[str, Any]] = []
