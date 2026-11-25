@@ -15,7 +15,17 @@ Most presentation generators simply pack long paragraphs into bullet lists—har
 
 ## Visual Preview
 
-Notice how every card stays locked in place while concepts, connectors, and curved branches unfold step by step (`sequence_timeline` example):
+### With Apple Keynote Magic Move
+
+KeyFlow builds every slide on locked coordinates and open-path vector shapes, making it a natural fit for Keynote's **Magic Move** transition—simply open the compiled `.keyx`, select all slides (`Cmd + A`), and apply **Magic Move** to get smooth, movie-like transitions where cards stay anchored, arrows track cleanly, and the top overview bar flies smoothly into place:
+
+<p align="center">
+  <img src="docs/images/keyflow_readme_v5.gif" alt="KeyFlow + Apple Keynote Magic Move demo" width="100%" />
+</p>
+
+### Frame-by-Frame Coordinate Lock (`sequence_timeline`)
+
+Notice how every card stays locked in place while concepts, connectors, and curved branches unfold step by step:
 
 <table>
   <tr>
@@ -161,6 +171,8 @@ KeyFlow's layouts and pacing rules are built around four practical presentation 
    When diving into local data, formulas, or edge cases in a long talk, listeners easily lose track of where they are. With `pinned_flow`, the opening slide centers the high-level pipeline, then docks it to the top bar on detail slides with the active stage highlighted in orange.
 4. **Match the Visual Form to the Underlying Logic**
    Use topological DAGs for branches, segmented scales for proportions, trend-annotated matrices for multi-variable comparisons, and stacked columns for system evolution. Choosing the right visual structure removes half the verbal explanation.
+5. **Designed to Pair Effortlessly with Magic Move**
+   Because `.keyx` 1.0 focuses on static document structure without transition metadata, KeyFlow builds every slide specifically for zero-friction Magic Move in Keynote: existing cards stay locked at identical coordinates, `pinned_flow` transitions naturally from center overview to docked header, and one `Cmd + A` → **Magic Move** turns the deck into a fluid animated walkthrough.
 
 ---
 
@@ -212,7 +224,7 @@ To keep presentations deterministic, reliable, and friendly to AI agents, KeyFlo
 2. **Two-Stage Split: Structure Design vs. Frame Pacing**
    Maintaining both final layout geometry and 10+ intermediate visibility states at once is error-prone for both humans and LLMs. `outline` (Stage 1) focuses strictly on target topology and layouts, while `pace.py` (Stage 2) deterministically derives step-by-step frames from topology order, container unpacking, and pacing density.
 3. **Layout-First Geometry, Frame-by-Frame Visibility Projection**
-   To eliminate element jitter across consecutive slides, the layout engine computes coordinates and collision-free routing **once** against the complete final scene. Each compiled slide is simply a visibility and emphasis slice of that fixed geometry.
+   To eliminate element jitter across consecutive slides, the layout engine computes coordinates and collision-free routing **once** against the complete final scene. Each compiled slide is simply a visibility and emphasis slice of that fixed geometry. Moreover, instead of Keynote's dynamic `ConnectionLine` (which cross-fades unpredictably under Magic Move), `compiler.py` clips exact box-edge endpoints and quadratic Bezier curves into open-path `Shape` objects so lines match across slides just like cards.
 4. **Schema Guardrails Let AI Focus on Semantics**
    Both the CLI and `keyflow-mcp` share strict validation via [schemas/deck.schema.json](schemas/deck.schema.json) and density checks (`schema.py`). AI agents decide structure, wording, and layout genre—while deterministic Python code handles pixel coordinates, typography hierarchy, theme palettes, and globally unique object IDs.
 5. **Open, Editable Native Output**
