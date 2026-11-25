@@ -17,7 +17,7 @@ Most presentation generators simply pack long paragraphs into bullet lists—har
 
 ### With Apple Keynote Magic Move
 
-KeyFlow builds every slide on locked coordinates and open-path vector shapes, making it a natural fit for Keynote's **Magic Move** transition—simply open the compiled `.keyx`, select all slides (`Cmd + A`), and apply **Magic Move** to get smooth, movie-like transitions where cards stay anchored, arrows track cleanly, and the top overview bar flies smoothly into place:
+KeyFlow builds every slide on locked coordinates and open-path vector shapes. Open the compiled `.keyx` in Keynote, select all slides, and add the **Magic Move** transition to get step-by-step progressive reveals:
 
 <p align="center">
   <img src="docs/images/keyflow_readme_v5.gif" alt="KeyFlow + Apple Keynote Magic Move demo" width="100%" />

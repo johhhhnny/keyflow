@@ -17,7 +17,7 @@
 
 ### 配合 Keynote「神奇移动」效果
 
-KeyFlow 生成的每页幻灯片都基于同一套锁定坐标与开放路径图形——在 Apple Keynote 中打开 `.keyx` 后，只需全选幻灯片（`Cmd + A`）加上「**神奇移动（Magic Move）**」过渡，即可直接获得顶部导览条丝滑缩拢置顶、元素步步长出的动画效果：
+KeyFlow 生成的每页幻灯片都基于同一套锁定坐标与开放路径图形。在 Keynote 中打开 `.keyx` 后，只需全选幻灯片并添加「**神奇移动（Magic Move）**」动画效果，即可直接获得元素步步长出的演示效果：
 
 <p align="center">
   <img src="docs/images/keyflow_readme_v5.gif" alt="KeyFlow 配合 Keynote 神奇移动效果演示" width="100%" />
