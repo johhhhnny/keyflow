@@ -13,6 +13,39 @@
 
 ---
 
+## 效果预览
+
+下面 4 页来自同一个场景（`sequence_timeline`）的连续展开——可以看到**已经出现的元素坐标全程锁定**，新节点、连线与正反弧线按节奏一步步长出来：
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/images/preview_step1.jpg" alt="Step 1：起点卡片落位" width="100%" />
+      <br />
+      <sub><b>Step 1</b> · 起点卡片（<code>全量草稿</code>）先行落位在固定坐标</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/images/preview_step2.jpg" alt="Step 2：主轴向后生长" width="100%" />
+      <br />
+      <sub><b>Step 2</b> · 主轴向右逐步生长（<code>结构校验</code> → <code>渐进拆帧</code>），旧框不动</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/images/preview_step3.jpg" alt="Step 3：跳跃弧线聚焦强调" width="100%" />
+      <br />
+      <sub><b>Step 3</b> · <code>原生 .keyx</code> 出场，上方跳跃弧线聚焦高亮起点与终点</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/images/preview_step4.jpg" alt="Step 4：完整状态流转全貌" width="100%" />
+      <br />
+      <sub><b>Step 4</b> · 全量图落成：主干链路与上下正反弧线完整呈现</sub>
+    </td>
+  </tr>
+</table>
+
+---
+
 ## 使用方式
 
 ### 方式一：由 AI 助手自动完成（推荐）
