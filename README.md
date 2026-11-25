@@ -27,7 +27,7 @@ Notice how every card stays locked in place while concepts, connectors, and curv
     <td align="center" width="50%">
       <img src="docs/images/preview_step2.jpg" alt="Step 2: Backbone expands rightwards with transitions" width="100%" />
       <br />
-      <sub><b>Step 2</b> · Main sequence grows rightwards while earlier cards stay fixed</sub>
+      <sub><b>Step 2</b> · Main sequence grows right, anchor stays fixed</sub>
     </td>
   </tr>
   <tr>
