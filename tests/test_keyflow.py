@@ -632,3 +632,48 @@ def test_audit_catches_overflow_narrow_proportion_jitter_and_mcp_review_pngs(
     )
     assert comp["compiled"] is True
     assert comp["audit"]["review_pngs"] == [str(fake_pngs[0]), str(fake_pngs[5])]
+
+
+def test_outline_folds_mermaid_parallel_fanout_and_passes_strict_audit() -> None:
+    md = """# FinMaster
+[English](README.md) | 简体中文
+
+> 把价值投资研究方法，变成一套可执行的工作流。
+
+## 介绍
+<table><tr><td>ignore</td></tr></table>
+- **框架化**：先结构后结论
+
+## 执行流程图
+```mermaid
+flowchart TD
+    A[选择技能与研究标的] --> B[汇集可用行情和资料]
+    B --> C[选择执行模式]
+    C -->|单角色或专题技能| D[按技能框架生成分析]
+    C -->|多角色研究| E1[段永平视角：商业模式]
+    C -->|多角色研究| E2[巴菲特视角：财务估值]
+    C -->|多角色研究| E3[芒格视角：竞争风险]
+    C -->|多角色研究| E4[李录视角：长期趋势]
+    E1 --> F[研究总监汇总]
+    E2 --> F
+    E3 --> F
+    E4 --> F
+    F --> G[生成 Markdown 报告]
+    G --> H[本地归档复核]
+```
+"""
+    extracted = extract_markdown_outline(md)
+    assert extracted["source_summary"]["tagline"] == "把价值投资研究方法，变成一套可执行的工作流。"
+    dag_scene = extracted["scene_graph"]["scenes"][1]
+    assert dag_scene["layout"] == "flow_dag"
+    grid_nodes = [n for n in dag_scene["nodes"] if n.get("child_layout") == "grid"]
+    assert len(grid_nodes) == 1
+    assert grid_nodes[0]["label"] == "多角色研究"
+    assert len(grid_nodes[0]["children"]) == 4
+    assert grid_nodes[0]["children"][0]["sublabel"] == "商业模式"
+
+    report = audit_deck(extracted["scene_graph"], strict=True)
+    assert report.passed is True
+    assert report.errors == []
+    assert report.warnings == []
+    assert report.min_scale >= 0.72

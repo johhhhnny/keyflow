@@ -55,7 +55,7 @@ def _short_label(text: str, max_len: int = 12) -> str:
     cleaned = re.sub(r"\s*[（(][^）)]*[）)]\s*$", "", cleaned).strip()
     if len(cleaned) <= max_len:
         return cleaned or text.strip()[:max_len]
-    for sep in ("：", ":", "—", "-", "、"):
+    for sep in ("：", ":", "—", "-", "、", "或", "及"):
         if sep in cleaned:
             head = cleaned.split(sep, 1)[0].strip()
             if 2 <= len(head) <= max_len:
@@ -65,11 +65,201 @@ def _short_label(text: str, max_len: int = 12) -> str:
         head = cleaned.split(" ", 1)[0].strip()
         if 2 <= len(head) <= max_len:
             return head
-    return cleaned[:max_len]
+    # Avoid slicing mid-ASCII word at max_len (e.g. "FinMas", "Markdow")
+    cut = max_len
+    if cut < len(cleaned) and cleaned[cut - 1].isascii() and cleaned[cut - 1].isalnum() and cleaned[cut].isalnum():
+        end = cut
+        while end < len(cleaned) and cleaned[end].isascii() and cleaned[end].isalnum():
+            end += 1
+        if end - max_len <= 3:
+            return cleaned[:end].strip()
+        start = cut
+        while start > 0 and cleaned[start - 1].isascii() and cleaned[start - 1].isalnum():
+            start -= 1
+        if start >= 2:
+            return cleaned[:start].strip()
+    return cleaned[:max_len].strip()
+
+
+def _mermaid_node_parts(raw_label: str) -> tuple[str, str | None, str]:
+    """Split 'A：B' Mermaid labels into crisp card label, optional sublabel, and full note."""
+    cleaned = _clean_text(raw_label)
+    for sep in ("：", ":"):
+        if sep in cleaned:
+            head, tail = (part.strip() for part in cleaned.split(sep, 1))
+            if 2 <= len(head) <= 10 and 2 <= len(tail) <= 10:
+                return head, tail, cleaned
+    short = _short_label(raw_label, max_len=10)
+    note = cleaned if cleaned != short else ""
+    return short, None, note
+
+
+def _dag_column_count(node_ids: list[str], edges: list[dict[str, str]]) -> int:
+    """Estimate topological layer count of a DAG."""
+    depths = {nid: 0 for nid in node_ids}
+    for _ in range(len(node_ids)):
+        changed = False
+        for e in edges:
+            u, v = e["from"], e["to"]
+            if u in depths and v in depths and depths[v] < depths[u] + 1:
+                depths[v] = depths[u] + 1
+                changed = True
+        if not changed:
+            break
+    return (max(depths.values()) + 1) if depths else 0
+
+
+def _compact_linear_mermaid_pairs(
+    nodes: list[dict[str, Any]],
+    edges: list[dict[str, str]],
+    *,
+    max_cols: int = 5,
+) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+    """Merge unlabeled 1->1 linear chain steps into label+sublabel cards when DAG depth exceeds max_cols."""
+    cur_nodes = [dict(n) for n in nodes]
+    cur_edges = [dict(e) for e in edges]
+
+    while _dag_column_count([n["id"] for n in cur_nodes], cur_edges) > max_cols:
+        out_map: dict[str, list[dict[str, str]]] = {}
+        in_map: dict[str, list[dict[str, str]]] = {}
+        for e in cur_edges:
+            out_map.setdefault(e["from"], []).append(e)
+            in_map.setdefault(e["to"], []).append(e)
+
+        node_by_id = {n["id"]: n for n in cur_nodes}
+        merged_pair: tuple[str, str] | None = None
+        # Prefer folding chains without children and without sublabel already set
+        for e in reversed(cur_edges):
+            u, v = e["from"], e["to"]
+            if e.get("label"):
+                continue
+            if len(out_map.get(u, [])) != 1 or len(in_map.get(v, [])) != 1:
+                continue
+            nu, nv = node_by_id.get(u), node_by_id.get(v)
+            if not nu or not nv or nu.get("children") or nv.get("children"):
+                continue
+            if nu.get("sublabel") or nv.get("sublabel"):
+                continue
+            merged_pair = (u, v)
+            break
+
+        if merged_pair is None:
+            break
+
+        u, v = merged_pair
+        nu = node_by_id[u]
+        nv = node_by_id[v]
+        nu["sublabel"] = _short_label(nv["label"], max_len=10)
+        note_parts = [p for p in (nu.get("note", ""), nv.get("note", "") or nv["label"]) if p]
+        if note_parts:
+            nu["note"] = " -> ".join(note_parts)
+
+        cur_nodes = [n for n in cur_nodes if n["id"] != v]
+        next_edges: list[dict[str, str]] = []
+        seen_pairs: set[tuple[str, str]] = set()
+        for e in cur_edges:
+            if e["from"] == u and e["to"] == v:
+                continue
+            src = u if e["from"] == v else e["from"]
+            dst = u if e["to"] == v else e["to"]
+            if src == dst or (src, dst) in seen_pairs:
+                continue
+            seen_pairs.add((src, dst))
+            obj: dict[str, str] = {"id": f"m_{len(next_edges) + 1}", "from": src, "to": dst}
+            if e.get("label"):
+                obj["label"] = e["label"]
+            next_edges.append(obj)
+        cur_edges = next_edges
+
+    return cur_nodes, cur_edges
+
+
+def _fold_mermaid_parallel_branches(
+    node_meta: dict[str, tuple[str, str | None, str]],
+    edges: list[dict[str, str]],
+) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+    """Collapse 2-4 parallel siblings sharing exact predecessors/successors into one container node."""
+    sigs: dict[str, tuple[tuple[tuple[str, str], ...], tuple[tuple[str, str], ...]]] = {}
+    for nid in node_meta:
+        inc = tuple(sorted((e["from"], e.get("label", "")) for e in edges if e["to"] == nid))
+        out = tuple(sorted((e["to"], e.get("label", "")) for e in edges if e["from"] == nid))
+        sigs[nid] = (inc, out)
+
+    by_sig: dict[tuple[Any, Any], list[str]] = {}
+    for nid, sig in sigs.items():
+        if not sig[0] and not sig[1]:
+            continue
+        by_sig.setdefault(sig, []).append(nid)
+
+    member_to_group: dict[str, str] = {}
+    group_specs: dict[str, dict[str, Any]] = {}
+    consumed_edge_labels: set[tuple[str, str]] = set()
+
+    for sig, group_nids in by_sig.items():
+        if not (2 <= len(group_nids) <= 4):
+            continue
+        gid = f"grp_{group_nids[0]}"
+        in_labels = [lbl for _, lbl in sig[0] if lbl]
+        if in_labels and len(set(in_labels)) == 1:
+            g_label = _short_label(in_labels[0], max_len=10)
+            for src_id, _ in sig[0]:
+                consumed_edge_labels.add((src_id, gid))
+        else:
+            g_label = "并行分支" if any(ord(c) > 127 for nid in group_nids for c in node_meta[nid][0]) else "Parallel Group"
+
+        children: list[dict[str, Any]] = []
+        for nid in group_nids:
+            member_to_group[nid] = gid
+            lbl, sub, note = node_meta[nid]
+            child: dict[str, Any] = {"id": nid, "label": lbl}
+            if sub:
+                child["sublabel"] = sub
+            if note:
+                child["note"] = note
+            children.append(child)
+
+        group_specs[gid] = {
+            "id": gid,
+            "label": g_label,
+            "child_layout": "grid" if len(group_nids) >= 3 else "row",
+            "children": children,
+        }
+
+    folded_nodes: list[dict[str, Any]] = []
+    emitted_groups: set[str] = set()
+    for nid, (lbl, sub, note) in node_meta.items():
+        gid = member_to_group.get(nid)
+        if gid is not None:
+            if gid not in emitted_groups:
+                folded_nodes.append(group_specs[gid])
+                emitted_groups.add(gid)
+            continue
+        node_obj: dict[str, Any] = {"id": nid, "label": lbl}
+        if sub:
+            node_obj["sublabel"] = sub
+        if note:
+            node_obj["note"] = note
+        folded_nodes.append(node_obj)
+
+    folded_edges: list[dict[str, str]] = []
+    seen_pairs: set[tuple[str, str]] = set()
+    for e in edges:
+        src = member_to_group.get(e["from"], e["from"])
+        dst = member_to_group.get(e["to"], e["to"])
+        if src == dst or (src, dst) in seen_pairs:
+            continue
+        seen_pairs.add((src, dst))
+        edge_obj: dict[str, str] = {"id": f"m_{len(folded_edges) + 1}", "from": src, "to": dst}
+        elabel = e.get("label")
+        if elabel and (src, dst) not in consumed_edge_labels:
+            edge_obj["label"] = elabel
+        folded_edges.append(edge_obj)
+
+    return _compact_linear_mermaid_pairs(folded_nodes, folded_edges)
 
 
 def _parse_mermaid_flowchart(lines: list[str]) -> dict[str, Any] | None:
-    nodes: dict[str, str] = {}
+    node_meta: dict[str, tuple[str, str | None, str]] = {}
     edges: list[dict[str, str]] = []
     seen_edges: set[tuple[str, str]] = set()
 
@@ -77,14 +267,14 @@ def _parse_mermaid_flowchart(lines: list[str]) -> dict[str, Any] | None:
         m = _MERMAID_NODE_RE.match(token.strip())
         if not m:
             nid = re.sub(r"\W+", "_", token.strip()) or "node"
-            nodes.setdefault(nid, nid)
+            node_meta.setdefault(nid, (nid, None, ""))
             return nid
         nid = m.group(1)
         raw_label = m.group(2) or m.group(3) or m.group(4)
         if raw_label:
-            nodes[nid] = _short_label(raw_label, max_len=14)
+            node_meta[nid] = _mermaid_node_parts(raw_label)
         else:
-            nodes.setdefault(nid, nid)
+            node_meta.setdefault(nid, (nid, None, ""))
         return nid
 
     for raw_line in lines:
@@ -96,7 +286,7 @@ def _parse_mermaid_flowchart(lines: list[str]) -> dict[str, Any] | None:
             continue
         src = _register_node(em.group(1))
         dst = _register_node(em.group(3))
-        elabel = _short_label(em.group(2), max_len=10) if em.group(2) else None
+        elabel = _short_label(em.group(2), max_len=5) if em.group(2) else None
         if (src, dst) not in seen_edges:
             seen_edges.add((src, dst))
             edge_obj: dict[str, str] = {"id": f"m_{len(edges) + 1}", "from": src, "to": dst}
@@ -104,11 +294,12 @@ def _parse_mermaid_flowchart(lines: list[str]) -> dict[str, Any] | None:
                 edge_obj["label"] = elabel
             edges.append(edge_obj)
 
-    if len(nodes) < 2 or not edges:
+    if len(node_meta) < 2 or not edges:
         return None
+    folded_nodes, folded_edges = _fold_mermaid_parallel_branches(node_meta, edges)
     return {
-        "nodes": [{"id": nid, "label": label} for nid, label in nodes.items()],
-        "edges": edges,
+        "nodes": folded_nodes,
+        "edges": folded_edges,
     }
 
 
@@ -165,7 +356,12 @@ def extract_markdown_outline(
             continue
 
         if current is None:
-            if stripped and not stripped.startswith("[![") and not tagline:
+            if (
+                stripped
+                and not stripped.startswith(("[![", "<"))
+                and not re.match(r"^\[[^\]]+\]\([^)]+\)\s*\|", stripped)
+                and not tagline
+            ):
                 tagline = _clean_text(stripped)
             continue
 
@@ -184,7 +380,7 @@ def extract_markdown_outline(
                 cells = [_clean_text(c) for c in stripped.strip("|").split("|")]
                 if cells and any(cells):
                     current.table_headers.append(cells)
-        elif stripped and not stripped.startswith("[!["):
+        elif stripped and not stripped.startswith(("[![", "<")):
             current.summary_lines.append(_clean_text(stripped))
 
     substantive = [
