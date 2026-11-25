@@ -57,7 +57,9 @@ Translate the Stage 0 brief into clean Stage 1 diagrams. Do **not** hand-write `
    - `sublabel`: brief secondary line (e.g., `"商业常识"`, `"7s → 0.7s"`)
    - `variant`: `"primary"` | `"accent"` (yellow highlight) | `"success"` (teal-green) | `"warn"` (amber) | `"muted"`
    Put all prose explanations, caveats, citations, and presenter context into each node/child's **`note`** field (and scene `intro_note`).
-2. **Optional Structural Seed for Long Articles**:
+2. **Structured Story Model & Evidence Grounding (Recommended for Analytical Decks)**:
+   Include optional `story_model` at the deck root (`core_question`, `claims`: `id`, `type`, `claim`, `source_quote`, `metric_scope`, `confidence`), set per-scene `claim` & `metric_scope`, and link elements via `evidence_refs: [...]`. `keyflow audit` automatically enforces epistemic alignment (e.g., rejects `badge: "FACT"` pointing to an `inference` claim), flags `scope_mixing` across incompatible denominators, warns on `unsourced_fact`, and catches dropped `thesis` / `counter_evidence` claims.
+3. **Optional Structural Seed for Long Articles**:
    Run `uv run keyflow outline -i article.md --stage1 -o starter.json` (or MCP `extract_outline`) only as a mechanical starting skeleton — replace generic chapter summaries with your Stage 0 narrative plan.
 
 ---

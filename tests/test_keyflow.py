@@ -1158,3 +1158,170 @@ status: draft
     assert extracted["source_summary"]["title"] == "猎鹰9号谢幕倒计时"
     assert extracted["source_summary"]["tagline"] == ""
     assert extracted["scene_graph"]["scenes"][0]["intro_note"] == "Overview of 猎鹰9号谢幕倒计时."
+
+
+def test_mcp_pace_storyboard_failure_and_workspace_root_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """pace_storyboard must report failures accurately, and workspace_root must block escaping paths."""
+    valid_stage1 = _agent_skill_stage1()
+    bad_paced = {"title": "Broken", "scenes": [{"id": "s1", "title": "S1", "nodes": [{"id": "n1", "label": "N1"}], "frames": [{"visible_nodes": ["missing_id"], "notes": "x"}]}]}
+    monkeypatch.setattr("keyflow.mcp_server.pace_deck", lambda *_, **__: bad_paced)
+
+    blocked_out = tmp_path / "should_not_exist.json"
+    res = dispatch_tool("pace_storyboard", {"storyboard": valid_stage1, "output_path": str(blocked_out)})
+    assert res["paced"] is False
+    assert not blocked_out.exists()
+
+    rpc_res = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 99,
+            "method": "tools/call",
+            "params": {"name": "pace_storyboard", "arguments": {"storyboard": valid_stage1}},
+        }
+    )
+    assert rpc_res is not None
+    assert rpc_res["result"]["isError"] is True
+
+    ws = tmp_path / "workspace"
+    ws.mkdir()
+    outside = tmp_path / "outside.json"
+    outside.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="outside allowed workspace root"):
+        dispatch_tool("validate_storyboard", {"input_path": str(outside)}, workspace_root=ws)
+
+    monkeypatch.setenv("KEYFLOW_MCP_WORKSPACE", str(ws))
+    with pytest.raises(ValueError, match="outside allowed workspace root"):
+        dispatch_tool(
+            "compile_keyx",
+            {"storyboard": valid_stage1, "output_path": str(tmp_path / "escape.keyx")},
+        )
+
+    inside_out = ws / "ok.keyx"
+    ok = dispatch_tool("compile_keyx", {"storyboard": valid_stage1, "output_path": str(inside_out)})
+    assert ok["compiled"] is True
+    assert inside_out.exists()
+
+
+def test_schema_rejects_unknown_properties_and_matches_deck_schema_json() -> None:
+    """validate_deck must enforce additionalProperties=false aligned with schemas/deck.schema.json."""
+    from keyflow.schema import _schema_key_sets
+
+    key_sets = _schema_key_sets()
+    assert {"deck", "story_model", "story_claim", "scene", "node", "frame"}.issubset(key_sets)
+
+    bad_deck = {
+        "title": "Typo Check",
+        "typo_root": True,
+        "scenes": [
+            {
+                "id": "s1",
+                "title": "S1",
+                "typo_scene": 1,
+                "nodes": [{"id": "n1", "label": "Node", "typo_node": "x"}],
+                "frames": [{"visible_nodes": ["n1"], "notes": "ok", "typo_frame": 1}],
+            }
+        ],
+    }
+    res = validate_deck(bad_deck)
+    assert res.valid is False
+    joined = "\n".join(res.errors)
+    assert "typo_root" in joined
+    assert "typo_scene" in joined
+    assert "typo_node" in joined
+    assert "typo_frame" in joined
+
+
+def test_story_model_validation_and_fidelity_audit_checks(tmp_path: Path) -> None:
+    """Structured story_model + evidence_refs must validate cleanly and catch epistemic/scope violations."""
+    good_deck = {
+        "title": "Story Grounded Deck",
+        "story_model": {
+            "core_question": "Is capacity shifting internally?",
+            "claims": [
+                {
+                    "id": "fact_share",
+                    "type": "fact",
+                    "claim": "Internal missions reached 79%.",
+                    "source_quote": "Internal share reached 79% in 2026.",
+                    "metric_scope": "launch_count_share_pct",
+                    "confidence": "high",
+                },
+                {
+                    "id": "inf_squeeze",
+                    "type": "inference",
+                    "claim": "External slots tighten as internal share rises.",
+                    "confidence": "medium",
+                },
+                {
+                    "id": "counter_gov",
+                    "type": "counter_evidence",
+                    "claim": "Long-term government contracts continue past 2028.",
+                    "source_quote": "Government missions continue through 2030.",
+                },
+            ],
+        },
+        "scenes": [
+            {
+                "id": "share_scene",
+                "title": "Internal Share",
+                "claim": "Internal missions dominate launches.",
+                "metric_scope": "launch_count_share_pct",
+                "evidence_refs": ["fact_share"],
+                "layout": "proportion_bar",
+                "proportion_bar": {
+                    "items": [
+                        {"id": "int", "label": "Internal", "value": 79, "evidence_refs": ["fact_share"]},
+                        {"id": "ext", "label": "External", "value": 21},
+                    ]
+                },
+            },
+            {
+                "id": "logic_scene",
+                "title": "Strategic Shift",
+                "layout": "horizontal_flow",
+                "nodes": [
+                    {"id": "n1", "badge": "FACT", "label": "79% Internal", "evidence_refs": ["fact_share"]},
+                    {"id": "n2", "badge": "INFERENCE", "label": "Slots Tighten", "evidence_refs": ["inf_squeeze"]},
+                    {"id": "n3", "badge": "FACT", "label": "Gov Continues", "evidence_refs": ["counter_gov"]},
+                ],
+                "edges": [
+                    {"id": "e1", "from": "n1", "to": "n2"},
+                    {"id": "e2", "from": "n2", "to": "n3"},
+                ],
+            },
+        ],
+    }
+    assert validate_deck(good_deck).valid is True
+    clean_report = audit_deck(good_deck, strict=True)
+    assert clean_report.passed is True
+    assert clean_report.errors == []
+    assert clean_report.warnings == []
+
+    out = tmp_path / "story_model.keyx"
+    compile_deck(good_deck, out)
+    assert out.exists()
+
+    # Now introduce 4 fidelity flaws: epistemic mismatch, unsourced fact, scope mixing, and dropped counter_evidence
+    flawed = json.loads(json.dumps(good_deck))
+    flawed["story_model"]["claims"].append(
+        {"id": "fact_rev", "type": "fact", "claim": "Revenue share is 61%.", "metric_scope": "total_revenue_pct"}
+    )
+    flawed["scenes"][0]["proportion_bar"]["items"][1]["evidence_refs"] = ["fact_rev"]
+    flawed["scenes"][1]["nodes"][1]["badge"] = "FACT"  # Mismatch: inf_squeeze is type='inference'
+    flawed["scenes"][1]["nodes"][2]["evidence_refs"] = []  # Dropped counter_gov
+
+    flawed_report = audit_deck(flawed)
+    err_cats = {e.category for e in flawed_report.errors}
+    warn_cats = {w.category for w in flawed_report.warnings}
+    assert "epistemic_mismatch" in err_cats
+    assert {"scope_mixing", "unsourced_fact", "dropped_story_claim"}.issubset(warn_cats)
+
+    # Unknown evidence_refs must fail schema validation
+    flawed["scenes"][0]["evidence_refs"] = ["missing_claim_id"]
+    bad_val = validate_deck(flawed)
+    assert bad_val.valid is False
+    assert any("missing_claim_id" in e for e in bad_val.errors)

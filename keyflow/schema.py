@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
+from functools import lru_cache
+import json
+from pathlib import Path
 from typing import Any, Literal, Sequence
 
 from keyflow.themes import THEMES
@@ -27,6 +30,29 @@ CaptionPosition = Literal["bottom", "top", "inside"]
 EdgeStyle = Literal["solid", "dashed"]
 PacingMode = Literal["auto", "compact", "manual"]
 TrendDirection = Literal["up", "down", "neutral"]
+EvidenceType = Literal["thesis", "fact", "relation", "inference", "counter_evidence", "conclusion"]
+ConfidenceLevel = Literal["high", "medium", "low"]
+
+
+@dataclass(slots=True)
+class StoryClaimSpec:
+    """One atomic epistemic claim/evidence entry linking slides back to the source article."""
+
+    id: str
+    type: EvidenceType
+    claim: str
+    source_quote: str | None = None
+    source_id: str | None = None
+    metric_scope: str | None = None
+    confidence: ConfidenceLevel | None = None
+
+
+@dataclass(slots=True)
+class StoryModelSpec:
+    """Structured Stage 0 story spine carried alongside Stage 1 scenes for fidelity verification."""
+
+    core_question: str | None = None
+    claims: list[StoryClaimSpec] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -40,6 +66,7 @@ class ChildNodeSpec:
     metric: str | None = None
     variant: NodeVariant = "primary"
     note: str = ""
+    evidence_refs: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -57,6 +84,7 @@ class NodeSpec:
     child_layout: ChildLayout = "row"
     caption_position: CaptionPosition = "bottom"
     note: str = ""
+    evidence_refs: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -97,6 +125,7 @@ class ProportionItemSpec:
     value: float
     display_value: str | None = None
     note: str = ""
+    evidence_refs: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -134,6 +163,7 @@ class MatrixColumnSpec:
     takeaway: str | None = None
     is_baseline: bool = False
     note: str = ""
+    evidence_refs: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -167,6 +197,9 @@ class SceneSpec:
     title: str
     layout: LayoutMode = "horizontal_flow"
     subtitle: str | None = None
+    claim: str | None = None
+    metric_scope: str | None = None
+    evidence_refs: list[str] = field(default_factory=list)
     pacing: PacingMode = "auto"
     intro_note: str = ""
     active_flow_node: str | None = None
@@ -187,6 +220,7 @@ class DeckSpec:
     slide_width: int = 1920
     slide_height: int = 1080
     pinned_flow: PinnedFlowSpec | None = None
+    story_model: StoryModelSpec | None = None
     scenes: list[SceneSpec] = field(default_factory=list)
 
 
@@ -218,6 +252,7 @@ def _parse_nodes_and_edges(raw_nodes: list[dict[str, Any]], raw_edges: list[dict
                 metric=str(c["metric"]) if c.get("metric") else None,
                 variant=c.get("variant", "primary"),
                 note=str(c.get("note", "")),
+                evidence_refs=[str(r) for r in c.get("evidence_refs", [])],
             )
             for c in n_raw.get("children", [])
         ]
@@ -234,6 +269,7 @@ def _parse_nodes_and_edges(raw_nodes: list[dict[str, Any]], raw_edges: list[dict
                 child_layout=n_raw.get("child_layout", "row"),
                 caption_position=n_raw.get("caption_position", "bottom"),
                 note=str(n_raw.get("note", "")),
+                evidence_refs=[str(r) for r in n_raw.get("evidence_refs", [])],
             )
         )
 
@@ -269,6 +305,26 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
         ]
         pinned_flow = PinnedFlowSpec(nodes=pf_nodes, edges=pf_edges, groups=pf_groups)
 
+    story_model: StoryModelSpec | None = None
+    if raw.get("story_model"):
+        sm_raw = raw["story_model"]
+        claims = [
+            StoryClaimSpec(
+                id=str(cl["id"]),
+                type=cl["type"],
+                claim=str(cl["claim"]),
+                source_quote=str(cl["source_quote"]) if cl.get("source_quote") is not None else None,
+                source_id=str(cl["source_id"]) if cl.get("source_id") is not None else None,
+                metric_scope=str(cl["metric_scope"]) if cl.get("metric_scope") is not None else None,
+                confidence=cl.get("confidence"),
+            )
+            for cl in sm_raw.get("claims", [])
+        ]
+        story_model = StoryModelSpec(
+            core_question=str(sm_raw["core_question"]) if sm_raw.get("core_question") is not None else None,
+            claims=claims,
+        )
+
     scenes: list[SceneSpec] = []
     for s_raw in raw.get("scenes", []):
         nodes, edges = _parse_nodes_and_edges(s_raw.get("nodes", []), s_raw.get("edges", []))
@@ -284,6 +340,7 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
                         value=float(it["value"]),
                         display_value=str(it["display_value"]) if it.get("display_value") else None,
                         note=str(it.get("note", "")),
+                        evidence_refs=[str(r) for r in it.get("evidence_refs", [])],
                     )
                     for it in pb.get("items", [])
                 ],
@@ -318,6 +375,7 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
                         takeaway=str(col["takeaway"]) if col.get("takeaway") else None,
                         is_baseline=bool(col.get("is_baseline", False)),
                         note=str(col.get("note", "")),
+                        evidence_refs=[str(r) for r in col.get("evidence_refs", [])],
                     )
                     for col in mx.get("columns", [])
                 ],
@@ -358,6 +416,9 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
                 title=str(s_raw["title"]),
                 layout=s_raw.get("layout", "horizontal_flow"),
                 subtitle=s_raw.get("subtitle"),
+                claim=str(s_raw["claim"]) if s_raw.get("claim") is not None else None,
+                metric_scope=str(s_raw["metric_scope"]) if s_raw.get("metric_scope") is not None else None,
+                evidence_refs=[str(r) for r in s_raw.get("evidence_refs", [])],
                 pacing=s_raw.get("pacing", default_pacing),
                 intro_note=str(s_raw.get("intro_note", "")),
                 active_flow_node=str(s_raw["active_flow_node"]) if s_raw.get("active_flow_node") else None,
@@ -377,6 +438,7 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
         slide_width=int(slide_size.get("width", 1920)),
         slide_height=int(slide_size.get("height", 1080)),
         pinned_flow=pinned_flow,
+        story_model=story_model,
         scenes=scenes,
     )
 
@@ -467,6 +529,79 @@ def _as_float(val: Any) -> float | None:
     return float(val)
 
 
+@lru_cache(maxsize=1)
+def _schema_key_sets() -> dict[str, frozenset[str]]:
+    """Extract allowed property sets directly from schemas/deck.schema.json to prevent validator drift."""
+    schema_path = Path(__file__).resolve().parent.parent / "schemas" / "deck.schema.json"
+    if not schema_path.exists():
+        return {}
+    raw = json.loads(schema_path.read_text(encoding="utf-8"))
+    props = raw.get("properties", {})
+    pf_props = props.get("pinned_flow", {}).get("properties", {})
+    sm_props = props.get("story_model", {}).get("properties", {})
+    sc_props = props.get("scenes", {}).get("items", {}).get("properties", {})
+    node_props = sc_props.get("nodes", {}).get("items", {}).get("properties", {})
+    child_props = node_props.get("children", {}).get("items", {}).get("properties", {})
+    edge_props = sc_props.get("edges", {}).get("items", {}).get("properties", {})
+    pb_props = sc_props.get("proportion_bar", {}).get("properties", {})
+    pb_item_props = pb_props.get("items", {}).get("items", {}).get("properties", {})
+    mx_props = sc_props.get("matrix", {}).get("properties", {})
+    mx_col_props = mx_props.get("columns", {}).get("items", {}).get("properties", {})
+    mx_row_props = mx_col_props.get("rows", {}).get("items", {}).get("properties", {})
+    frame_props = sc_props.get("frames", {}).get("items", {}).get("properties", {})
+    return {
+        "deck": frozenset(props),
+        "slide_size": frozenset(props.get("slide_size", {}).get("properties", {})),
+        "pinned_flow": frozenset(pf_props),
+        "pf_node": frozenset(pf_props.get("nodes", {}).get("items", {}).get("properties", {})),
+        "pf_edge": frozenset(pf_props.get("edges", {}).get("items", {}).get("properties", {})),
+        "pf_group": frozenset(pf_props.get("groups", {}).get("items", {}).get("properties", {})),
+        "story_model": frozenset(sm_props),
+        "story_claim": frozenset(sm_props.get("claims", {}).get("items", {}).get("properties", {})),
+        "scene": frozenset(sc_props),
+        "node": frozenset(node_props),
+        "child": frozenset(child_props),
+        "edge": frozenset(edge_props),
+        "proportion_bar": frozenset(pb_props),
+        "proportion_item": frozenset(pb_item_props),
+        "matrix": frozenset(mx_props),
+        "matrix_column": frozenset(mx_col_props),
+        "matrix_row": frozenset(mx_row_props),
+        "frame": frozenset(frame_props),
+    }
+
+
+def _check_allowed_keys(
+    obj: dict[str, Any],
+    schema_key: str,
+    path: str,
+    errors: list[str],
+) -> None:
+    allowed = _schema_key_sets().get(schema_key)
+    if not allowed:
+        return
+    unknown = sorted(set(obj) - allowed)
+    for key in unknown:
+        errors.append(f"{path}: unknown property '{key}'.")
+
+
+def _check_evidence_refs(
+    obj: dict[str, Any],
+    claim_ids: set[str],
+    path: str,
+    errors: list[str],
+) -> None:
+    refs = obj.get("evidence_refs")
+    if refs is None:
+        return
+    if not isinstance(refs, list):
+        errors.append(f"{path}.evidence_refs must be a list of claim ids.")
+        return
+    for cid in refs:
+        if not isinstance(cid, str) or cid not in claim_ids:
+            errors.append(f"{path}: unknown evidence_ref '{cid}'.")
+
+
 def validate_deck(raw: dict[str, Any]) -> ValidationResult:
     """Validate structural integrity, references, and visual density rules."""
     errors: list[str] = []
@@ -474,6 +609,8 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
 
     if not isinstance(raw, dict):
         return ValidationResult(valid=False, errors=["Top-level JSON must be an object."])
+
+    _check_allowed_keys(raw, "deck", "deck", errors)
 
     title = raw.get("title")
     if not isinstance(title, str) or not title.strip():
@@ -483,12 +620,60 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
     if not isinstance(theme, str) or theme not in THEMES:
         errors.append(f"Unknown theme '{theme}'. Valid options: {', '.join(sorted(THEMES))}.")
 
+    if raw.get("slide_size") is not None:
+        ss = raw["slide_size"]
+        if not isinstance(ss, dict):
+            errors.append("'slide_size' must be an object.")
+        else:
+            _check_allowed_keys(ss, "slide_size", "slide_size", errors)
+            for dim in ("width", "height"):
+                if dim in ss and _as_float(ss[dim]) is None:
+                    errors.append(f"slide_size.{dim} must be numeric.")
+
+    claim_ids: set[str] = set()
+    valid_claim_types = {"thesis", "fact", "relation", "inference", "counter_evidence", "conclusion"}
+    valid_confidence = {"high", "medium", "low"}
+    if raw.get("story_model") is not None:
+        sm = raw["story_model"]
+        if not isinstance(sm, dict):
+            errors.append("'story_model' must be an object.")
+        else:
+            _check_allowed_keys(sm, "story_model", "story_model", errors)
+            if sm.get("core_question") is not None and not isinstance(sm.get("core_question"), str):
+                errors.append("story_model.core_question must be a string.")
+            claims = sm.get("claims")
+            if not isinstance(claims, list) or not claims:
+                errors.append("story_model.claims must be a non-empty list.")
+            else:
+                for cl_idx, cl in enumerate(claims):
+                    if not isinstance(cl, dict):
+                        errors.append(f"story_model.claims[{cl_idx}]: must be an object.")
+                        continue
+                    _check_allowed_keys(cl, "story_claim", f"story_model.claims[{cl_idx}]", errors)
+                    cid = cl.get("id")
+                    if not isinstance(cid, str) or not cid:
+                        errors.append(f"story_model.claims[{cl_idx}]: missing 'id'.")
+                    elif cid in claim_ids:
+                        errors.append(f"story_model: duplicate claim id '{cid}'.")
+                    else:
+                        claim_ids.add(cid)
+                    ctype = cl.get("type")
+                    if not isinstance(ctype, str) or ctype not in valid_claim_types:
+                        errors.append(f"story_model.claims['{cid}']: invalid type '{ctype}'.")
+                    ctext = cl.get("claim")
+                    if not isinstance(ctext, str) or not ctext.strip():
+                        errors.append(f"story_model.claims['{cid}']: missing 'claim'.")
+                    conf = cl.get("confidence")
+                    if conf is not None and (not isinstance(conf, str) or conf not in valid_confidence):
+                        errors.append(f"story_model.claims['{cid}']: invalid confidence '{conf}'.")
+
     pf_node_ids: set[str] = set()
     if raw.get("pinned_flow") is not None:
         pf = raw["pinned_flow"]
         if not isinstance(pf, dict):
             errors.append("'pinned_flow' must be an object.")
         else:
+            _check_allowed_keys(pf, "pinned_flow", "pinned_flow", errors)
             pf_nodes = pf.get("nodes", [])
             if not isinstance(pf_nodes, list) or not pf_nodes:
                 errors.append("pinned_flow.nodes must be a non-empty list.")
@@ -497,6 +682,7 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
                     if not isinstance(n, dict):
                         errors.append(f"pinned_flow.nodes[{idx}]: must be an object.")
                         continue
+                    _check_allowed_keys(n, "pf_node", f"pinned_flow.nodes[{idx}]", errors)
                     nid = n.get("id")
                     if not isinstance(nid, str) or not nid:
                         errors.append(f"pinned_flow.nodes[{idx}]: missing 'id'.")
@@ -514,6 +700,7 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
                         if not isinstance(e, dict):
                             errors.append(f"pinned_flow.edges[{e_idx}]: must be an object.")
                             continue
+                        _check_allowed_keys(e, "pf_edge", f"pinned_flow.edges[{e_idx}]", errors)
                         if e.get("from") not in pf_node_ids:
                             errors.append(f"pinned_flow.edges[{e_idx}]: unknown 'from' node '{e.get('from')}'.")
                         if e.get("to") not in pf_node_ids:
@@ -526,6 +713,7 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
                         if not isinstance(g, dict):
                             errors.append(f"pinned_flow.groups[{g_idx}]: must be an object.")
                             continue
+                        _check_allowed_keys(g, "pf_group", f"pinned_flow.groups[{g_idx}]", errors)
                         if not isinstance(g.get("label"), str) or not g.get("label"):
                             errors.append(f"pinned_flow.groups[{g_idx}]: missing 'label'.")
                         g_nids = g.get("node_ids", [])
@@ -563,6 +751,8 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
         if not isinstance(s, dict):
             errors.append(f"{prefix}: scene entry must be an object.")
             continue
+        _check_allowed_keys(s, "scene", prefix, errors)
+        _check_evidence_refs(s, claim_ids, prefix, errors)
 
         sid = s.get("id")
         if not isinstance(sid, str) or not sid:
@@ -606,6 +796,7 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
             if not isinstance(n, dict):
                 errors.append(f"{prefix}.nodes[{n_idx}]: must be an object.")
                 continue
+            _check_allowed_keys(n, "node", f"{prefix}.nodes[{n_idx}]", errors)
             nid = n.get("id")
             if not isinstance(nid, str) or not nid:
                 errors.append(f"{prefix}.nodes[{n_idx}]: missing 'id'.")
@@ -615,6 +806,7 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
             else:
                 node_order.append(nid)
             node_map[nid] = n
+            _check_evidence_refs(n, claim_ids, f"{prefix}.nodes['{nid}']", errors)
 
             variant = n.get("variant", "primary")
             if variant not in valid_variants:
@@ -653,6 +845,7 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
                 if not isinstance(c, dict):
                     errors.append(f"{prefix}.nodes['{nid}'].children[{c_idx}]: must be an object.")
                     continue
+                _check_allowed_keys(c, "child", f"{prefix}.nodes['{nid}'].children[{c_idx}]", errors)
                 cid = c.get("id")
                 if not isinstance(cid, str) or not cid:
                     errors.append(f"{prefix}.nodes['{nid}'].children[{c_idx}]: missing 'id'.")
@@ -660,6 +853,7 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
                     errors.append(f"{prefix}.nodes['{nid}']: duplicate child id '{cid}'.")
                 else:
                     child_ids.add(cid)
+                _check_evidence_refs(c, claim_ids, f"{prefix}.nodes['{nid}'].children['{cid}']", errors)
 
                 cvar = c.get("variant", "primary")
                 if cvar not in valid_variants:
@@ -693,6 +887,7 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
                 if not isinstance(e, dict):
                     errors.append(f"{prefix}.edges[{e_idx}]: must be an object.")
                     continue
+                _check_allowed_keys(e, "edge", f"{prefix}.edges[{e_idx}]", errors)
                 eid = e.get("id")
                 if not isinstance(eid, str) or not eid:
                     errors.append(f"{prefix}.edges[{e_idx}]: missing 'id'.")
@@ -724,6 +919,7 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
             if not isinstance(pb, dict) or not isinstance(pb.get("items"), list) or not pb.get("items"):
                 errors.append(f"{prefix}: layout='proportion_bar' requires 'proportion_bar.items' list.")
             else:
+                _check_allowed_keys(pb, "proportion_bar", f"{prefix}.proportion_bar", errors)
                 ax_min = _as_float(pb.get("axis_min", 0.0))
                 ax_max = _as_float(pb.get("axis_max", 100.0))
                 if ax_min is None or ax_max is None:
@@ -734,6 +930,7 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
                     if not isinstance(it, dict):
                         errors.append(f"{prefix}.proportion_bar.items[{it_idx}]: must be an object.")
                         continue
+                    _check_allowed_keys(it, "proportion_item", f"{prefix}.proportion_bar.items[{it_idx}]", errors)
                     iid = it.get("id")
                     if not isinstance(iid, str) or not iid:
                         errors.append(f"{prefix}.proportion_bar.items[{it_idx}]: missing 'id'.")
@@ -741,6 +938,7 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
                         errors.append(f"{prefix}.proportion_bar: duplicate item id '{iid}'.")
                     else:
                         item_ids.add(iid)
+                    _check_evidence_refs(it, claim_ids, f"{prefix}.proportion_bar.items['{iid}']", errors)
                     if not isinstance(it.get("label"), str) or not it.get("label"):
                         errors.append(f"{prefix}.proportion_bar.items[{it_idx}]: missing 'label'.")
                     val = _as_float(it.get("value", 0))
@@ -753,10 +951,12 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
             if not isinstance(mx, dict) or not isinstance(mx.get("columns"), list) or not mx.get("columns"):
                 errors.append(f"{prefix}: layout='comparison_matrix' requires 'matrix.columns' list.")
             else:
+                _check_allowed_keys(mx, "matrix", f"{prefix}.matrix", errors)
                 for c_idx, col in enumerate(mx.get("columns", [])):
                     if not isinstance(col, dict):
                         errors.append(f"{prefix}.matrix.columns[{c_idx}]: must be an object.")
                         continue
+                    _check_allowed_keys(col, "matrix_column", f"{prefix}.matrix.columns[{c_idx}]", errors)
                     cid = col.get("id")
                     if not isinstance(cid, str) or not cid:
                         errors.append(f"{prefix}.matrix.columns[{c_idx}]: missing 'id'.")
@@ -764,6 +964,7 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
                         errors.append(f"{prefix}.matrix: duplicate column id '{cid}'.")
                     else:
                         col_ids.add(cid)
+                    _check_evidence_refs(col, claim_ids, f"{prefix}.matrix.columns['{cid}']", errors)
                     if not isinstance(col.get("caption"), str) or not col.get("caption"):
                         errors.append(f"{prefix}.matrix.columns['{cid}']: missing 'caption'.")
                     rows = col.get("rows")
@@ -773,6 +974,8 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
                         for r_idx, row in enumerate(rows):
                             if not isinstance(row, dict):
                                 errors.append(f"{prefix}.matrix.columns['{cid}'].rows[{r_idx}]: must be an object.")
+                            else:
+                                _check_allowed_keys(row, "matrix_row", f"{prefix}.matrix.columns['{cid}'].rows[{r_idx}]", errors)
 
         frames = s.get("frames")
         if frames is None:
@@ -793,6 +996,7 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
             if not isinstance(f, dict):
                 errors.append(f"{prefix}.frames[{f_idx}]: frame entry must be an object.")
                 continue
+            _check_allowed_keys(f, "frame", f"{prefix}.frames[{f_idx}]", errors)
             vis = f.get("visible_nodes", [])
             exp = f.get("expanded_nodes", [])
             if not isinstance(vis, list):

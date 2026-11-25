@@ -59,7 +59,7 @@
       "layout": "metrics_cards",
       "nodes": [
         { "id": "m1", "badge": "COGNITIVE", "metric": "1–4 词", "label": "单卡信息密度", "sublabel": "正文全部下沉备注", "variant": "primary" },
-        { "id": "m2", "badge": "LAYOUTS", "metric": "8 种", "label": "技术叙事版式", "sublabel": "覆盖流程·演进·时序·指标", "variant": "accent" },
+        { "id": "m2", "badge": "LAYOUTS", "metric": "10 种", "label": "技术叙事版式", "sublabel": "覆盖流程·演进·时序·指标", "variant": "accent" },
         { "id": "m3", "badge": "RUNTIME", "metric": "0 GUI", "label": "无头 .keyx 编译", "sublabel": "摆脱 AppleScript 阻塞", "variant": "success" }
       ]
     }

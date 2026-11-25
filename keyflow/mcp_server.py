@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any, TextIO
@@ -111,17 +113,39 @@ TOOLS: list[dict[str, Any]] = [
 ]
 
 
-def _load_storyboard(args: dict[str, Any]) -> dict[str, Any]:
+def _resolve_workspace_root(workspace_root: str | Path | None = None) -> Path | None:
+    raw = workspace_root if workspace_root is not None else os.environ.get("KEYFLOW_MCP_WORKSPACE")
+    if not raw:
+        return None
+    return Path(raw).expanduser().resolve()
+
+
+def _check_path(raw_path: str | Path, workspace_root: Path | None) -> Path:
+    resolved = Path(raw_path).expanduser().resolve()
+    if workspace_root is not None and not resolved.is_relative_to(workspace_root):
+        raise ValueError(f"Path '{raw_path}' is outside allowed workspace root '{workspace_root}'.")
+    return resolved
+
+
+def _load_storyboard(args: dict[str, Any], workspace_root: Path | None = None) -> dict[str, Any]:
     if "storyboard" in args and isinstance(args["storyboard"], dict):
         return args["storyboard"]
     if "input_path" in args and args["input_path"]:
-        with Path(args["input_path"]).open("r", encoding="utf-8") as fh:
+        path = _check_path(args["input_path"], workspace_root)
+        with path.open("r", encoding="utf-8") as fh:
             return json.load(fh)
     raise ValueError("Provide either 'storyboard' or 'input_path'.")
 
 
-def dispatch_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
+def dispatch_tool(
+    name: str,
+    args: dict[str, Any],
+    *,
+    workspace_root: str | Path | None = None,
+) -> dict[str, Any]:
     """Execute one MCP tool call and return a JSON-serializable result."""
+    root = _resolve_workspace_root(workspace_root)
+
     if name == "list_themes":
         return {
             "themes": {
@@ -136,11 +160,12 @@ def dispatch_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         if "markdown" in args and isinstance(args["markdown"], str):
             return extract_markdown_outline(args["markdown"], theme=theme, density=density)
         if "input_path" in args and args["input_path"]:
-            return extract_outline_from_file(args["input_path"], theme=theme, density=density)
+            in_path = _check_path(args["input_path"], root)
+            return extract_outline_from_file(in_path, theme=theme, density=density)
         raise ValueError("Provide either 'markdown' or 'input_path'.")
 
     if name == "pace_storyboard":
-        raw = _load_storyboard(args)
+        raw = _load_storyboard(args, root)
         val = validate_deck(raw)
         if not val.valid:
             return {"paced": False, **val.to_dict()}
@@ -150,8 +175,15 @@ def dispatch_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
             overwrite_existing=bool(args.get("overwrite", False)),
         )
         paced_val = validate_deck(paced)
+        if not paced_val.valid:
+            return {
+                "paced": False,
+                "storyboard": paced,
+                "validation": paced_val.to_dict(),
+                **paced_val.to_dict(),
+            }
         if args.get("output_path"):
-            out_path = Path(args["output_path"])
+            out_path = _check_path(args["output_path"], root)
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(json.dumps(paced, ensure_ascii=False, indent=2), encoding="utf-8")
         return {
@@ -161,15 +193,15 @@ def dispatch_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         }
 
     if name == "validate_storyboard":
-        raw = _load_storyboard(args)
+        raw = _load_storyboard(args, root)
         return validate_deck(raw).to_dict()
 
     if name == "audit_storyboard":
-        raw = _load_storyboard(args)
+        raw = _load_storyboard(args, root)
         return audit_deck(raw, strict=bool(args.get("strict", False))).to_dict()
 
     if name == "compile_keyx":
-        raw = _load_storyboard(args)
+        raw = _load_storyboard(args, root)
         val = validate_deck(raw)
         if not val.valid:
             return {"compiled": False, **val.to_dict()}
@@ -182,10 +214,12 @@ def dispatch_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
                 "error": "Visual audit failed.",
                 "audit": report.to_dict(),
             }
-        out = compile_deck(raw, args["output_path"], theme_override=args.get("theme"))
+        out_dest = _check_path(args["output_path"], root)
+        preview_dest = _check_path(args["preview_dir"], root) if args.get("preview_dir") else None
+        out = compile_deck(raw, out_dest, theme_override=args.get("theme"))
         pngs: list[Path] | None = None
-        if args.get("preview_dir"):
-            pngs = export_slide_pngs(out, args["preview_dir"])
+        if preview_dest is not None:
+            pngs = export_slide_pngs(out, preview_dest)
         result: dict[str, Any] = {
             "compiled": True,
             "output_path": str(out),
@@ -197,13 +231,19 @@ def dispatch_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         return result
 
     if name == "preview_keyx":
-        pngs = export_slide_pngs(args["input_path"], args["output_dir"])
+        in_path = _check_path(args["input_path"], root)
+        out_dir = _check_path(args["output_dir"], root)
+        pngs = export_slide_pngs(in_path, out_dir)
         return {"previews": [str(p) for p in pngs]}
 
     raise ValueError(f"Unknown tool: {name}")
 
 
-def handle_request(req: dict[str, Any]) -> dict[str, Any] | None:
+def handle_request(
+    req: dict[str, Any],
+    *,
+    workspace_root: str | Path | None = None,
+) -> dict[str, Any] | None:
     """Handle one JSON-RPC 2.0 request line."""
     method = req.get("method")
     req_id = req.get("id")
@@ -235,7 +275,7 @@ def handle_request(req: dict[str, Any]) -> dict[str, Any] | None:
         tool_name = params.get("name", "")
         tool_args = params.get("arguments", {}) or {}
         try:
-            payload = dispatch_tool(tool_name, tool_args)
+            payload = dispatch_tool(tool_name, tool_args, workspace_root=workspace_root)
             is_error = (
                 payload.get("compiled") is False
                 or payload.get("paced") is False
@@ -268,7 +308,19 @@ def handle_request(req: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def main(stdin: TextIO | None = None, stdout: TextIO | None = None) -> int:
+def main(
+    stdin: TextIO | None = None,
+    stdout: TextIO | None = None,
+    *,
+    argv: list[str] | None = None,
+) -> int:
+    parser = argparse.ArgumentParser(prog="keyflow-mcp", add_help=True)
+    parser.add_argument(
+        "--workspace",
+        default=None,
+        help="Optional root directory restricting file read/write paths for MCP calls.",
+    )
+    parsed_args, _ = parser.parse_known_args(argv if argv is not None else ([] if stdin is not None else None))
     in_stream = stdin or sys.stdin
     out_stream = stdout or sys.stdout
     for line in in_stream:
@@ -291,7 +343,7 @@ def main(stdin: TextIO | None = None, stdout: TextIO | None = None) -> int:
                     "error": {"code": -32600, "message": "Invalid Request: expected JSON object"},
                 }
             else:
-                resp = handle_request(req)
+                resp = handle_request(req, workspace_root=parsed_args.workspace)
         if resp is not None:
             out_stream.write(json.dumps(resp, ensure_ascii=False) + "\n")
             out_stream.flush()
