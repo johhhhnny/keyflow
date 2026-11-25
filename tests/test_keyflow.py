@@ -484,9 +484,12 @@ def test_mcp_server_dispatch_two_stage(tmp_path: Path) -> None:
 
 
 def test_mcp_lifecycle_methods_and_malformed_stdin() -> None:
+    import tomllib
+
+    pyproject_version = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
     init = handle_request({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
     assert init is not None
-    assert init["result"]["serverInfo"]["version"] == __version__ == "0.1.0"
+    assert init["result"]["serverInfo"]["version"] == __version__ == pyproject_version == "0.2.0"
 
     assert handle_request({"jsonrpc": "2.0", "id": 2, "method": "ping"}) == {
         "jsonrpc": "2.0",

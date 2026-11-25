@@ -237,6 +237,7 @@ To keep presentations deterministic, reliable, and friendly to AI agents, KeyFlo
 ## Schema, License & Tests
 
 - Repository: [https://github.com/johhhhnny/keyflow](https://github.com/johhhhnny/keyflow)
+- Changelog: [CHANGELOG.md](CHANGELOG.md)
 - License: [MIT License](LICENSE)
 - Storyboard JSON Schema: [schemas/deck.schema.json](schemas/deck.schema.json)
 - Run the automated test suite:
