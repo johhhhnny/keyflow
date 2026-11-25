@@ -32,14 +32,14 @@ Notice how every card stays locked in place while concepts, connectors, and curv
   </tr>
   <tr>
     <td align="center" width="50%">
-      <img src="docs/images/preview_step3.jpg" alt="Step 3: Output node and direct skip arc spotlighted" width="100%" />
+      <img src="docs/images/preview_step3.jpg" alt="Step 3: Fallback retry arc spotlighted" width="100%" />
       <br />
-      <sub><b>Step 3</b> · Output node &amp; upper skip arc appear with spotlight emphasis</sub>
+      <sub><b>Step 3</b> · Lower fallback arc spotlighted between check and draft</sub>
     </td>
     <td align="center" width="50%">
       <img src="docs/images/preview_step4.jpg" alt="Step 4: Full state-flow diagram revealed" width="100%" />
       <br />
-      <sub><b>Step 4</b> · Full state timeline with forward spine and curved fallback loops</sub>
+      <sub><b>Step 4</b> · Full state timeline with forward spine and upper skip arc</sub>
     </td>
   </tr>
 </table>

@@ -32,14 +32,14 @@
   </tr>
   <tr>
     <td align="center" width="50%">
-      <img src="docs/images/preview_step3.jpg" alt="Step 3：跳跃弧线聚焦强调" width="100%" />
+      <img src="docs/images/preview_step3.jpg" alt="Step 3：回退弧线聚焦强调" width="100%" />
       <br />
-      <sub><b>Step 3</b> · <code>原生 .keyx</code> 出场，上方跳跃弧线聚焦高亮起点与终点</sub>
+      <sub><b>Step 3</b> · 下方回退弧线（<code>校验失败修正</code>）聚焦高亮</sub>
     </td>
     <td align="center" width="50%">
       <img src="docs/images/preview_step4.jpg" alt="Step 4：完整状态流转全貌" width="100%" />
       <br />
-      <sub><b>Step 4</b> · 全量图落成：主干链路与上下正反弧线完整呈现</sub>
+      <sub><b>Step 4</b> · 全量图落成（主干链路、下方回退弧与上方跳跃弧线）</sub>
     </td>
   </tr>
 </table>
