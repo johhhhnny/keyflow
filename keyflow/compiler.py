@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -990,7 +992,16 @@ def compile_deck(
 
 def export_slide_pngs(keyx_path: str | Path, output_dir: str | Path) -> list[Path]:
     """Optional macOS Keynote helper: export a .keyx file as PNG slide previews."""
+    if sys.platform != "darwin" or shutil.which("osascript") is None:
+        raise RuntimeError(
+            "PNG preview export requires macOS with Apple Keynote ('osascript' is unavailable here). "
+            "Your .keyx presentation can still be compiled cleanly on any OS."
+        )
+
     src = Path(keyx_path).resolve()
+    if not src.exists():
+        raise FileNotFoundError(f"Keynote file not found: {src}")
+
     out = Path(output_dir).resolve()
     out.mkdir(parents=True, exist_ok=True)
 
@@ -1003,5 +1014,6 @@ end tell
 '''
     proc = subprocess.run(["osascript", "-e", applescript], capture_output=True, text=True)
     if proc.returncode != 0:
-        raise RuntimeError(f"Keynote PNG export failed: {proc.stderr.strip()}")
+        detail = proc.stderr.strip() or "Make sure Apple Keynote is installed and allowed to run AppleScript."
+        raise RuntimeError(f"Keynote PNG export failed: {detail}")
     return sorted(out.glob("*.png"))

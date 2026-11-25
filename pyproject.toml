@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "keyflow"
-version = "1.0.0"
+version = "0.1.0"
 description = "Cognitive-first technical storytelling compiler that turns articles and READMEs into progressive native .keyx Keynote decks"
 readme = "README.md"
 requires-python = ">=3.13"

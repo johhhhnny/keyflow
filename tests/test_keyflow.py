@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+import io
 import json
 import zipfile
 from pathlib import Path
 
 import pytest
 
+from keyflow import __version__
 from keyflow.cli import main as cli_main
-from keyflow.compiler import compile_deck
+from keyflow.compiler import compile_deck, export_slide_pngs
 from keyflow.layout import resolve_scene
-from keyflow.mcp_server import dispatch_tool, handle_request
+from keyflow.mcp_server import dispatch_tool, handle_request, main as mcp_main
 from keyflow.outline import extract_markdown_outline
 from keyflow.pace import expand_scene_frames, pace_deck
 from keyflow.schema import parse_deck, validate_deck
@@ -466,3 +468,45 @@ def test_mcp_server_dispatch_two_stage(tmp_path: Path) -> None:
     assert resp is not None
     assert resp["result"]["isError"] is False
     assert out.exists()
+
+
+def test_mcp_lifecycle_methods_and_malformed_stdin() -> None:
+    init = handle_request({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
+    assert init is not None
+    assert init["result"]["serverInfo"]["version"] == __version__ == "0.1.0"
+
+    assert handle_request({"jsonrpc": "2.0", "id": 2, "method": "ping"}) == {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": {},
+    }
+    assert handle_request({"jsonrpc": "2.0", "id": 3, "method": "resources/list"}) == {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "result": {"resources": []},
+    }
+    assert handle_request({"jsonrpc": "2.0", "id": 4, "method": "prompts/list"}) == {
+        "jsonrpc": "2.0",
+        "id": 4,
+        "result": {"prompts": []},
+    }
+    assert handle_request({"jsonrpc": "2.0", "method": "notifications/cancelled"}) is None
+
+    fake_in = io.StringIO("not json\n[]\n{\"jsonrpc\": \"2.0\", \"id\": 9, \"method\": \"ping\"}\n")
+    fake_out = io.StringIO()
+    assert mcp_main(stdin=fake_in, stdout=fake_out) == 0
+    lines = [json.loads(line) for line in fake_out.getvalue().splitlines()]
+    assert lines[0]["error"]["code"] == -32700
+    assert lines[1]["error"]["code"] == -32600
+    assert lines[2] == {"jsonrpc": "2.0", "id": 9, "result": {}}
+
+
+def test_export_slide_pngs_clear_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("keyflow.compiler.sys.platform", "linux")
+    with pytest.raises(RuntimeError, match="requires macOS with Apple Keynote"):
+        export_slide_pngs(tmp_path / "missing.keyx", tmp_path / "png")
+
+    monkeypatch.setattr("keyflow.compiler.sys.platform", "darwin")
+    monkeypatch.setattr("keyflow.compiler.shutil.which", lambda _: "/usr/bin/osascript")
+    with pytest.raises(FileNotFoundError, match="Keynote file not found"):
+        export_slide_pngs(tmp_path / "missing.keyx", tmp_path / "png")

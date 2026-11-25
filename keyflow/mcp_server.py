@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 from keyflow import __version__
 from keyflow.compiler import compile_deck, export_slide_pngs
@@ -175,12 +175,20 @@ def handle_request(req: dict[str, Any]) -> dict[str, Any] | None:
             "id": req_id,
             "result": {
                 "protocolVersion": "2024-11-05",
-                "capabilities": {"tools": {}},
+                "capabilities": {"tools": {}, "resources": {}, "prompts": {}},
                 "serverInfo": {"name": "keyflow-mcp", "version": __version__},
             },
         }
-    if method == "notifications/initialized":
+    if method == "ping":
+        return {"jsonrpc": "2.0", "id": req_id, "result": {}}
+    if method and method.startswith("notifications/"):
         return None
+    if method == "resources/list":
+        return {"jsonrpc": "2.0", "id": req_id, "result": {"resources": []}}
+    if method == "resources/templates/list":
+        return {"jsonrpc": "2.0", "id": req_id, "result": {"resourceTemplates": []}}
+    if method == "prompts/list":
+        return {"jsonrpc": "2.0", "id": req_id, "result": {"prompts": []}}
     if method == "tools/list":
         return {"jsonrpc": "2.0", "id": req_id, "result": {"tools": TOOLS}}
     if method == "tools/call":
@@ -221,16 +229,33 @@ def handle_request(req: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def main() -> int:
-    for line in sys.stdin:
+def main(stdin: TextIO | None = None, stdout: TextIO | None = None) -> int:
+    in_stream = stdin or sys.stdin
+    out_stream = stdout or sys.stdout
+    for line in in_stream:
         line = line.strip()
         if not line:
             continue
-        req = json.loads(line)
-        resp = handle_request(req)
+        try:
+            req = json.loads(line)
+        except json.JSONDecodeError as exc:
+            resp: dict[str, Any] | None = {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {"code": -32700, "message": f"Parse error: {exc.msg}"},
+            }
+        else:
+            if not isinstance(req, dict):
+                resp = {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": -32600, "message": "Invalid Request: expected JSON object"},
+                }
+            else:
+                resp = handle_request(req)
         if resp is not None:
-            sys.stdout.write(json.dumps(resp, ensure_ascii=False) + "\n")
-            sys.stdout.flush()
+            out_stream.write(json.dumps(resp, ensure_ascii=False) + "\n")
+            out_stream.flush()
     return 0
 
 
