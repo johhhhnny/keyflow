@@ -89,7 +89,8 @@ Available MCP tools:
 - `extract_outline`: Extracts a section outline, Mermaid flowcharts, and a draft storyboard from Markdown.
 - `pace_storyboard`: Expands a Stage 1 full-state diagram into step-by-step presentation frames.
 - `validate_storyboard`: Validates schema structure, node/edge references, and card text-density warnings.
-- `compile_keyx`: Compiles a deck into `.keyx`, with optional theme override and PNG preview export.
+- `audit_storyboard`: Runs deterministic visual self-checks (bounds, overlaps, cross-frame anchor lock, scale, overflow) with JSON fix hints.
+- `compile_keyx`: Compiles a deck into `.keyx`, returning visual `audit` metrics and optional `review_pngs` paths for targeted visual inspection.
 - `preview_keyx`: Exports an existing `.keyx` presentation into per-slide PNG images.
 - `list_themes`: Lists built-in visual themes.
 
@@ -109,9 +110,10 @@ If you prefer full control over every scene—without manually maintaining dozen
    ```
    `--density` supports `standard` (gradual step-by-step buildup) and `compact` (tighter pacing). Pass `--overwrite` to re-pace a deck that already has manual `frames`.
 
-3. **Validate & Compile to `.keyx`**
+3. **Validate, Audit & Compile to `.keyx`**
    ```bash
    uv run keyflow validate -i storyboard.json
+   uv run keyflow audit -i storyboard.json
    uv run keyflow compile -i storyboard.json -o out/Presentation.keyx --theme slate_dark
    ```
    *(If you do not need custom frame edits, you can also pass `stage1.json` directly into `compile`, which auto-paces any scene without `frames`.)*

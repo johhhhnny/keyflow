@@ -36,14 +36,17 @@ Focus strictly on distilling the article into 1–4 clean conceptual diagrams. D
    ```
    Or via MCP tool `extract_outline` (use its `scene_graph` output).
 
-## Stage 2: Expand Progressive Frames (`pace`) & Compile
+## Stage 2: Expand Progressive Frames (`pace`), Self-Check & Compile
 
-Once the Stage 1 full-state topology looks right, expand it deterministically into step-by-step frames (`standard` or `compact`) and compile to `.keyx`:
+Once the Stage 1 full-state topology looks right, run a **2-round visual self-check feedback loop**:
 
-- **Via MCP**: call `pace_storyboard` -> `compile_keyx` (or pass Stage 1 JSON straight into `compile_keyx`, which auto-paces scenes without `frames`).
-- **Via CLI**:
-  ```bash
-  uv run keyflow pace -i stage1.json -o storyboard.json --density standard
-  uv run keyflow compile -i storyboard.json -o output.keyx --preview-dir ./preview
-  ```
-- Inspect the exported PNGs on macOS to verify whitespace, labels, and connector routing; tweak `frames` manually only if a scene needs custom emphasis (`focus_nodes`).
+1. **Tier 1 Geometry Audit (Fast, Cross-Platform)**:
+   - Run `audit_storyboard` (MCP) or `uv run keyflow audit -i stage1.json` before rendering.
+   - If `errors` or `warnings` appear (e.g., `out_of_bounds`, `overlap`, `cramped_scale`, `text_overflow`, `crowded_proportion`), apply the returned JSON `suggestion` fixes right away (shorten labels, enable `child_layout: "grid"`, split overcrowded scenes, or merge narrow segments).
+2. **Tier 2 Keynote Render & Targeted PNG Inspection (macOS)**:
+   - Expand and compile via `pace_storyboard` -> `compile_keyx(..., preview_dir=...)`, or directly:
+     ```bash
+     uv run keyflow pace -i stage1.json -o storyboard.json --density standard
+     uv run keyflow compile -i storyboard.json -o output.keyx --preview-dir ./preview
+     ```
+   - Inspect only the PNGs listed in `audit.review_pngs` (all flagged slides plus slide 1 and each scene's final slide) to verify text wrapping, breathing room, and connector routing; refine and recompile once if any visual flaw remains.

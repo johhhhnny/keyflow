@@ -89,7 +89,8 @@ KeyFlow 自带 **Agent Skill**（[skills/keyflow/SKILL.md](skills/keyflow/SKILL.
 - `extract_outline`：从 Markdown 文档中提取结构大纲、Mermaid 流程图与分镜初稿
 - `pace_storyboard`：将 Stage 1 完整结构图自动拆解为逐页讲解的分镜序列
 - `validate_storyboard`：校验分镜结构与节点引用，并检查卡片文字密度是否过高
-- `compile_keyx`：编译生成 `.keyx` 文稿，支持切换主题与导出 PNG 预览
+- `audit_storyboard`：运行视觉自检（越界、碰撞、跨帧坐标锁定、缩紧/溢出风险）并输出结构化修改建议
+- `compile_keyx`：编译生成 `.keyx` 文稿，并在返回中附带视觉自检摘要与重点 `review_pngs` 抽检清单
 - `preview_keyx`：将已生成的 `.keyx` 导出为逐页 PNG 图片
 - `list_themes`：列出可用的内置视觉主题
 
@@ -109,9 +110,10 @@ KeyFlow 自带 **Agent Skill**（[skills/keyflow/SKILL.md](skills/keyflow/SKILL.
    ```
    `--density` 支持 `standard`（逐步展开）与 `compact`（紧凑节奏）；若需按规则重新拆分已有手写帧的剧本，可加上 `--overwrite`。
 
-3. **校验并编译为 `.keyx`**
+3. **校验、视觉自检并编译为 `.keyx`**
    ```bash
    uv run keyflow validate -i storyboard.json
+   uv run keyflow audit -i storyboard.json
    uv run keyflow compile -i storyboard.json -o out/Presentation.keyx --theme slate_dark
    ```
    *(若无需人工干预拆帧结果，也可以把第 1 步修改好的 `stage1.json` 直接传给 `compile`，编译前会自动完成拆帧)*

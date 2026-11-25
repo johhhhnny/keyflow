@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from keyflow import __version__
+from keyflow.audit import audit_deck
 from keyflow.compiler import compile_deck, export_slide_pngs
 from keyflow.outline import extract_markdown_outline, extract_outline_from_file
 from keyflow.pace import pace_deck
@@ -59,8 +60,20 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "audit_storyboard",
+        "description": "Run deterministic visual self-checks (bounds, overlaps, cross-frame anchor stability, scale, overflow) with JSON fix hints.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "storyboard": {"type": "object", "description": "Inline storyboard JSON object."},
+                "input_path": {"type": "string", "description": "Path to a storyboard JSON file."},
+                "strict": {"type": "boolean", "default": False, "description": "Treat visual warnings as errors."},
+            },
+        },
+    },
+    {
         "name": "compile_keyx",
-        "description": "Compile a validated KeyFlow Stage 1 scene graph (auto-paced) or Stage 2 storyboard into a native .keyx file, with optional PNG preview export.",
+        "description": "Compile a validated KeyFlow Stage 1 scene graph (auto-paced) or Stage 2 storyboard into a native .keyx file, returning visual audit summary and optional review_pngs.",
         "inputSchema": {
             "type": "object",
             "required": ["output_path"],
@@ -141,19 +154,27 @@ def dispatch_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         raw = _load_storyboard(args)
         return validate_deck(raw).to_dict()
 
+    if name == "audit_storyboard":
+        raw = _load_storyboard(args)
+        return audit_deck(raw, strict=bool(args.get("strict", False))).to_dict()
+
     if name == "compile_keyx":
         raw = _load_storyboard(args)
         val = validate_deck(raw)
         if not val.valid:
             return {"compiled": False, **val.to_dict()}
+        report = audit_deck(raw)
         out = compile_deck(raw, args["output_path"], theme_override=args.get("theme"))
+        pngs: list[Path] | None = None
+        if args.get("preview_dir"):
+            pngs = export_slide_pngs(out, args["preview_dir"])
         result: dict[str, Any] = {
             "compiled": True,
             "output_path": str(out),
             "warnings": val.warnings,
+            "audit": report.to_dict(preview_paths=pngs),
         }
-        if args.get("preview_dir"):
-            pngs = export_slide_pngs(out, args["preview_dir"])
+        if pngs is not None:
             result["previews"] = [str(p) for p in pngs]
         return result
 

@@ -9,10 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from keyflow import __version__
+from keyflow import __version__, audit_deck
+from keyflow.audit import _audit_scene_anchor_stability
 from keyflow.cli import main as cli_main
 from keyflow.compiler import compile_deck, export_slide_pngs
-from keyflow.layout import resolve_scene
+from keyflow.layout import BoxRect, PlacedBox, ResolvedFrame, resolve_scene
 from keyflow.mcp_server import dispatch_tool, handle_request, main as mcp_main
 from keyflow.outline import extract_markdown_outline
 from keyflow.pace import expand_scene_frames, pace_deck
@@ -530,3 +531,104 @@ def test_lines_emit_open_shape_paths_not_connection_lines(tmp_path: Path) -> Non
                         has_quadratic_curve = True
             if "genres_showcase" in sample:
                 assert has_quadratic_curve is True
+
+
+def test_audit_passes_strict_on_all_builtin_examples() -> None:
+    for sample in sorted(Path("examples").glob("*.json")):
+        raw = json.loads(sample.read_text(encoding="utf-8"))
+        report = audit_deck(raw, strict=True)
+        assert report.passed is True, f"{sample} failed strict audit: {report.errors}"
+        assert report.errors == []
+        assert report.warnings == []
+        assert 1 in report.review_slides
+
+
+def test_audit_catches_overflow_narrow_proportion_jitter_and_mcp_review_pngs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    crowded_deck = {
+        "title": "Audit Edge Test",
+        "scenes": [
+            {
+                "id": "s_crowded",
+                "title": "Crowded Proportion",
+                "layout": "proportion_bar",
+                "proportion_bar": {
+                    "axis_min": 0,
+                    "axis_max": 100,
+                    "items": [
+                        {"id": "major", "label": "核心主体超长标签文字", "value": 99.0},
+                        {"id": "tiny", "label": "极窄尾部", "value": 0.4},
+                    ],
+                },
+            },
+            {
+                "id": "s_dense",
+                "title": "Very Long Row",
+                "layout": "horizontal_flow",
+                "nodes": [
+                    {"id": f"n{i}", "label": "超长节点名称演示测试溢出" if i == 1 else f"节点{i}"}
+                    for i in range(1, 8)
+                ],
+                "edges": [],
+            },
+        ],
+    }
+
+    report = audit_deck(crowded_deck)
+    cats = {w.category for w in report.warnings}
+    assert "crowded_proportion" in cats
+    assert "cramped_scale" in cats or "text_overflow" in cats
+    assert all(w.suggestion for w in report.warnings)
+
+    # CLI audit fails in --strict when warnings exist, succeeds otherwise
+    deck_path = tmp_path / "crowded.json"
+    deck_path.write_text(json.dumps(crowded_deck, ensure_ascii=False), encoding="utf-8")
+    assert cli_main(["audit", "-i", str(deck_path)]) == 0
+    capsys.readouterr()
+    assert cli_main(["audit", "-i", str(deck_path), "--strict"]) == 1
+    capsys.readouterr()
+
+    # Anchor jitter check catches frame-to-frame coordinate drift on persistent boxes
+    f0 = ResolvedFrame(
+        scene_id="drift",
+        frame_index=0,
+        title="T",
+        subtitle=None,
+        title_rect=None,
+        subtitle_rect=None,
+        boxes=[PlacedBox(id="a", label="A", rect=BoxRect(100, 200, 220, 120), kind="card", variant="primary")],
+    )
+    f1 = ResolvedFrame(
+        scene_id="drift",
+        frame_index=1,
+        title="T",
+        subtitle=None,
+        title_rect=None,
+        subtitle_rect=None,
+        boxes=[PlacedBox(id="a", label="A", rect=BoxRect(118, 200, 220, 120), kind="card", variant="primary")],
+    )
+    jitter_findings: list = []
+    _audit_scene_anchor_stability([f0, f1], start_slide_num=1, findings=jitter_findings)
+    assert len(jitter_findings) == 1
+    assert jitter_findings[0].category == "anchor_jitter"
+
+    # MCP audit_storyboard + compile_keyx review_pngs routing
+    mcp_audit = dispatch_tool("audit_storyboard", {"storyboard": _agent_skill_stage1(), "strict": True})
+    assert mcp_audit["passed"] is True
+    assert mcp_audit["review_slides"] == [1, 6]
+
+    fake_pngs = [tmp_path / "png" / f"slide.{i:03d}.png" for i in range(1, 7)]
+    monkeypatch.setattr("keyflow.mcp_server.export_slide_pngs", lambda *_: fake_pngs)
+    comp = dispatch_tool(
+        "compile_keyx",
+        {
+            "storyboard": _agent_skill_stage1(),
+            "output_path": str(tmp_path / "out.keyx"),
+            "preview_dir": str(tmp_path / "png"),
+        },
+    )
+    assert comp["compiled"] is True
+    assert comp["audit"]["review_pngs"] == [str(fake_pngs[0]), str(fake_pngs[5])]

@@ -1,5 +1,6 @@
 """KeyFlow: Cognitive-first progressive Keynote (.keyx) compiler."""
 
+from keyflow.audit import AuditFinding, AuditReport, audit_deck, select_review_slides
 from keyflow.compiler import compile_deck, export_slide_pngs
 from keyflow.outline import extract_markdown_outline, extract_outline_from_file
 from keyflow.pace import expand_scene_frames, pace_deck
@@ -10,10 +11,13 @@ __version__ = "0.1.0"
 
 __all__ = [
     "__version__",
+    "AuditFinding",
+    "AuditReport",
     "THEMES",
     "ThemePreset",
     "DeckSpec",
     "ValidationResult",
+    "audit_deck",
     "compile_deck",
     "expand_scene_frames",
     "export_slide_pngs",
@@ -22,5 +26,6 @@ __all__ = [
     "get_theme",
     "pace_deck",
     "parse_deck",
+    "select_review_slides",
     "validate_deck",
 ]

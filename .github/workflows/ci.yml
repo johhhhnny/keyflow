@@ -40,5 +40,6 @@ jobs:
           uv run keyflow outline -i README.md --stage1 >/dev/null
           for f in examples/*.json; do
             uv run keyflow validate -i "$f"
+            uv run keyflow audit -i "$f" --strict
             uv run keyflow compile -i "$f" -o "out/$(basename "$f" .json).keyx"
           done

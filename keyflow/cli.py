@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Sequence
 
 from keyflow import __version__
+from keyflow.audit import audit_deck
 from keyflow.compiler import compile_deck, export_slide_pngs
 from keyflow.outline import extract_outline_from_file
 from keyflow.pace import pace_deck
@@ -34,6 +35,13 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     return 0 if res.valid else 1
 
 
+def _cmd_audit(args: argparse.Namespace) -> int:
+    raw = _load_json(args.input)
+    report = audit_deck(raw, strict=args.strict)
+    print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+    return 0 if report.passed else 1
+
+
 def _cmd_compile(args: argparse.Namespace) -> int:
     raw = _load_json(args.input)
     res = validate_deck(raw)
@@ -41,13 +49,17 @@ def _cmd_compile(args: argparse.Namespace) -> int:
         print(json.dumps(res.to_dict(), ensure_ascii=False, indent=2), file=sys.stderr)
         return 1
 
+    report = audit_deck(raw)
     out = compile_deck(raw, args.output, theme_override=args.theme)
+    pngs: list[Path] | None = None
+    if args.preview_dir:
+        pngs = export_slide_pngs(out, args.preview_dir)
     payload: dict[str, object] = {
         "output": str(out),
         "warnings": res.warnings,
+        "audit": report.to_dict(preview_paths=pngs),
     }
-    if args.preview_dir:
-        pngs = export_slide_pngs(out, args.preview_dir)
+    if pngs is not None:
         payload["previews"] = [str(p) for p in pngs]
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
@@ -129,6 +141,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_val = sub.add_parser("validate", help="Validate a Stage 1 scene graph or Stage 2 storyboard JSON.")
     p_val.add_argument("-i", "--input", required=True, help="Path to storyboard JSON.")
     p_val.set_defaults(func=_cmd_validate)
+
+    p_aud = sub.add_parser("audit", help="Run visual geometry, anchor stability, and overflow self-checks.")
+    p_aud.add_argument("-i", "--input", required=True, help="Path to Stage 1 or Stage 2 storyboard JSON.")
+    p_aud.add_argument("--strict", action="store_true", help="Treat visual warnings as failures.")
+    p_aud.set_defaults(func=_cmd_audit)
 
     p_comp = sub.add_parser("compile", help="Compile a scene graph or storyboard JSON into a .keyx presentation.")
     p_comp.add_argument("-i", "--input", required=True, help="Path to storyboard JSON.")
