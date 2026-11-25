@@ -1,0 +1,119 @@
+{
+  "title": "大模型采样原理：Temperature 与 Top-p",
+  "theme": "slate_dark",
+  "pinned_flow": {
+    "nodes": [
+      { "id": "scores", "label": "生成分数" },
+      { "id": "probs", "label": "转换概率" },
+      { "id": "sample", "label": "加权采样" },
+      { "id": "temp", "label": "Temperature" },
+      { "id": "top_p", "label": "Top-p" }
+    ],
+    "edges": [
+      { "id": "pf1", "from": "scores", "to": "probs" },
+      { "id": "pf2", "from": "probs", "to": "sample" },
+      { "id": "pf3", "from": "sample", "to": "temp" },
+      { "id": "pf4", "from": "temp", "to": "top_p" }
+    ],
+    "groups": [
+      {
+        "id": "llm_core",
+        "label": "大模型原理",
+        "node_ids": ["scores", "probs", "sample"]
+      }
+    ]
+  },
+  "scenes": [
+    {
+      "id": "macro_intro",
+      "title": "大模型生成主链路",
+      "active_flow_node": "temp",
+      "pacing": "manual",
+      "nodes": [],
+      "frames": [
+        {
+          "visible_nodes": [],
+          "notes": "先建立全局视野：大模型每次生成 token 都要经过分数→概率→采样，再由 Temperature 与 Top-p 调控。"
+        }
+      ]
+    },
+    {
+      "id": "temperature_matrix",
+      "title": "Temperature 对 Softmax 的缩放作用",
+      "layout": "comparison_matrix",
+      "active_flow_node": "temp",
+      "matrix": {
+        "formula": "Softmax(zᵢ) = exp(zᵢ / T) / ∑ exp(zⱼ / T)",
+        "columns": [
+          {
+            "id": "t_low",
+            "caption": "T = 0.1",
+            "action_banner": "调低 T 值",
+            "action_subtext": "拉大差距    输出稳定",
+            "takeaway": "低温稳定",
+            "note": "T=0.1 时头部词“马克”概率飙升至 71%，长尾趋近 0%，输出高度确定。",
+            "headers": ["zᵢ", "zᵢ/T", "Softmax(zᵢ)"],
+            "rows": [
+              { "chip": "马克", "values": ["4.2", "42", "71%"], "trend": "up" },
+              { "chip": "科技", "values": ["4.1", "41", "26%"], "trend": "down" },
+              { "chip": "AI", "values": ["3.9", "39", "4%"], "trend": "down" },
+              { "chip": "自行车", "values": ["1.8", "18", "0%"], "trend": "down" },
+              { "chip": "hello", "values": ["1.4", "14", "0%"], "trend": "down" }
+            ]
+          },
+          {
+            "id": "t_base",
+            "caption": "T = 1",
+            "is_baseline": true,
+            "note": "T=1 为原始 Softmax 基准分布：马克 36%、科技 32%、AI 26%。",
+            "headers": ["zᵢ", "zᵢ/T", "Softmax(zᵢ)"],
+            "rows": [
+              { "chip": "马克", "values": ["4.2", "4.2", "36%"] },
+              { "chip": "科技", "values": ["4.1", "4.1", "32%"] },
+              { "chip": "AI", "values": ["3.9", "3.9", "26%"] },
+              { "chip": "自行车", "values": ["1.8", "1.8", "3%"] },
+              { "chip": "hello", "values": ["1.4", "1.4", "2%"] }
+            ]
+          },
+          {
+            "id": "t_high",
+            "caption": "T = 2",
+            "action_banner": "调高 T 值",
+            "action_subtext": "缩小差距    输出多样",
+            "note": "T=2 时头部概率被压平，长尾词（自行车 9%、hello 7%）获得更多采样机会。",
+            "headers": ["zᵢ", "zᵢ/T", "Softmax(zᵢ)"],
+            "rows": [
+              { "chip": "马克", "values": ["4.2", "2.1", "30%"], "trend": "down" },
+              { "chip": "科技", "values": ["4.1", "2.05", "28%"], "trend": "down" },
+              { "chip": "AI", "values": ["3.9", "1.95", "26%"], "trend": "neutral" },
+              { "chip": "自行车", "values": ["1.8", "0.9", "9%"], "trend": "up" },
+              { "chip": "hello", "values": ["1.4", "0.7", "7%"], "trend": "up" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "top_p_bar",
+      "title": "Top-p 核采样累计概率区间",
+      "layout": "proportion_bar",
+      "active_flow_node": "top_p",
+      "intro_note": "切换到 Top-p：把候选词按概率从高到低排列在 0–100 累计概率轴上。",
+      "proportion_bar": {
+        "axis_min": 0,
+        "axis_max": 100,
+        "axis_step": 10,
+        "unit": "%",
+        "show_summary_list": true,
+        "summary_title": "大模型",
+        "items": [
+          { "id": "mark", "label": "马克", "value": 36, "note": "最高概率候选词“马克”占 36%（累计 0–36%）。" },
+          { "id": "tech", "label": "科技", "value": 32, "note": "第二候选词“科技”占 32%（累计 36–68%）。" },
+          { "id": "ai", "label": "AI", "value": 26, "note": "第三候选词“AI”占 26%（累计 68–94%）。" },
+          { "id": "bike", "label": "自行车", "value": 3, "note": "第四候选词“自行车”占 3%（累计 94–97%）。" },
+          { "id": "hello", "label": "hello", "value": 2, "note": "长尾候选词“hello”占 2%，若 Top-p 设为 0.9 则会被截断。" }
+        ]
+      }
+    }
+  ]
+}

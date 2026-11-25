@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+
+# Python / uv / pytest
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.venv/
+dist/
+build/
+
+# Generated Keynote / preview outputs
+out/
+*.keyx

@@ -1,0 +1,67 @@
+{
+  "title": "KeyFlow 扩展体裁视觉展示",
+  "theme": "slate_dark",
+  "scenes": [
+    {
+      "id": "arch_evolution",
+      "title": "KeyFlow 架构演进对比",
+      "layout": "architecture_evolution",
+      "nodes": [
+        {
+          "id": "v1",
+          "label": "v1 脚本驱动架构",
+          "badge": "LEGACY",
+          "kind": "group_dashed",
+          "children": [
+            { "id": "v1_gui", "label": "AppleScript GUI", "sublabel": "强依赖 macOS 窗口", "variant": "warn" },
+            { "id": "v1_style", "label": "模板硬编码索引", "sublabel": "无法动态改边框圆角", "variant": "muted" },
+            { "id": "v1_schema", "label": "固定仪表盘 Schema", "sublabel": "强制要点与 Token", "variant": "muted" }
+          ]
+        },
+        {
+          "id": "v2",
+          "label": "v2 两阶段 .keyx 架构",
+          "badge": "CURRENT",
+          "kind": "group_dashed",
+          "children": [
+            { "id": "v2_dsl", "label": "两阶段认知 DSL", "sublabel": "全量图 → 自动拆帧", "variant": "primary" },
+            { "id": "v2_layout", "label": "终态锚定求解器", "sublabel": "8 种体裁零跳变", "variant": "accent" },
+            { "id": "v2_keyx", "label": "原生 .keyx 无头编译", "sublabel": "跨平台高保真矢量", "variant": "success" }
+          ]
+        }
+      ],
+      "edges": [
+        { "id": "evo1", "from": "v1", "to": "v2", "label": "去 GUI 重构" }
+      ]
+    },
+    {
+      "id": "compile_timeline",
+      "title": "分镜编译状态流转",
+      "layout": "sequence_timeline",
+      "intro_note": "完整展示从 Stage 1 全量图到导出 .keyx 的状态迁移与异常回退闭环。",
+      "nodes": [
+        { "id": "draft", "label": "全量草稿", "badge": "STAGE 1", "note": "生成仅含节点与连线的紧凑全量图。" },
+        { "id": "validate", "label": "结构校验", "badge": "CHECK", "note": "检查引用完整性与卡片文字密度。" },
+        { "id": "pace", "label": "渐进拆帧", "badge": "STAGE 2", "note": "按版式展开逐步揭示序列。" },
+        { "id": "compiled", "label": "原生 .keyx", "badge": "OUTPUT", "variant": "success", "note": "通过终态锚定输出可编辑文稿。" }
+      ],
+      "edges": [
+        { "id": "t1", "from": "draft", "to": "validate", "label": "提交校验" },
+        { "id": "t2", "from": "validate", "to": "pace", "label": "通过" },
+        { "id": "t3", "from": "pace", "to": "compiled", "label": "编译渲染" },
+        { "id": "t4", "from": "validate", "to": "draft", "label": "校验失败修正", "style": "dashed" },
+        { "id": "t5", "from": "draft", "to": "compiled", "label": "直编自动拆帧", "style": "dashed" }
+      ]
+    },
+    {
+      "id": "kpi_highlights",
+      "title": "新引擎核心工程指标",
+      "layout": "metrics_cards",
+      "nodes": [
+        { "id": "m1", "badge": "COGNITIVE", "metric": "1–4 词", "label": "单卡信息密度", "sublabel": "正文全部下沉备注", "variant": "primary" },
+        { "id": "m2", "badge": "LAYOUTS", "metric": "8 种", "label": "技术叙事版式", "sublabel": "覆盖流程·演进·时序·指标", "variant": "accent" },
+        { "id": "m3", "badge": "RUNTIME", "metric": "0 GUI", "label": "无头 .keyx 编译", "sublabel": "摆脱 AppleScript 阻塞", "variant": "success" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "keyflow"
+version = "1.0.0"
+description = "Cognitive-first technical storytelling compiler that turns articles and READMEs into progressive native .keyx Keynote decks"
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "MIT" }
+dependencies = [
+    "creator-studio-doc-format>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/johhhhnny/keyflow"
+Repository = "https://github.com/johhhhnny/keyflow"
+Issues = "https://github.com/johhhhnny/keyflow/issues"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+keyflow = "keyflow.cli:main"
+keyflow-mcp = "keyflow.mcp_server:main"
+
+[tool.setuptools.packages.find]
+include = ["keyflow*"]
