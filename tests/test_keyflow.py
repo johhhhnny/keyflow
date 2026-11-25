@@ -395,7 +395,7 @@ def test_all_themes_compile(tmp_path: Path, theme_name: str) -> None:
     out = tmp_path / f"{theme_name}.keyx"
     compiled = compile_deck(_dag_and_grid_stage1(), out, theme_override=theme_name)
     assert compiled.exists()
-    assert compiled.stat().st_size > 10_000
+    assert 1_000 < compiled.stat().st_size < 50_000
 
 
 def test_extract_markdown_outline_returns_stage1_and_paced_deck(tmp_path: Path) -> None:
@@ -1112,3 +1112,30 @@ def test_single_hero_metrics_card_paces_compiles_and_passes_strict_audit(tmp_pat
     out = tmp_path / "hero.keyx"
     compile_deck(hero_deck, out)
     assert out.exists()
+
+
+def test_master_layout_gradient_keeps_keyx_compact(tmp_path: Path) -> None:
+    """Decks should share one vector Preset fill while keeping valid White theme metadata and compact .keyx size."""
+    from creator_studio_doc_format.core import KeyxDocument
+
+    out = tmp_path / "compact_showcase.keyx"
+    raw = json.loads(Path("examples/genres_showcase_stage1.json").read_text(encoding="utf-8"))
+    compile_deck(raw, out)
+    assert out.stat().st_size < 50_000  # Previously ~10+ MB with per-slide base64 noise PNGs
+
+    with KeyxDocument.open(out) as loaded:
+        assert loaded.payload.theme is not None
+        assert loaded.payload.theme.name == "White"
+        assert loaded.payload.theme.slide_layouts is None
+        bg_presets = [p for p in (loaded.presets or []) if p.identifier == "keyflow_bg_fill"]
+        assert len(bg_presets) == 1
+        assert "gradient" in bg_presets[0].properties
+        for slide in loaded.payload.slides:
+            bg = slide.background.get()
+            assert bg is not None
+            assert bg.standard is not None
+            assert bg.standard.preset_identifier == "keyflow_bg_fill"
+
+    with zipfile.ZipFile(out) as zf:
+        main_json = zf.read("main.json").decode("utf-8")
+        assert "base64_encoded" not in main_json

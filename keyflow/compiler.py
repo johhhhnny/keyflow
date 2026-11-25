@@ -12,34 +12,35 @@ from typing import Any
 from creator_studio_doc_format.core import (
     RGBA,
     AlignmentType,
-    Base64EncodedResource,
     BezierPath,
     CanvasObject,
     CharacterProperties,
     Color,
     Constituent,
     Fill,
+    Flavor,
     Geometry,
-    ImageFill,
+    Gradient,
     KeynoteTheme,
     KeyxDocument,
     LayoutProperties,
     Line,
     LineEnd,
+    Linear,
     Paragraph,
     ParagraphProperties,
     Pattern,
     Position,
     Presentation,
+    Preset,
     Rect,
-    Resource,
     Shape,
     Size,
     Slide,
     SlideBackground,
     SlideObject,
+    Stop,
     Stroke,
-    Technique,
     Text,
     Textbox,
     TextRun,
@@ -61,7 +62,9 @@ from keyflow.layout import (
 )
 from keyflow.pace import pace_deck
 from keyflow.schema import DeckSpec, NodeVariant, parse_deck, validate_deck
-from keyflow.themes import ThemePreset, get_theme, render_textured_bg_png_b64
+from keyflow.themes import ThemePreset, get_theme
+
+_BG_PRESET_ID = "keyflow_bg_fill"
 
 _UNIT_SPACE = Rect(position=Position(x=0, y=0), size=Size(width=1, height=1))
 
@@ -126,21 +129,21 @@ def _stroke_for_box(theme: ThemePreset, variant: NodeVariant, is_subcard: bool) 
     )
 
 
-def _build_slide_background(theme: ThemePreset) -> SlideBackground:
-    png_b64 = render_textured_bg_png_b64(theme.bg_rgb, theme.bg_noise_amp)
-    return SlideBackground(
-        standard=Fill(
-            image=ImageFill(
-                resource=Resource(
-                    base64_encoded=Base64EncodedResource(
-                        string=png_b64,
-                        filename=f"{theme.name}_bg.png",
-                    )
-                ),
-                technique=Technique.SCALE_TO_FILL,
-            )
-        )
-    )
+def _build_background_preset(theme: ThemePreset) -> Preset:
+    """Build a single shared Fill preset (linear gradient or solid color) stored once in presets.json."""
+    if theme.bg_gradient_end_rgb is not None:
+        props: dict[str, Any] = {
+            "gradient": Gradient(
+                stops=[
+                    Stop(color=Color(rgba=_rgba_int(theme.bg_rgb)), fraction=0.0),
+                    Stop(color=Color(rgba=_rgba_int(theme.bg_gradient_end_rgb)), fraction=1.0),
+                ],
+                flavor=Flavor(linear=Linear(angle=theme.bg_gradient_angle)),
+            ).model_dump(mode="json")
+        }
+    else:
+        props = {"color": {"rgba": _rgba_int(theme.bg_rgb).model_dump(mode="json")}}
+    return Preset(identifier=_BG_PRESET_ID, properties=props)
 
 
 def _make_textbox(
@@ -1061,7 +1064,8 @@ def compile_deck(
         deck = deck_or_raw
 
     theme = get_theme(theme_override or deck.theme)
-    bg = _build_slide_background(theme)
+    bg_preset = _build_background_preset(theme)
+    bg = SlideBackground(standard=Fill(preset_identifier=_BG_PRESET_ID))
 
     slides: list[Slide] = []
     slide_counter = 1
@@ -1081,7 +1085,8 @@ def compile_deck(
             theme=KeynoteTheme(name="White", locale="en_US"),
             slide_size=Size(width=deck.slide_width, height=deck.slide_height),
             slides=slides,
-        )
+        ),
+        presets=[bg_preset],
     )
 
     out = Path(output_path)

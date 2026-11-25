@@ -50,6 +50,8 @@ class ThemePreset:
     segment_palette: tuple[tuple[float, float, float], ...]
     font_title: str = "Helvetica Neue"
     font_body: str = "PingFang SC"
+    bg_gradient_end_rgb: tuple[int, int, int] | None = None
+    bg_gradient_angle: float = 135.0
 
 
 _DARK_SEGMENTS: tuple[tuple[float, float, float], ...] = (
@@ -74,9 +76,10 @@ _LIGHT_SEGMENTS: tuple[tuple[float, float, float], ...] = (
 THEMES: dict[str, ThemePreset] = {
     "slate_dark": ThemePreset(
         name="slate_dark",
-        description="Fine textured charcoal slate background, warm yellow title, deep navy cards, dashed blue group containers, crisp white arrows.",
+        description="Charcoal slate gradient background, warm yellow title, deep navy cards, dashed blue group containers, crisp white arrows.",
         bg_rgb=(74, 74, 74),
         bg_noise_amp=5,
+        bg_gradient_end_rgb=(54, 56, 60),
         title_rgb=(0.95, 0.86, 0.36),
         subtitle_rgb=(0.82, 0.85, 0.90),
         card_fill_rgb=(0.125, 0.259, 0.427),
@@ -110,9 +113,10 @@ THEMES: dict[str, ThemePreset] = {
     ),
     "midnight_indigo": ThemePreset(
         name="midnight_indigo",
-        description="Deep midnight navy texture, amber title, slate-indigo cards, cyan-tinted dashed containers.",
-        bg_rgb=(24, 30, 44),
+        description="Deep midnight navy gradient, amber title, slate-indigo cards, cyan-tinted dashed containers.",
+        bg_rgb=(26, 33, 50),
         bg_noise_amp=4,
+        bg_gradient_end_rgb=(16, 20, 32),
         title_rgb=(0.98, 0.75, 0.24),
         subtitle_rgb=(0.68, 0.75, 0.86),
         card_fill_rgb=(0.118, 0.184, 0.310),
@@ -146,9 +150,10 @@ THEMES: dict[str, ThemePreset] = {
     ),
     "paper_light": ThemePreset(
         name="paper_light",
-        description="Warm textured off-white canvas, deep slate title, crisp blue-tinted cards, dark slate arrows.",
-        bg_rgb=(244, 242, 236),
+        description="Warm off-white gradient canvas, deep slate title, crisp blue-tinted cards, dark slate arrows.",
+        bg_rgb=(246, 244, 238),
         bg_noise_amp=3,
+        bg_gradient_end_rgb=(234, 231, 224),
         title_rgb=(0.12, 0.20, 0.35),
         subtitle_rgb=(0.36, 0.42, 0.50),
         card_fill_rgb=(0.14, 0.29, 0.49),
