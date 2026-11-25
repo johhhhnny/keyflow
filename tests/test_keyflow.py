@@ -510,3 +510,23 @@ def test_export_slide_pngs_clear_errors(tmp_path: Path, monkeypatch: pytest.Monk
     monkeypatch.setattr("keyflow.compiler.shutil.which", lambda _: "/usr/bin/osascript")
     with pytest.raises(FileNotFoundError, match="Keynote file not found"):
         export_slide_pngs(tmp_path / "missing.keyx", tmp_path / "png")
+
+
+def test_lines_emit_open_shape_paths_not_connection_lines(tmp_path: Path) -> None:
+    """Ensure edges, dividers, proportion axes, and pinned flows emit open Shape lines for Magic Move."""
+    from creator_studio_doc_format.core import KeyxDocument
+
+    for sample in ("examples/llm_sampling_stage1.json", "examples/genres_showcase_stage1.json"):
+        raw = json.loads(Path(sample).read_text(encoding="utf-8"))
+        out = tmp_path / f"{Path(sample).stem}.keyx"
+        compile_deck(raw, out)
+        with KeyxDocument.open(out) as loaded:
+            has_quadratic_curve = False
+            for slide in loaded.payload.slides:
+                for item in slide.contents or []:
+                    assert item.object.connectionLine is None
+                    sh = item.object.shape
+                    if sh and sh.path and sh.path.bezier and " Q " in sh.path.bezier.path:
+                        has_quadratic_curve = True
+            if "genres_showcase" in sample:
+                assert has_quadratic_curve is True

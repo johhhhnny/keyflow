@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import shutil
 import subprocess
 import sys
@@ -11,15 +12,12 @@ from typing import Any
 from creator_studio_doc_format.core import (
     RGBA,
     AlignmentType,
-    Anchor,
     Base64EncodedResource,
     BezierPath,
     CanvasObject,
     CharacterProperties,
     Color,
-    ConnectionLine,
     Constituent,
-    End,
     Fill,
     Geometry,
     ImageFill,
@@ -28,8 +26,6 @@ from creator_studio_doc_format.core import (
     LayoutProperties,
     Line,
     LineEnd,
-    LineType,
-    Magnet,
     Paragraph,
     ParagraphProperties,
     Pattern,
@@ -181,6 +177,129 @@ def _make_textbox(
         text=Text(string=text),
     )
     return SlideObject(object=CanvasObject(textbox=tb))
+
+
+def _clip_ray_to_box_edge(
+    cx: float,
+    cy: float,
+    target_x: float,
+    target_y: float,
+    rect: BoxRect,
+    outset: float,
+) -> tuple[float, float]:
+    """Return the point where a ray from (cx, cy) toward target exits rect plus outset."""
+    dx = target_x - cx
+    dy = target_y - cy
+    dist = math.hypot(dx, dy)
+    if dist < 1e-6:
+        return (cx, cy)
+    ux = dx / dist
+    uy = dy / dist
+    hw = max(rect.w / 2.0, 1.0)
+    hh = max(rect.h / 2.0, 1.0)
+    tx = hw / abs(ux) if abs(ux) > 1e-9 else float("inf")
+    ty = hh / abs(uy) if abs(uy) > 1e-9 else float("inf")
+    step = min(tx, ty) + outset
+    return (cx + ux * step, cy + uy * step)
+
+
+def _endpoints_between_boxes(
+    r_from: BoxRect,
+    r_to: BoxRect,
+    *,
+    outset: float,
+    curve_pass_through: tuple[float, float] | None = None,
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Compute exact start and end coordinates clipped to box edges with outset."""
+    if curve_pass_through is None:
+        return (
+            _clip_ray_to_box_edge(r_from.cx, r_from.cy, r_to.cx, r_to.cy, r_from, outset),
+            _clip_ray_to_box_edge(r_to.cx, r_to.cy, r_from.cx, r_from.cy, r_to, outset),
+        )
+    # Solve quadratic Bezier control point so B(0.5) passes through curve_pass_through.
+    qx = 2.0 * curve_pass_through[0] - 0.5 * (r_from.cx + r_to.cx)
+    qy = 2.0 * curve_pass_through[1] - 0.5 * (r_from.cy + r_to.cy)
+    return (
+        _clip_ray_to_box_edge(r_from.cx, r_from.cy, qx, qy, r_from, outset),
+        _clip_ray_to_box_edge(r_to.cx, r_to.cy, qx, qy, r_to, outset),
+    )
+
+
+def _quad_bezier_extrema(p0: float, q: float, p1: float) -> list[float]:
+    vals = [p0, p1]
+    denom = p0 - 2.0 * q + p1
+    if abs(denom) > 1e-9:
+        t = (p0 - q) / denom
+        if 0.0 < t < 1.0:
+            mt = 1.0 - t
+            vals.append(mt * mt * p0 + 2.0 * mt * t * q + t * t * p1)
+    return vals
+
+
+def _make_open_line_shape(
+    ident: str,
+    p0: tuple[float, float],
+    p1: tuple[float, float],
+    *,
+    color: RGBA,
+    width: float,
+    pattern: Pattern,
+    head: LineEnd = LineEnd.FILLED_ARROW,
+    tail: LineEnd = LineEnd.NONE,
+    opacity: float = 1.0,
+    curve_pass_through: tuple[float, float] | None = None,
+) -> SlideObject:
+    """Create an open-path Shape line or quadratic Bezier curve so Keynote tracks it across slides."""
+    x0, y0 = p0
+    x1, y1 = p1
+    if curve_pass_through is None:
+        min_span = 20.0
+        pad_x = max(0.0, (min_span - abs(x1 - x0)) / 2.0)
+        pad_y = max(0.0, (min_span - abs(y1 - y0)) / 2.0)
+        bx = min(x0, x1) - pad_x
+        by = min(y0, y1) - pad_y
+        bw = abs(x1 - x0) + 2.0 * pad_x
+        bh = abs(y1 - y0) + 2.0 * pad_y
+        ux0 = (x0 - bx) / bw
+        uy0 = (y0 - by) / bh
+        ux1 = (x1 - bx) / bw
+        uy1 = (y1 - by) / bh
+        d = f"M {ux0:.4f},{uy0:.4f} L {ux1:.4f},{uy1:.4f}"
+    else:
+        qx = 2.0 * curve_pass_through[0] - 0.5 * (x0 + x1)
+        qy = 2.0 * curve_pass_through[1] - 0.5 * (y0 + y1)
+        xs = _quad_bezier_extrema(x0, qx, x1)
+        ys = _quad_bezier_extrema(y0, qy, y1)
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+        pad_x = max(10.0, (20.0 - (max_x - min_x)) / 2.0)
+        pad_y = max(10.0, (20.0 - (max_y - min_y)) / 2.0)
+        bx = min_x - pad_x
+        by = min_y - pad_y
+        bw = (max_x - min_x) + 2.0 * pad_x
+        bh = (max_y - min_y) + 2.0 * pad_y
+        ux0 = (x0 - bx) / bw
+        uy0 = (y0 - by) / bh
+        uqx = (qx - bx) / bw
+        uqy = (qy - by) / bh
+        ux1 = (x1 - bx) / bw
+        uy1 = (y1 - by) / bh
+        d = f"M {ux0:.4f},{uy0:.4f} Q {uqx:.4f},{uqy:.4f} {ux1:.4f},{uy1:.4f}"
+
+    sh = Shape(
+        identifier=ident,
+        geometry=Geometry(
+            position=Position(x=bx, y=by),
+            size=Size(width=bw, height=bh),
+        ),
+        path=ShapePath(bezier=BezierPath(path=d, space=_UNIT_SPACE)),
+        tail=tail,
+        head=head,
+        fill=None,
+        stroke=Stroke(line=Line(color=Color(rgba=color), width=width, pattern=pattern)),
+        opacity=opacity,
+    )
+    return SlideObject(object=CanvasObject(shape=sh))
 
 
 def _make_solid_card(
@@ -461,11 +580,11 @@ def _make_pinned_flow_objects(
             )
         )
 
-    id_lookup: dict[str, str] = {}
+    node_rects: dict[str, BoxRect] = {}
     font_sz = 26.0 if pf.is_centered else 23.0
     for node in pf.nodes:
         nid = f"{slide_prefix}_pf_{node.id}"
-        id_lookup[node.id] = nid
+        node_rects[node.id] = node.rect
         fill_rgb = theme.active_flow_fill_rgb if node.is_active else theme.flow_node_fill_rgb
         border_rgb = theme.active_flow_border_rgb if node.is_active else theme.flow_node_border_rgb
         objs.append(
@@ -489,32 +608,20 @@ def _make_pinned_flow_objects(
         )
 
     for edge in pf.edges:
-        if edge.from_id not in id_lookup or edge.to_id not in id_lookup:
+        if edge.from_id not in node_rects or edge.to_id not in node_rects:
             continue
         pattern = Pattern.MEDIUM_DASH if edge.style == "dashed" else Pattern.SOLID
-        cl = ConnectionLine(
-            identifier=f"{slide_prefix}_pf_e_{edge.id}",
-            line_type=LineType(straight=True),
-            tail=End(
-                end_point=Position(x=edge.tail_center[0], y=edge.tail_center[1]),
-                anchor=Anchor(object_id=id_lookup[edge.from_id], magnet=Magnet(center=True)),
-                outset=10.0,
-            ),
-            head=End(
-                end_point=Position(x=edge.head_center[0], y=edge.head_center[1]),
-                anchor=Anchor(object_id=id_lookup[edge.to_id], magnet=Magnet(center=True)),
-                outset=10.0,
-                line_end=LineEnd.FILLED_ARROW,
-            ),
-            stroke=Stroke(
-                line=Line(
-                    color=Color(rgba=_rgba(theme.flow_node_border_rgb)),
-                    width=3.5,
-                    pattern=pattern,
-                )
-            ),
+        p0, p1 = _endpoints_between_boxes(node_rects[edge.from_id], node_rects[edge.to_id], outset=10.0)
+        objs.append(
+            _make_open_line_shape(
+                f"{slide_prefix}_pf_e_{edge.id}",
+                p0,
+                p1,
+                color=_rgba(theme.flow_node_border_rgb),
+                width=3.5,
+                pattern=pattern,
+            )
         )
-        objs.append(SlideObject(object=CanvasObject(connectionLine=cl)))
 
     return objs
 
@@ -543,24 +650,29 @@ def _make_proportion_bar_objects(
             )
 
     # Axis spine line & ticks
-    axis_line = ConnectionLine(
-        identifier=f"{slide_prefix}_pb_axis",
-        line_type=LineType(straight=True),
-        tail=End(end_point=Position(x=pb.axis_start[0], y=pb.axis_start[1]), line_end=LineEnd.NONE),
-        head=End(end_point=Position(x=pb.axis_end[0], y=pb.axis_end[1]), line_end=LineEnd.FILLED_ARROW),
-        stroke=Stroke(line=Line(color=Color(rgba=fg), width=2.5, pattern=Pattern.SOLID)),
+    objs.append(
+        _make_open_line_shape(
+            f"{slide_prefix}_pb_axis",
+            pb.axis_start,
+            pb.axis_end,
+            color=fg,
+            width=2.5,
+            pattern=Pattern.SOLID,
+        )
     )
-    objs.append(SlideObject(object=CanvasObject(connectionLine=axis_line)))
 
     for t_idx, (tx, tlabel) in enumerate(pb.ticks):
-        tick = ConnectionLine(
-            identifier=f"{slide_prefix}_pb_tick_{t_idx}",
-            line_type=LineType(straight=True),
-            tail=End(end_point=Position(x=tx, y=pb.bar_y - 4.0), line_end=LineEnd.NONE),
-            head=End(end_point=Position(x=tx, y=pb.bar_y + pb.bar_h + 10.0), line_end=LineEnd.NONE),
-            stroke=Stroke(line=Line(color=Color(rgba=fg), width=2.0, pattern=Pattern.SOLID)),
+        objs.append(
+            _make_open_line_shape(
+                f"{slide_prefix}_pb_tick_{t_idx}",
+                (tx, pb.bar_y - 4.0),
+                (tx, pb.bar_y + pb.bar_h + 10.0),
+                color=fg,
+                width=2.0,
+                pattern=Pattern.SOLID,
+                head=LineEnd.NONE,
+            )
         )
-        objs.append(SlideObject(object=CanvasObject(connectionLine=tick)))
         objs.append(
             _make_textbox(
                 f"{slide_prefix}_pb_tlab_{t_idx}",
@@ -614,14 +726,16 @@ def _make_proportion_bar_objects(
                 corner_px=2.0,
             )
         )
-        arrow = ConnectionLine(
-            identifier=f"{slide_prefix}_pb_arr_{item.id}",
-            line_type=LineType(straight=True),
-            tail=End(end_point=Position(x=item.arrow_tail[0], y=item.arrow_tail[1]), line_end=LineEnd.NONE),
-            head=End(end_point=Position(x=item.arrow_head[0], y=item.arrow_head[1]), line_end=LineEnd.FILLED_ARROW),
-            stroke=Stroke(line=Line(color=Color(rgba=_rgba(seg_rgb)), width=2.2, pattern=Pattern.SHORT_DASH)),
+        objs.append(
+            _make_open_line_shape(
+                f"{slide_prefix}_pb_arr_{item.id}",
+                item.arrow_tail,
+                item.arrow_head,
+                color=_rgba(seg_rgb),
+                width=2.2,
+                pattern=Pattern.SHORT_DASH,
+            )
         )
-        objs.append(SlideObject(object=CanvasObject(connectionLine=arrow)))
         objs.append(
             _make_textbox(
                 f"{slide_prefix}_pb_lab_{item.id}",
@@ -773,42 +887,31 @@ def _make_comparison_matrix_objects(
 def _make_edge_objects(
     slide_prefix: str,
     edge: PlacedEdge,
-    id_lookup: dict[str, str],
+    box_rects: dict[str, BoxRect],
     theme: ThemePreset,
     *,
     scale: float,
 ) -> list[SlideObject]:
     pattern = Pattern.MEDIUM_DASH if edge.style == "dashed" else Pattern.SOLID
     outset = round(14.0 * max(0.75, scale), 1)
-    line_type = (
-        LineType(curved=Position(x=edge.curve_control[0], y=edge.curve_control[1]))
-        if edge.curve_control is not None
-        else LineType(straight=True)
+    p0, p1 = _endpoints_between_boxes(
+        box_rects[edge.from_id],
+        box_rects[edge.to_id],
+        outset=outset,
+        curve_pass_through=edge.curve_control,
     )
-    cl = ConnectionLine(
-        identifier=f"{slide_prefix}_edge_{edge.id}",
-        line_type=line_type,
-        tail=End(
-            end_point=Position(x=edge.tail_center[0], y=edge.tail_center[1]),
-            anchor=Anchor(object_id=id_lookup[edge.from_id], magnet=Magnet(center=True)),
-            outset=outset,
-        ),
-        head=End(
-            end_point=Position(x=edge.head_center[0], y=edge.head_center[1]),
-            anchor=Anchor(object_id=id_lookup[edge.to_id], magnet=Magnet(center=True)),
-            outset=outset,
-            line_end=LineEnd.FILLED_ARROW,
-        ),
-        stroke=Stroke(
-            line=Line(
-                color=Color(rgba=_rgba(theme.arrow_rgb)),
-                width=round(4.5 * max(0.78, scale), 1),
-                pattern=pattern,
-            )
-        ),
-        opacity=edge.opacity,
-    )
-    objs: list[SlideObject] = [SlideObject(object=CanvasObject(connectionLine=cl))]
+    objs: list[SlideObject] = [
+        _make_open_line_shape(
+            f"{slide_prefix}_edge_{edge.id}",
+            p0,
+            p1,
+            color=_rgba(theme.arrow_rgb),
+            width=round(4.5 * max(0.78, scale), 1),
+            pattern=pattern,
+            opacity=edge.opacity,
+            curve_pass_through=edge.curve_control,
+        )
+    ]
     if edge.label and edge.label_rect:
         objs.append(
             _make_textbox(
@@ -854,21 +957,18 @@ def _make_divider_objects(
     for seg_i, (y0, y1) in enumerate(segments):
         if y1 <= y0:
             continue
-        line = ConnectionLine(
-            identifier=f"{slide_prefix}_div_{idx}_{seg_i}",
-            line_type=LineType(straight=True),
-            tail=End(end_point=Position(x=divider.x, y=y0), line_end=LineEnd.NONE),
-            head=End(end_point=Position(x=divider.x, y=y1), line_end=LineEnd.NONE),
-            stroke=Stroke(
-                line=Line(
-                    color=Color(rgba=_rgba(theme.divider_rgb)),
-                    width=2.0,
-                    pattern=Pattern.MEDIUM_DASH,
-                )
-            ),
-            opacity=0.65,
+        objs.append(
+            _make_open_line_shape(
+                f"{slide_prefix}_div_{idx}_{seg_i}",
+                (divider.x, y0),
+                (divider.x, y1),
+                color=_rgba(theme.divider_rgb),
+                width=2.0,
+                pattern=Pattern.MEDIUM_DASH,
+                head=LineEnd.NONE,
+                opacity=0.65,
+            )
         )
-        objs.append(SlideObject(object=CanvasObject(connectionLine=line)))
     return objs
 
 
@@ -920,9 +1020,9 @@ def _render_slide(
         contents.extend(_make_comparison_matrix_objects(slide_prefix, frame.comparison_matrix, theme))
 
     caption_color = _rgba(theme.arrow_rgb)
-    id_lookup: dict[str, str] = {}
+    box_rects: dict[str, BoxRect] = {}
     for box in frame.boxes:
-        objs, unique_id = _make_box_objects(
+        objs, _ = _make_box_objects(
             slide_prefix,
             box,
             theme,
@@ -930,11 +1030,11 @@ def _render_slide(
             caption_color=caption_color,
         )
         contents.extend(objs)
-        id_lookup[box.id] = unique_id
+        box_rects[box.id] = box.rect
 
     for edge in frame.edges:
-        if edge.from_id in id_lookup and edge.to_id in id_lookup:
-            contents.extend(_make_edge_objects(slide_prefix, edge, id_lookup, theme, scale=frame.scale))
+        if edge.from_id in box_rects and edge.to_id in box_rects:
+            contents.extend(_make_edge_objects(slide_prefix, edge, box_rects, theme, scale=frame.scale))
 
     return Slide(
         background=bg,
