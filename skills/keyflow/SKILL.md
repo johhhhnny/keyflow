@@ -13,34 +13,37 @@ KeyFlow separates **story & logical architecture** (Stage 0) from **visual scene
 
 Before authoring any Scene Graph JSON, produce a concise **Stage 0 Narrative Brief** (see `references/narrative_brief_template.md`):
 
-1. **Extract Logical Structure (Not Section Headings)**:
-   Tag source material into explicit epistemic units:
+1. **Extract Logical Structure With Source Grounding (Not Section Headings)**:
+   Tag source material into explicit epistemic units, each tied to a verifiable `source_quote` (or explicit calculation assumptions if derived):
    - `thesis`: core claim or central question the article argues
-   - `fact` / `metric`: verifiable numbers, benchmarks, or primary-source observations
-   - `relation`: supply-chain, causal, or dependency links between entities
-   - `inference`: author interpretation or hypothesis — **never flatten inferences into settled facts**; mark them in `badge` (e.g., `"THESIS"`, `"CLAIM"`, `"HYPOTHESIS"`) or `note`
+   - `fact` / `metric`: verifiable numbers, benchmarks, or primary-source observations — **never introduce unsourced figures to make a chart look complete**
+   - `relation`: supply-chain, causal, or resource-allocation links between entities
+   - `inference`: author interpretation or hypothesis — **never flatten inferences into settled facts**; mark them in `badge` (e.g., `"THESIS"`, `"CLAIM"`, `"INFERENCE"`) or `note`
    - `counter_evidence`: caveats, bottlenecks, or competing explanations
-   - `conclusion`: synthesized takeaway grounded in the preceding evidence
-2. **Select the Right Visual Form (And Know When Less Is More)**:
-   Choose each scene's layout by its reasoning structure — avoid repeating the same layout back-to-back unless deliberately contrasting:
+   - `conclusion`: synthesized takeaway conditioned strictly on the stated qualifiers
+2. **Choose Visual Expression From Logic First (And Isolate Metric Scopes)**:
+   Decide the visual form by reasoning structure BEFORE reaching for cards, and vary visual rhythm across scenes:
    - **Single Hero Stat / Core Thesis**: `metrics_cards` with **1–2** bold centerpiece cards (`metric` + crisp `label`, generous whitespace). Never invent dummy cards just to fill a 4-node row.
-   - **Causal / Dependency Mechanism**: `flow_dag` (branches, parallel lanes, fork-join merges, labeled edges).
+   - **Causal Split / Resource Contention / Bottleneck**: `flow_dag` with explicit **fork/merge branches** (e.g., shared scarce capacity splitting between internal demand and external clients), labeled edges, and `FACT` vs `INFERENCE` badges.
    - **Value Chain / Persistent Chapter Spine**: deck-level `pinned_flow` (centered macro overview -> docked top ribbon via `active_flow_node`) paired with focused deep-dive scenes.
-   - **Share / Distribution / Margin Breakdown**: `proportion_bar` (proportional scale + left summary chips).
-   - **Multi-Party Quantitative / Strategic Contrast**: `comparison_matrix` (columns, `formula`, `↑`/`↓` trends, `action_banner`, `takeaway`) or side-by-side `comparison`.
+   - **Single-Denominator Share / Allocation**: `proportion_bar` — **enforce single `metric_scope` per chart** (never put revenue share in the subtitle of a launch-count share chart; split incompatible scopes across scenes).
+   - **Multi-Party Quantitative / Strategic Contrast**: `comparison_matrix` (columns, `formula`, `↑`/`↓` trends, `action_banner`, `takeaway`) or side-by-side `comparison` — label clearly if comparing actual price vs. target cost so differing accounting bases are never blurred.
    - **Sequential Evolution / Milestones**: `horizontal_flow` (3–5 pillars; unpack 2 children as `row`, 3–4 as `grid`), `architecture_evolution` (`v1 -> v2 -> v3`), or `sequence_timeline` (forward skips + backward loops).
    - **Core + Radiating Factors**: `hub_spoke` (center `variant: "accent"` + 3–6 spokes).
 3. **Design the Narrative Arc Across Scenes**:
    For each scene in the Stage 0 brief, define:
    - `claim`: the single takeaway the audience must remember from this scene
+   - `metric_scope`: exact denominator/unit/era when numbers appear
+   - `source_quote`: verbatim anchor from the source text backing every metric or factual claim
    - `protagonist` & `supporting`: what takes visual focus (`variant: "accent"`, `active_flow_node`, `focus_nodes`) vs muted context
-   - `transition_intent`: how this scene connects to the previous/next scene (zoom in from `pinned_flow`, unpack evidence, contrast counter-argument, return to synthesis)
-4. **Content-to-Visual Fidelity Check (Gate Before Stage 1)**:
+   - `transition_intent`: how this scene connects to the previous/next scene (zoom in from `pinned_flow`, fork capacity bottleneck, contrast counter-argument, return to synthesis)
+4. **Content-to-Visual Fidelity & Anti-Overclaim Check (Gate Before Stage 1)**:
    Verify against the source before writing JSON:
-   - Did any scene omit the central thesis or key counter-evidence?
-   - Are author claims/inferences visually distinguished from verified data?
-   - Does every scene add distinct argumentative value (no redundant restatement of the previous scene)?
-   - Were any nodes fabricated solely for visual symmetry?
+   - Did any scene omit the central thesis, key competitors/market context, or counter-evidence?
+   - **Source Traceability**: Does every number and fact trace to an explicit `source_quote` in the input (no ungrounded filler stats)?
+   - **Metric-Scope Purity**: Does each numeric scene stick to one denominator/timeframe without mixing incompatible percentages?
+   - **Anti-Overclaim Alignment**: Do titles, badges, and headlines preserve original qualifiers ("partially stopped", "gradually phasing out", "design target") rather than escalating them into absolutes?
+   - Are author claims/inferences visually distinguished from verified data, with zero redundant restatements or fabricated padding nodes?
 
 ---
 

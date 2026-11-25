@@ -1139,3 +1139,22 @@ def test_master_layout_gradient_keeps_keyx_compact(tmp_path: Path) -> None:
     with zipfile.ZipFile(out) as zf:
         main_json = zf.read("main.json").decode("utf-8")
         assert "base64_encoded" not in main_json
+
+
+def test_outline_strips_yaml_frontmatter_before_tagline() -> None:
+    """Obsidian/Hugo YAML frontmatter (`--- ... ---`) must never leak into tagline or intro_note."""
+    md = """---
+tags:
+  - research/ai
+status: draft
+---
+
+# 猎鹰9号谢幕倒计时
+
+## 核心规模
+- **高频复用**：单枚最高 36 次
+"""
+    extracted = extract_markdown_outline(md)
+    assert extracted["source_summary"]["title"] == "猎鹰9号谢幕倒计时"
+    assert extracted["source_summary"]["tagline"] == ""
+    assert extracted["scene_graph"]["scenes"][0]["intro_note"] == "Overview of 猎鹰9号谢幕倒计时."

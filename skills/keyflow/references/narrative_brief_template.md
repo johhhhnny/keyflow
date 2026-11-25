@@ -2,30 +2,40 @@
 
 Use this template **before** writing Stage 1 Scene Graph JSON. Keep it concise — the goal is crisp argumentative clarity, not prose bloat.
 
-## 1. Epistemic Extraction Table
+## 1. Epistemic Extraction & Source-Grounding Schema
 
-Distill the article into atomic semantic units so hypotheses are never disguised as facts:
+Distill the article into atomic semantic units, binding every number or factual claim to its source quote so hypotheses or unverified stats never leak in:
+
+```json
+{
+  "claim": "Starlink accounts for ~79% of Falcon 9 missions in 2026 (up from ~54% in 2020)",
+  "evidence_type": "reported_fact",
+  "metric_scope": "Falcon 9 launch mission count share (%)",
+  "source_quote": "2026年，Starlink 已经占到猎鹰9号任务的大约79%，而2020年这一比例约为54%。",
+  "confidence": "high"
+}
+```
 
 | Type | Meaning | Visual Treatment in KeyFlow |
 | :--- | :--- | :--- |
 | `thesis` | Core question or central claim of the piece | Highlight early (`accent` or single-card `metrics_cards` with `badge: "THESIS"`); revisit at conclusion |
-| `fact` / `metric` | Verifiable numbers, dates, or benchmark observations | Put exact numbers in `metric` or `proportion_bar` / `comparison_matrix`; keep `badge: "FACT"` when contrasting against claims |
-| `relation` | Upstream/downstream dependencies, causal links, trade-offs | `pinned_flow` (macro chain) or `flow_dag` / `horizontal_flow` with labeled edges |
-| `inference` | Author deduction, attribution, or projection | Mark with `badge: "CLAIM"` / `"INFERENCE"` or `variant: "warn"` / `"accent"`, and qualify explicitly in `note` |
+| `fact` / `metric` | Verifiable numbers, dates, or primary observations with explicit `source_quote` | Put exact numbers in `metric` or `proportion_bar` / `comparison_matrix`; keep `badge: "FACT"` and enforce one `metric_scope` per slide |
+| `relation` | Upstream/downstream dependencies, resource contention, causal forks | `pinned_flow` (macro chain) or branching `flow_dag` (diverging/converging paths) with labeled edges |
+| `inference` | Author deduction, attribution, or projection | Mark with `badge: "INFERENCE"` / `"CLAIM"` or `variant: "warn"` / `"accent"`, and qualify explicitly in `note` |
 | `counter_evidence` | Bottlenecks, exceptions, or rival explanations | Dedicated `comparison` / `comparison_matrix` contrast column (`is_baseline` or `variant: "warn"`) |
-| `conclusion` | Synthesized verdict conditioned on evidence | Final scene re-docking `pinned_flow` or high-contrast synthesis card |
+| `conclusion` | Synthesized verdict preserving source qualifiers | Final scene keeping exact scope qualifiers (`"partially"`, `"gradually"`) instead of overclaiming absolutes |
 
 ---
 
-## 2. Visual Form Selection Matrix
+## 2. Visual Form Selection Matrix (Logic First)
 
 | Logical Pattern | Preferred KeyFlow Layout | Anti-Pattern to Avoid |
 | :--- | :--- | :--- |
 | Single startling stat or core conclusion | `metrics_cards` (`1–2` cards) | Forcing 3–4 filler boxes to make a diagram look busy |
+| Resource fork / capacity crowding / causal split | Branching `flow_dag` (fork & merge paths) | Flattening a capacity split into a generic 4-step linear row |
 | Value chain / persistent context + deep dives | Deck `pinned_flow` + scene `active_flow_node` | Repeating the full chain diagram from scratch on every slide |
-| Profit / cost / latency share breakdown | `proportion_bar` | Listing percentages as disconnected bullet cards |
-| Multi-company / multi-strategy quantitative comparison | `comparison_matrix` (`≤ 3` columns) or `comparison` | Mixing prose paragraphs inside narrow cards |
-| Causal loops / parallel execution / bottlenecks | `flow_dag` (use `child_layout: "grid"` for fan-out) | Linear `horizontal_flow` hiding branches and dependencies |
+| Single-denominator share or cost breakdown | `proportion_bar` (strictly one `metric_scope`) | Mixing revenue share and mission share on the same chart |
+| Multi-company / baseline vs. target contrast | `comparison_matrix` (`≤ 3` columns) or `comparison` | Mixing actual price and long-term target cost without labels |
 | Chronological eras or protocol rounds | `architecture_evolution` or `sequence_timeline` | Static timeline bullets without forward/backward transitions |
 
 ---
@@ -75,9 +85,11 @@ deck_arc:
 
 ## 4. Pre-Compile Fidelity Checklist
 
-Before finalizing Stage 1 JSON, confirm all five checks:
-1. **No Dropped Spine**: Core thesis, decisive metrics, and strongest counter-evidence are all represented.
-2. **Fact vs. Inference Separation**: Speculative claims carry explicit qualifiers (`badge` / `note`), never presented identically to raw data.
-3. **Visual Variety with Intent**: Consecutive scenes vary layout form to match shifting reasoning (chain -> proportion -> contrast -> synthesis).
-4. **Zero Filler Nodes**: Every card earns its pixels; single-thesis beats use `1–2` hero `metrics_cards` instead of padded triads.
-5. **Progressive Magic Move Continuity**: Where an overview maps to deep dives, deck-level `pinned_flow` preserves IDs cleanly for Keynote Magic Move.
+Before finalizing Stage 1 JSON, confirm all seven checks:
+1. **No Dropped Spine**: Core thesis, decisive metrics, competitor/market context, and strongest counter-evidence are all represented.
+2. **Source Grounding**: Every key statistic or factual statement traces to an explicit `source_quote` (or explicit model assumption).
+3. **Metric-Scope Isolation**: Each chart/slide enforces one denominator/era (`metric_scope`); revenue share and unit share are never blurred into one visual claim.
+4. **Anti-Overclaim Alignment**: Headlines, badges, and takeaways preserve original qualifiers (`"partially"`, `"gradually"`, `"design target"`) without escalating them into absolutes.
+5. **Fact vs. Inference Separation**: Speculative claims carry explicit qualifiers (`badge` / `note`), never presented identically to raw data.
+6. **Visual Variety with Intent**: Consecutive scenes vary layout form from logic first (fork/split DAG, proportion, scale contrast, synthesis).
+7. **Zero Filler Nodes & Magic Move Continuity**: Every card earns its pixels, and `pinned_flow` preserves IDs cleanly across scenes.

@@ -303,6 +303,18 @@ def _parse_mermaid_flowchart(lines: list[str]) -> dict[str, Any] | None:
     }
 
 
+def _strip_yaml_frontmatter(lines: list[str]) -> list[str]:
+    """Drop leading YAML/Obsidian frontmatter (`--- ... ---`) before parsing Markdown structure."""
+    idx = 0
+    while idx < len(lines) and not lines[idx].strip():
+        idx += 1
+    if idx < len(lines) and lines[idx].strip() == "---":
+        for end in range(idx + 1, min(len(lines), idx + 80)):
+            if lines[end].strip() in ("---", "..."):
+                return lines[end + 1 :]
+    return lines
+
+
 def extract_markdown_outline(
     markdown_text: str,
     *,
@@ -320,7 +332,7 @@ def extract_markdown_outline(
     code_lang = ""
     code_buf: list[str] = []
 
-    for raw in markdown_text.splitlines():
+    for raw in _strip_yaml_frontmatter(markdown_text.splitlines()):
         stripped = raw.strip()
         if stripped.startswith("```"):
             if not in_code:
@@ -358,7 +370,7 @@ def extract_markdown_outline(
         if current is None:
             if (
                 stripped
-                and not stripped.startswith(("[![", "<"))
+                and not stripped.startswith(("---", "***", "___", "![", "[![", "<"))
                 and not re.match(r"^\[[^\]]+\]\([^)]+\)\s*\|", stripped)
                 and not tagline
             ):
