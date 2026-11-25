@@ -1074,3 +1074,41 @@ def test_compile_audit_gate_blocks_cli_and_mcp_when_enabled(
     assert mcp_err_blocked["compiled"] is False
     assert mcp_err_blocked["audit"]["error_count"] >= 1
     assert not (tmp_path / "mcp_err.keyx").exists()
+
+
+def test_single_hero_metrics_card_paces_compiles_and_passes_strict_audit(tmp_path: Path) -> None:
+    """Single-card hero metrics/thesis slides must render as generous centerpiece cards without audit warnings."""
+    hero_deck = {
+        "title": "Hero Stat",
+        "scenes": [
+            {
+                "id": "hero",
+                "title": "Core Thesis",
+                "layout": "metrics_cards",
+                "nodes": [
+                    {
+                        "id": "claim",
+                        "badge": "THESIS",
+                        "metric": "~75%",
+                        "label": "Gross Margin Capture",
+                        "sublabel": "Hypothesis to verify",
+                        "variant": "accent",
+                        "note": "Explicitly marked as thesis rather than settled fact.",
+                    }
+                ],
+            }
+        ],
+    }
+    report = audit_deck(hero_deck, strict=True)
+    assert report.passed is True
+    assert report.errors == []
+    assert report.warnings == []
+
+    parsed = parse_deck(pace_deck(hero_deck))
+    frames = resolve_scene(parsed.scenes[0], parsed.slide_width, parsed.slide_height)
+    assert len(frames) == 1
+    assert frames[0].boxes[0].rect.w >= 520.0
+
+    out = tmp_path / "hero.keyx"
+    compile_deck(hero_deck, out)
+    assert out.exists()

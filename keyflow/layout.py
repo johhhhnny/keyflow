@@ -733,9 +733,19 @@ def _solve_metrics_cards(
 
     cols = k if k <= 4 else 3
     rows = math.ceil(k / cols)
+    # Single-card hero mode ("one big number / core thesis") gets centerpiece proportions
+    card_min_w = 520.0 if k == 1 else 270.0
+    card_max_w = 780.0 if k == 1 else 400.0
+    card_base_h = 280.0 if k == 1 else 210.0
     sizes = [
         _estimate_card_size(
-            n.label, n.sublabel, n.badge, n.metric, min_w=270.0, max_w=400.0, base_h=210.0
+            n.label,
+            n.sublabel,
+            n.badge,
+            n.metric,
+            min_w=card_min_w,
+            max_w=card_max_w,
+            base_h=card_base_h,
         )
         for n in nodes
     ]

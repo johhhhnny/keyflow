@@ -70,7 +70,7 @@ Please install and configure KeyFlow for me (repository: https://github.com/johh
 4. Run one of the built-in examples afterward to confirm `.keyx` generation works cleanly.
 ```
 
-KeyFlow ships with an **Agent Skill** ([skills/keyflow/SKILL.md](skills/keyflow/SKILL.md)) and an **MCP server** (`keyflow-mcp`). Once set up, hand any article, analysis report, or Markdown document to your AI assistant to extract the structure, pace the slides, compile `.keyx`, and export previews.
+KeyFlow ships with an **Agent Skill** ([skills/keyflow/SKILL.md](skills/keyflow/SKILL.md)) and an **MCP server** (`keyflow-mcp`). Once set up, hand any article, analysis report, or Markdown document to your AI assistant to follow the three-stage pipeline (**Stage 0** logical extraction & visual narrative brief → **Stage 1** full-state Scene Graph → **Stage 2** progressive pacing, Tier 1 visual audit, and `.keyx` compilation).
 
 **MCP Client Configuration Example (stdio):**
 
