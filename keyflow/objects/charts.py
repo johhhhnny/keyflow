@@ -385,14 +385,25 @@ def _make_vector_chart_objects(
             n_series = max(1, len(chart.series))
             inner_gap = min(6.0, group_h * 0.08) if n_series > 1 else 0.0
             bar_h = max(8.0, (group_h - inner_gap * (n_series - 1)) / n_series)
-            val_font = round(min(15.0, max(11.5, bar_h * 0.48)), 1)
+            val_font = round(min(22.0, max(15.5, bar_h * 0.55)), 1)
             for c_idx in range(cat_count):
                 cy = inner_y + c_idx * cat_slot_h
                 for s_idx, sr in enumerate(chart.series):
+                    by = cy + (cat_slot_h - group_h) / 2.0 + s_idx * (bar_h + inner_gap)
+                    s_rgb = series_colors[s_idx]
                     val = sr.values[c_idx] if c_idx < len(sr.values) else None
                     if val is None:
+                        objs.append(
+                            _make_solid_card(
+                                f"{slide_prefix}_{chart.id}_b_{s_idx}_{c_idx}",
+                                BoxRect(zero_x, by, 2.0, bar_h),
+                                fill_rgb=_rgba(s_rgb),
+                                stroke=Stroke(empty=True),
+                                corner_px=0.0,
+                                opacity=chart.opacity,
+                            )
+                        )
                         continue
-                    by = cy + (cat_slot_h - group_h) / 2.0 + s_idx * (bar_h + inner_gap)
                     vx = inner_x + ((float(val) - ax_min) / ax_span) * inner_w
                     if val >= 0:
                         bx = zero_x
@@ -400,7 +411,6 @@ def _make_vector_chart_objects(
                     else:
                         bx = vx
                         bw = max(4.0, zero_x - vx)
-                    s_rgb = series_colors[s_idx]
                     objs.append(
                         _make_solid_card(
                             f"{slide_prefix}_{chart.id}_b_{s_idx}_{c_idx}",
@@ -412,12 +422,12 @@ def _make_vector_chart_objects(
                         )
                     )
                     if chart.show_value_labels:
-                        lx = (bx + bw + 6.0) if val >= 0 else max(inner_x, bx - 74.0)
+                        lx = (bx + bw + 6.0) if val >= 0 else max(inner_x, bx - 84.0)
                         align = AlignmentType.LEFT if val >= 0 else AlignmentType.RIGHT
                         objs.append(
                             _make_textbox(
                                 f"{slide_prefix}_{chart.id}_vl_{s_idx}_{c_idx}",
-                                BoxRect(lx, by - 2.0, 68.0, max(22.0, bar_h + 4.0)),
+                                BoxRect(lx, by - 4.0, 78.0, max(28.0, bar_h + 8.0)),
                                 _format_chart_num(float(val)),
                                 font_name=theme.font_body,
                                 font_size=val_font,
@@ -552,14 +562,25 @@ def _make_vector_chart_objects(
         n_series = max(1, len(chart.series))
         inner_gap = min(8.0, group_w * 0.08) if n_series > 1 else 0.0
         bar_w = max(8.0, (group_w - inner_gap * (n_series - 1)) / n_series)
-        val_font = round(min(15.0, max(11.5, bar_w * 0.36)), 1)
+        val_font = round(min(22.0, max(16.0, bar_w * 0.42)), 1)
         for c_idx in range(cat_count):
             cx = inner_x + c_idx * cat_slot_w
             for s_idx, sr in enumerate(chart.series):
+                bx = cx + (cat_slot_w - group_w) / 2.0 + s_idx * (bar_w + inner_gap)
+                s_rgb = series_colors[s_idx]
                 val = sr.values[c_idx] if c_idx < len(sr.values) else None
                 if val is None:
+                    objs.append(
+                        _make_solid_card(
+                            f"{slide_prefix}_{chart.id}_c_{s_idx}_{c_idx}",
+                            BoxRect(bx, zero_y - 2.0, bar_w, 2.0),
+                            fill_rgb=_rgba(s_rgb),
+                            stroke=Stroke(empty=True),
+                            corner_px=0.0,
+                            opacity=chart.opacity,
+                        )
+                    )
                     continue
-                bx = cx + (cat_slot_w - group_w) / 2.0 + s_idx * (bar_w + inner_gap)
                 vy = inner_y + inner_h - ((float(val) - ax_min) / ax_span) * inner_h
                 if val >= 0:
                     by = vy
@@ -567,7 +588,6 @@ def _make_vector_chart_objects(
                 else:
                     by = zero_y
                     bh = max(4.0, vy - zero_y)
-                s_rgb = series_colors[s_idx]
                 objs.append(
                     _make_solid_card(
                         f"{slide_prefix}_{chart.id}_c_{s_idx}_{c_idx}",
@@ -579,11 +599,11 @@ def _make_vector_chart_objects(
                     )
                 )
                 if chart.show_value_labels:
-                    ly = max(inner_y - 22.0, by - 26.0) if val >= 0 else (by + bh + 2.0)
+                    ly = max(inner_y - 30.0, by - 32.0) if val >= 0 else (by + bh + 2.0)
                     objs.append(
                         _make_textbox(
                             f"{slide_prefix}_{chart.id}_vl_{s_idx}_{c_idx}",
-                            BoxRect(bx - 14.0, ly, bar_w + 28.0, 24.0),
+                            BoxRect(bx - 18.0, ly, bar_w + 36.0, 30.0),
                             _format_chart_num(float(val)),
                             font_name=theme.font_body,
                             font_size=val_font,
@@ -640,7 +660,7 @@ def _make_vector_chart_objects(
                     )
     elif chart.chart_type == "waterfall":
         bar_w = min(74.0, cat_slot_w * 0.56)
-        val_font = round(min(15.0, max(11.5, bar_w * 0.28)), 1)
+        val_font = round(min(21.0, max(15.5, bar_w * 0.36)), 1)
         sr0 = chart.series[0] if chart.series else None
         full_vals = sr0.full_values if (sr0 and sr0.full_values) else ([v for v in sr0.values if v is not None] if sr0 else [])
         running = 0.0
@@ -669,11 +689,20 @@ def _make_vector_chart_objects(
                 bar_rgb = pos_rgb if raw_v >= 0 else neg_rgb
                 lbl_str = f"+{_format_chart_num(raw_v)}" if raw_v > 0 else _format_chart_num(raw_v)
 
+            bx = inner_x + c_idx * cat_slot_w + (cat_slot_w - bar_w) / 2.0
             if vis_v is None:
                 prev_end_xy = None
+                objs.append(
+                    _make_solid_card(
+                        f"{slide_prefix}_{chart.id}_wf_{c_idx}",
+                        BoxRect(bx, zero_y - 2.0, bar_w, 2.0),
+                        fill_rgb=_rgba(bar_rgb),
+                        stroke=Stroke(empty=True),
+                        corner_px=0.0,
+                        opacity=chart.opacity,
+                    )
+                )
                 continue
-
-            bx = inner_x + c_idx * cat_slot_w + (cat_slot_w - bar_w) / 2.0
             y_start = inner_y + inner_h - ((start_v - ax_min) / ax_span) * inner_h
             y_end = inner_y + inner_h - ((end_v - ax_min) / ax_span) * inner_h
             by = min(y_start, y_end)

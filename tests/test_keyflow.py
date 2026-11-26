@@ -1945,6 +1945,21 @@ def _assert_magic_move_stable(slides: list, *, tol: float = 0.01, skip_last: int
         for ident in shared:
             pos_a, sz_a, fill_a, path_a = map_a[ident]
             pos_b, sz_b, fill_b, path_b = map_b[ident]
+            is_bar_grow = (
+                ("_c_" in ident or "_wf_" in ident)
+                and sz_a.height <= 2.1
+                and sz_b.height >= sz_a.height
+                and pos_a.x == pytest.approx(pos_b.x, abs=tol)
+                and sz_a.width == pytest.approx(sz_b.width, abs=tol)
+            ) or (
+                "_b_" in ident
+                and sz_a.width <= 2.1
+                and sz_b.width >= sz_a.width
+                and pos_a.y == pytest.approx(pos_b.y, abs=tol)
+                and sz_a.height == pytest.approx(sz_b.height, abs=tol)
+            )
+            if is_bar_grow:
+                continue
             assert pos_a.x == pytest.approx(pos_b.x, abs=tol), (
                 f"Magic Move jitter: '{ident}' x changed {pos_a.x:.2f} -> {pos_b.x:.2f} between slides {slide_i + 1}->{slide_i + 2}"
             )
@@ -2793,3 +2808,45 @@ def test_audit_catches_card_text_bloat_on_multi_layer_plain_cards() -> None:
     }
     rep = audit_deck(deck, strict=False)
     assert any(w.category == "card_text_bloat" and w.target_id == "bloated_1" for w in rep.warnings)
+
+
+def test_progressive_vector_chart_emits_baseline_stubs_and_large_labels(tmp_path: Path) -> None:
+    from creator_studio_doc_format.core import KeyxDocument
+
+    deck = {
+        "title": "Bar Growth Test",
+        "scenes": [
+            {
+                "id": "sc1",
+                "title": "Bar Growth",
+                "layout": "canvas",
+                "grid": {"columns": 12, "rows": 1},
+                "regions": [{"id": "main", "col": 1, "row": 1, "col_span": 12, "row_span": 1}],
+                "objects": [
+                    {
+                        "id": "rev",
+                        "kind": "chart",
+                        "region": "main",
+                        "chart": {
+                            "chart_type": "column",
+                            "title": "Revenue",
+                            "categories": ["Q1", "Q2"],
+                            "series": [{"name": "2026", "values": [40, 80]}],
+                            "reveal": "by_category",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    out = tmp_path / "bar_grow.keyx"
+    compile_deck(deck, out)
+    with KeyxDocument.open(out) as doc:
+        s1_q2 = next(o.object.shape for o in doc.payload.slides[0].contents if o.object.shape and o.object.shape.identifier == "s1_rev_c_0_1")
+        s2_q2 = next(o.object.shape for o in doc.payload.slides[1].contents if o.object.shape and o.object.shape.identifier == "s2_rev_c_0_1")
+        assert s1_q2.geometry.size.height == pytest.approx(2.0)
+        assert s2_q2.geometry.size.height > 100.0
+        assert s1_q2.geometry.position.x == pytest.approx(s2_q2.geometry.position.x)
+        assert s1_q2.geometry.size.width == pytest.approx(s2_q2.geometry.size.width)
+        vl = next(o.object.textbox for o in doc.payload.slides[1].contents if o.object.textbox and o.object.textbox.identifier == "s2_rev_vl_0_1")
+        assert vl.model_dump()["paragraph_properties"]["character_properties"]["font_size"] >= 16.0
