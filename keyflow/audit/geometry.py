@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from keyflow.audit.report import AuditFinding
 from keyflow.layouts import BoxRect, PlacedBox, ResolvedFrame
+from keyflow.objects.helpers import compute_box_text_layout
 from keyflow.themes import ThemePreset, contrast_ratio, hex_to_rgb_float
 from keyflow.tokens import (
     CHART_BAR_SLOT_STEP_PT,
@@ -738,9 +739,63 @@ def _audit_frame(
                         frame_index=frame.frame_index,
                         message=f"Canvas objects '{id_a}' and '{id_b}' overlap.",
                         suggestion="Assign objects to non-overlapping grid regions or let region arrange='stack'/'row'.",
-                        target_id=f"{id_a},{id_b}",
-                        suggested_action="adjust_regions_or_split_scene",
+                    target_id=f"{id_a},{id_b}",
+                    suggested_action="adjust_regions_or_split_scene",
+                )
+            )
+
+    # Audit compiled per-line Textbox stack geometry for every card/callout/subcard
+    for box in frame.boxes:
+        if box.kind == "group_dashed":
+            continue
+        tb_items = compute_box_text_layout(box, scale=frame.scale)
+        for idx_a, (suf_a, _, _, _, _, rect_a) in enumerate(tb_items):
+            _check_rect_bounds(
+                findings,
+                rect_a,
+                f"Card '{box.id}' textbox '{suf_a}'",
+                slide_w=slide_w,
+                slide_h=slide_h,
+                slide_num=slide_num,
+                scene_id=frame.scene_id,
+                frame_index=frame.frame_index,
+                target_id=box.id,
+            )
+            if (
+                getattr(box, "surface", "filled") != "borderless"
+                and (rect_a.y < box.rect.y - 1.0 or rect_a.y + rect_a.h > box.rect.y + box.rect.h + 2.0)
+            ):
+                findings.append(
+                    AuditFinding(
+                        severity="warning",
+                        category="text_overflow",
+                        slide_num=slide_num,
+                        scene_id=frame.scene_id,
+                        frame_index=frame.frame_index,
+                        message=(
+                            f"Card '{box.id}' stacked textbox '{suf_a}' "
+                            f"(y={rect_a.y:.1f}..{rect_a.y + rect_a.h:.1f}) overflows container height "
+                            f"(y={box.rect.y:.1f}..{box.rect.y + box.rect.h:.1f})."
+                        ),
+                        suggestion="Shorten card copy, remove extra text layers, or increase region height.",
+                        target_id=box.id,
+                        suggested_action="shorten_label",
                     )
                 )
+            for suf_b, _, _, _, _, rect_b in tb_items[idx_a + 1 :]:
+                if _overlap_area(rect_a, rect_b, tol=1.0):
+                    findings.append(
+                        AuditFinding(
+                            severity="error",
+                            category="overlap",
+                            slide_num=slide_num,
+                            scene_id=frame.scene_id,
+                            frame_index=frame.frame_index,
+                            message=f"Card '{box.id}' textboxes '{suf_a}' and '{suf_b}' overlap.",
+                            suggestion="Shorten card copy or increase container size.",
+                            target_id=box.id,
+                            suggested_action="shorten_label",
+                        )
+                    )
 
 

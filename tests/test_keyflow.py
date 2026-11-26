@@ -1431,9 +1431,8 @@ def _freeform_canvas_stage1() -> dict:
                         "step": 3,
                         "badge": "EXAMPLE",
                         "label": "Sample Breakdown",
-                        "sublabel": "Illustrative",
                         "evidence_refs": ["ex_latency_note"],
-                        "note": "示意算例说明。",
+                        "note": "Illustrative 示意算例说明。",
                     },
                 ],
                 "connectors": [
@@ -2849,5 +2848,108 @@ def test_progressive_vector_chart_emits_baseline_stubs_and_large_labels(tmp_path
         assert s1_q2.geometry.position.x == pytest.approx(s2_q2.geometry.position.x)
         assert s1_q2.geometry.size.width == pytest.approx(s2_q2.geometry.size.width)
         assert str(s1_q2.path) == str(s2_q2.path)
-        vl = next(o.object.textbox for o in doc.payload.slides[1].contents if o.object.textbox and o.object.textbox.identifier == "s2_rev_vl_0_1")
-        assert vl.model_dump()["paragraph_properties"]["character_properties"]["font_size"] >= 16.0
+    vl = next(o.object.textbox for o in doc.payload.slides[1].contents if o.object.textbox and o.object.textbox.identifier == "s2_rev_vl_0_1")
+    assert vl.model_dump()["paragraph_properties"]["character_properties"]["font_size"] >= 16.0
+
+
+def test_p0_p1_review_fixes_fidelity_chart_centering_and_box_textbox_audit(tmp_path: Path) -> None:
+    from creator_studio_doc_format.core import KeyxDocument
+    from keyflow.compiler import compile_deck
+
+    # 1. P0: story_fidelity catches dropped thesis/counter_evidence even when NO scene has evidence_refs
+    unreferenced_deck = {
+        "title": "Unreferenced Story Model",
+        "story_model": {
+            "core_question": "Does it catch total omission?",
+            "claims": [
+                {"id": "th1", "type": "thesis", "claim": "Core thesis", "source_quote": "Quote"},
+                {"id": "ce1", "type": "counter_evidence", "claim": "Counter", "source_quote": "Quote 2"},
+            ],
+        },
+        "scenes": [
+            {
+                "id": "sc1",
+                "title": "No Refs Scene",
+                "layout": "horizontal_flow",
+                "nodes": [{"id": "n1", "label": "Node 1"}],
+                "edges": [],
+            }
+        ],
+    }
+    sf_rep = audit_deck(unreferenced_deck, strict=False)
+    dropped = {w.target_id for w in sf_rep.warnings if w.category == "dropped_story_claim"}
+    assert {"th1", "ce1"}.issubset(dropped)
+
+    # 2. P1: single bloated plain card triggers card_text_bloat, and 1 chart does not mask 3 filled scenes
+    monotone_with_chart = {
+        "title": "Monotony With One Chart",
+        "scenes": [
+            {
+                "id": "chart_sc",
+                "title": "Chart",
+                "layout": "canvas",
+                "grid": {"columns": 12, "rows": 1},
+                "regions": [{"id": "c_reg", "col": 1, "row": 1, "col_span": 12, "row_span": 1}],
+                "objects": [
+                    {
+                        "id": "wide_col",
+                        "kind": "chart",
+                        "region": "c_reg",
+                        "chart": {
+                            "chart_type": "column",
+                            "title": "Explicit Column Title",
+                            "show_title": True,
+                            "categories": ["A", "B"],
+                            "series": [{"name": "S1", "values": [10, 20]}],
+                            "reveal": "by_category",
+                        },
+                    }
+                ],
+            },
+            *[
+                {
+                    "id": f"fill_{i}",
+                    "title": f"Filled {i}",
+                    "layout": "canvas",
+                    "grid": {"columns": 12, "rows": 1},
+                    "regions": [
+                        {"id": "r1", "col": 1, "row": 1, "col_span": 6, "row_span": 1},
+                        {"id": "r2", "col": 7, "row": 1, "col_span": 6, "row_span": 1},
+                    ],
+                    "objects": [
+                        {
+                            "id": f"c_{i}_1",
+                            "kind": "card",
+                            "region": "r1",
+                            **({"badge": "ONLY_ONE", "sublabel": "Extra"} if i == 0 else {}),
+                            "label": f"Card {i}A",
+                        },
+                        {"id": f"c_{i}_2", "kind": "card", "region": "r2", "label": f"Card {i}B"},
+                    ],
+                }
+                for i in range(3)
+            ],
+        ],
+    }
+    m_rep = audit_deck(monotone_with_chart, strict=False)
+    assert any(w.category == "card_text_bloat" and w.target_id == "c_0_1" for w in m_rep.warnings)
+    assert any(w.category == "visual_monotony" and "3 consecutive scenes" in w.message for w in m_rep.warnings)
+
+    # 3. P1: chart show_title=True emits title and wide plot area centers inner_x symmetrically
+    keyx_path = tmp_path / "wide_chart.keyx"
+    compile_deck(
+        {
+            "title": "Wide Chart",
+            "scenes": [monotone_with_chart["scenes"][0]],
+        },
+        keyx_path,
+    )
+    with KeyxDocument.open(keyx_path) as doc:
+        last_slide = doc.payload.slides[-1]
+        shapes = {obj.object.shape.identifier: obj.object.shape for obj in last_slide.contents if obj.object.shape is not None}
+        textboxes = {obj.object.textbox.identifier: obj.object.textbox for obj in last_slide.contents if obj.object.textbox is not None}
+        assert any(tid.endswith("_wide_col_title") for tid in textboxes)
+        grid0 = shapes[next(sid for sid in shapes if sid.endswith("_wide_col_grid_0"))]
+        # Plot width capped at 820 inside ~1760px wide region -> centered well past x=300
+        assert grid0.geometry.size.width == 820.0
+        assert grid0.geometry.position.x > 300.0

@@ -532,6 +532,57 @@ def _card_text_payload(
     return base_para, Text(paragraphs=paragraphs)
 
 
+def compute_box_text_layout(
+    box: PlacedBox,
+    *,
+    scale: float,
+) -> list[tuple[str, str, str, float, bool, BoxRect]]:
+    """Compute exact (suffix, text, role, font_size, bold, rect) for each card Textbox."""
+    eff_scale = box.font_scale if box.font_scale is not None else scale
+    font_scale = max(0.68, eff_scale)
+    is_sub = box.kind == "subcard"
+    base_size = 29.0 if is_sub else (30.0 if box.kind == "callout" else 34.0)
+    main_size = round(base_size * font_scale, 1)
+    if box.label:
+        max_fit = max(18.0, (box.rect.w - 24.0) / max(1.0, _text_units(box.label) * 0.56))
+        main_size = round(min(main_size, max_fit), 1)
+
+    pad_x = 14.0
+    text_w = max(40.0, box.rect.w - 2 * pad_x)
+    text_x = box.rect.x + pad_x
+
+    line_specs: list[tuple[str, str, str, float, bool, float, float]] = []
+    if box.badge:
+        bsz = max(14.0, round(17.5 * font_scale, 1))
+        bh = round(bsz * 1.35, 1)
+        line_specs.append(("badge", box.badge, "title", bsz, True, bh, 4.0 * font_scale))
+    if box.metric:
+        msz = max(32.0, round(52.0 * font_scale, 1))
+        mh = round(msz * 1.25, 1)
+        line_specs.append(("metric", box.metric, "title", msz, True, mh, 6.0 * font_scale))
+    if box.label:
+        lsz = max(20.0, round(main_size * 0.86, 1)) if box.metric else main_size
+        n_lines = max(1, math.ceil(_text_units(box.label) * lsz * 0.56 / text_w))
+        lh = round(lsz * 1.35 * n_lines, 1)
+        line_specs.append(("caption", box.label, "body", lsz, True, lh, 0.0))
+    if box.sublabel:
+        ssz = max(15.0, round(main_size * 0.64, 1))
+        n_lines = max(1, math.ceil(_text_units(box.sublabel) * ssz * 0.56 / text_w))
+        sh_h = round(ssz * 1.35 * n_lines, 1)
+        if line_specs:
+            prev = line_specs[-1]
+            line_specs[-1] = (*prev[:6], 4.0 * font_scale)
+        line_specs.append(("sublabel", box.sublabel, "body", ssz, False, sh_h, 0.0))
+
+    total_h = sum(spec[5] + spec[6] for spec in line_specs)
+    cursor_y = box.rect.y + max(6.0, (box.rect.h - total_h) / 2.0)
+    resolved: list[tuple[str, str, str, float, bool, BoxRect]] = []
+    for suffix, tb_txt, role, tb_sz, tb_bold, tb_h, gap_after in line_specs:
+        resolved.append((suffix, tb_txt, role, tb_sz, tb_bold, BoxRect(text_x, cursor_y, text_w, tb_h)))
+        cursor_y += tb_h + gap_after
+    return resolved
+
+
 def _make_box_objects(
     slide_prefix: str,
     box: PlacedBox,
@@ -642,40 +693,20 @@ def _make_box_objects(
     metric_rgb = _readable_text_rgb(bg_rgb, theme.metric_text_rgb)
     sub_rgb = _readable_text_rgb(bg_rgb, theme.sublabel_rgb)
     para_align = _ALIGN_MAP.get(getattr(box, "align", "center"), AlignmentType.CENTER)
-    pad_x = 14.0
-    text_w = max(40.0, box.rect.w - 2 * pad_x)
-    text_x = box.rect.x + pad_x
 
-    line_specs: list[tuple[str, str, str, float, tuple[float, float, float], bool, float, float]] = []
-    if box.badge:
-        bsz = max(14.0, round(17.5 * font_scale, 1))
-        bh = round(bsz * 1.35, 1)
-        line_specs.append((f"{obj_id}_badge", box.badge, theme.font_title, bsz, badge_rgb, True, bh, 4.0 * font_scale))
-    if box.metric:
-        msz = max(32.0, round(52.0 * font_scale, 1))
-        mh = round(msz * 1.25, 1)
-        line_specs.append((f"{obj_id}_metric", box.metric, theme.font_title, msz, metric_rgb, True, mh, 6.0 * font_scale))
-    if box.label:
-        lsz = max(20.0, round(main_size * 0.86, 1)) if box.metric else main_size
-        n_lines = max(1, math.ceil(_text_units(box.label) * lsz * 0.56 / text_w))
-        lh = round(lsz * 1.35 * n_lines, 1)
-        line_specs.append((f"{obj_id}_caption", box.label, theme.font_body, lsz, main_rgb, True, lh, 0.0))
-    if box.sublabel:
-        ssz = max(15.0, round(main_size * 0.64, 1))
-        n_lines = max(1, math.ceil(_text_units(box.sublabel) * ssz * 0.56 / text_w))
-        sh_h = round(ssz * 1.35 * n_lines, 1)
-        if line_specs:
-            prev = line_specs[-1]
-            line_specs[-1] = (*prev[:7], 4.0 * font_scale)
-        line_specs.append((f"{obj_id}_sublabel", box.sublabel, theme.font_body, ssz, sub_rgb, False, sh_h, 0.0))
-
-    total_h = sum(spec[6] + spec[7] for spec in line_specs)
-    cursor_y = box.rect.y + max(6.0, (box.rect.h - total_h) / 2.0)
-    for tb_id, tb_txt, tb_font, tb_sz, tb_rgb, tb_bold, tb_h, gap_after in line_specs:
+    role_color_map = {
+        "badge": badge_rgb,
+        "metric": metric_rgb,
+        "caption": main_rgb,
+        "sublabel": sub_rgb,
+    }
+    for suffix, tb_txt, role, tb_sz, tb_bold, tb_rect in compute_box_text_layout(box, scale=scale):
+        tb_font = theme.font_title if role == "title" else theme.font_body
+        tb_rgb = role_color_map[suffix]
         objs.append(
             _make_textbox(
-                tb_id,
-                BoxRect(text_x, cursor_y, text_w, tb_h),
+                f"{obj_id}_{suffix}",
+                tb_rect,
                 tb_txt,
                 font_name=tb_font,
                 font_size=tb_sz,
@@ -685,7 +716,6 @@ def _make_box_objects(
                 alignment=para_align,
             )
         )
-        cursor_y += tb_h + gap_after
 
     return objs, obj_id
 

@@ -231,6 +231,7 @@ class ChartSpec:
     series: list[ChartSeriesSpec] = field(default_factory=list)
     title: str | None = None
     unit: str | None = None
+    show_title: bool | None = None
     show_legend: bool | None = None
     show_value_labels: bool = True
     axis_min: float | None = None

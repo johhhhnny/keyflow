@@ -18,8 +18,7 @@ def _audit_cross_page_consistency(
     findings: list[AuditFinding],
 ) -> None:
     """Detect abrupt cross-scene density jumps, variant drift, visual monotony, and card text bloat."""
-    # 0. Card text-layer bloat check: >= 2 plain canvas cards packing badge + label + sublabel without metric/unpack
-    bloated_cards: list[tuple[int, str, str]] = []
+    # 0. Card & Callout text-layer bloat check (per-object)
     for sc_idx, sc in enumerate(deck.scenes):
         if sc.layout != "canvas":
             continue
@@ -33,22 +32,41 @@ def _audit_cross_page_consistency(
                 and obj.label
                 and obj.sublabel
             ):
-                bloated_cards.append((first_slide, sc.id, obj.id))
-    if len(bloated_cards) >= 2:
-        for slide_num, sid, oid in bloated_cards:
-            findings.append(
-                AuditFinding(
-                    severity="warning",
-                    category="card_text_bloat",
-                    slide_num=slide_num,
-                    scene_id=sid,
-                    frame_index=0,
-                    target_id=oid,
-                    message=f"Card '{oid}' packs 3 text layers (badge + label + sublabel) without a metric or unpack structure.",
-                    suggestion="Keep plain cards to 1 line ('label') and move explanatory 'sublabel' text into 'note' (Presenter Notes).",
-                    suggested_action="move_sublabel_to_note",
+                findings.append(
+                    AuditFinding(
+                        severity="warning",
+                        category="card_text_bloat",
+                        slide_num=first_slide,
+                        scene_id=sc.id,
+                        frame_index=0,
+                        target_id=obj.id,
+                        message=f"Card '{obj.id}' packs 3 text layers (badge + label + sublabel) without a metric or unpack structure.",
+                        suggestion="Keep plain cards to 1 line ('label') and move explanatory 'sublabel' text into 'note' (Presenter Notes).",
+                        suggested_action="move_sublabel_to_note",
+                    )
                 )
-            )
+            elif (
+                obj.kind == "callout"
+                and obj.surface != "borderless"
+                and not obj.metric
+                and obj.badge
+                and obj.label
+                and obj.sublabel
+                and len(obj.sublabel.strip()) > 28
+            ):
+                findings.append(
+                    AuditFinding(
+                        severity="warning",
+                        category="callout_text_bloat",
+                        slide_num=first_slide,
+                        scene_id=sc.id,
+                        frame_index=0,
+                        target_id=obj.id,
+                        message=f"Callout '{obj.id}' packs 3 text layers with long sublabel prose ({len(obj.sublabel.strip())} chars).",
+                        suggestion="Move explanatory context into 'note' and keep 'sublabel' concise.",
+                        suggested_action="move_sublabel_to_note",
+                    )
+                )
 
     if len(scene_frames) < 2:
         return
@@ -162,29 +180,53 @@ def _audit_cross_page_consistency(
             else:
                 streak = 1
 
-        total_cards = 0
-        filled_cards = 0
-        has_rich_visuals = False
-        for _, _, frames in scene_frames:
+        # Per-scene / contiguous-run check so 1 chart cannot mask 15 filled-card slides
+        monotone_card_total = 0
+        monotone_scene_ids: list[str] = []
+        monotone_first_slide = 1
+        for sc_id, first_slide, frames in scene_frames:
             if not frames:
                 continue
             lf = frames[-1]
-            if lf.charts or lf.tables or lf.proportion_bar or lf.comparison_matrix or lf.edges:
-                has_rich_visuals = True
-            for b in lf.boxes:
-                if b.kind in ("card", "callout") and "__" not in b.id:
-                    total_cards += 1
-                    if getattr(b, "surface", "filled") == "filled":
-                        filled_cards += 1
-        if total_cards >= 6 and filled_cards == total_cards and not has_rich_visuals:
+            scene_has_rich = bool(lf.charts or lf.tables or lf.proportion_bar or lf.comparison_matrix or lf.edges)
+            scene_cards = [b for b in lf.boxes if b.kind in ("card", "callout") and "__" not in b.id]
+            scene_filled = sum(1 for b in scene_cards if getattr(b, "surface", "filled") == "filled")
+            if scene_cards and scene_filled == len(scene_cards) and not scene_has_rich:
+                if not monotone_scene_ids:
+                    monotone_first_slide = first_slide
+                monotone_card_total += scene_filled
+                monotone_scene_ids.append(sc_id)
+            else:
+                if len(monotone_scene_ids) >= 3 and monotone_card_total >= 6:
+                    findings.append(
+                        AuditFinding(
+                            severity="warning",
+                            category="visual_monotony",
+                            slide_num=monotone_first_slide,
+                            scene_id=monotone_scene_ids[0],
+                            frame_index=0,
+                            message=(
+                                f"All {monotone_card_total} cards across {len(monotone_scene_ids)} consecutive scenes "
+                                f"({', '.join(monotone_scene_ids)}) use 'surface=filled' with no charts, diagrams, or borderless typography."
+                            ),
+                            suggestion="Use surface='borderless' for hero numbers/thesis statements, surface='ghost' for lightweight groups, or add nonlinear diagrams/charts.",
+                            suggested_action="reduce_filled_card_monotony",
+                        )
+                    )
+                monotone_card_total = 0
+                monotone_scene_ids = []
+        if len(monotone_scene_ids) >= 3 and monotone_card_total >= 6:
             findings.append(
                 AuditFinding(
                     severity="warning",
                     category="visual_monotony",
-                    slide_num=1,
-                    scene_id=deck.scenes[0].id,
+                    slide_num=monotone_first_slide,
+                    scene_id=monotone_scene_ids[0],
                     frame_index=0,
-                    message=f"All {total_cards} cards across {len(deck.scenes)} scenes use 'surface=filled' with no charts, diagrams, or borderless typography.",
+                    message=(
+                        f"All {monotone_card_total} cards across {len(monotone_scene_ids)} consecutive scenes "
+                        f"({', '.join(monotone_scene_ids)}) use 'surface=filled' with no charts, diagrams, or borderless typography."
+                    ),
                     suggestion="Use surface='borderless' for hero numbers/thesis statements, surface='ghost' for lightweight groups, or add nonlinear diagrams/charts.",
                     suggested_action="reduce_filled_card_monotony",
                 )

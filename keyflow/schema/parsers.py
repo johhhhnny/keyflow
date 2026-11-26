@@ -290,6 +290,7 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
                     ],
                     title=str(ch_raw["title"]) if ch_raw.get("title") else None,
                     unit=str(ch_raw["unit"]) if ch_raw.get("unit") else None,
+                    show_title=ch_raw.get("show_title"),
                     show_legend=ch_raw.get("show_legend"),
                     show_value_labels=bool(ch_raw.get("show_value_labels", True)),
                     axis_min=float(ch_raw["axis_min"]) if ch_raw.get("axis_min") is not None else None,

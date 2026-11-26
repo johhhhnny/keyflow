@@ -106,21 +106,20 @@ def _audit_story_fidelity(
                 )
             )
 
-    if referenced_ids:
-        for cl in sm.claims:
-            if cl.type in ("thesis", "counter_evidence") and cl.id not in referenced_ids:
-                findings.append(
-                    AuditFinding(
-                        severity="warning",
-                        category="dropped_story_claim",
-                        slide_num=1,
-                        scene_id="",
-                        frame_index=0,
-                        message=f"Critical {cl.type} claim '{cl.id}' in story_model is not referenced by any scene.",
-                        suggestion=f"Reference '{cl.id}' via 'evidence_refs' in a scene so Stage 0 key arguments are not dropped.",
-                        target_id=cl.id,
-                        suggested_action="reference_claim_in_scene",
-                    )
+    for cl in sm.claims:
+        if cl.type in ("thesis", "counter_evidence") and cl.id not in referenced_ids:
+            findings.append(
+                AuditFinding(
+                    severity="warning",
+                    category="dropped_story_claim",
+                    slide_num=1,
+                    scene_id="",
+                    frame_index=0,
+                    message=f"Critical {cl.type} claim '{cl.id}' in story_model is not referenced by any scene.",
+                    suggestion=f"Reference '{cl.id}' via 'evidence_refs' in a scene so Stage 0 key arguments are not dropped.",
+                    target_id=cl.id,
+                    suggested_action="reference_claim_in_scene",
                 )
+            )
 
 

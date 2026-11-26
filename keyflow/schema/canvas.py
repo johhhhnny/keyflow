@@ -246,6 +246,8 @@ def _validate_canvas_scene(
                     errors.append(
                         f"{prefix}.objects['{oid}'].chart: axis_min ({ax_min_val}) must be < axis_max ({ax_max_val})."
                     )
+                if ch.get("show_title") is not None and not isinstance(ch["show_title"], bool):
+                    errors.append(f"{prefix}.objects['{oid}'].chart.show_title: must be a boolean.")
                 if ch.get("show_legend") is not None and not isinstance(ch["show_legend"], bool):
                     errors.append(f"{prefix}.objects['{oid}'].chart.show_legend: must be a boolean.")
                 if "show_value_labels" in ch and not isinstance(ch["show_value_labels"], bool):

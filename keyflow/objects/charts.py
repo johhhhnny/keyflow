@@ -133,7 +133,8 @@ def _make_chart_header_and_legend(
     objs: list[SlideObject] = []
     top_offset = 0.0
     is_bar_like = chart.chart_type in ("column", "bar", "stacked_column", "stacked_bar", "waterfall")
-    if chart.title and not is_bar_like:
+    show_title = chart.show_title if chart.show_title is not None else (not is_bar_like)
+    if chart.title and show_title:
         title_h = 40.0
         objs.append(
             _make_textbox(
@@ -490,10 +491,11 @@ def _make_vector_chart_objects(
     # Vertical charts: column, stacked_column, line, area, scatter
     max_tick_w = max(_text_units(_format_chart_num(tv)) * 9.5 for tv in tick_vals)
     y_label_w = max(CHART_Y_LABEL_MIN_W_PT, min(CHART_Y_LABEL_MAX_W_PT, max_tick_w + 14.0))
-    inner_x = chart.rect.x + y_label_w + 8.0
+    raw_inner_x = chart.rect.x + y_label_w + 8.0
     base_y = chart.rect.y + header_h + (28.0 if chart.unit else 16.0)
-    raw_inner_w = max(100.0, (chart.rect.x + chart.rect.w) - inner_x - 16.0)
+    raw_inner_w = max(100.0, (chart.rect.x + chart.rect.w) - raw_inner_x - 16.0)
     inner_w = min(raw_inner_w, 820.0)
+    inner_x = raw_inner_x + max(0.0, (raw_inner_w - inner_w) / 2.0)
     cat_label_h = 38.0
     raw_inner_h = max(80.0, (chart.rect.y + chart.rect.h) - base_y - cat_label_h - 6.0)
     inner_h = min(raw_inner_h, 430.0)
@@ -517,7 +519,7 @@ def _make_vector_chart_objects(
         objs.append(
             _make_textbox(
                 f"{slide_prefix}_{chart.id}_tick_{i}",
-                BoxRect(chart.rect.x + 2.0, gy - 12.0, y_label_w - 4.0, 24.0),
+                BoxRect(inner_x - y_label_w - 6.0, gy - 12.0, y_label_w - 4.0, 24.0),
                 _format_chart_num(tv),
                 font_name=theme.font_body,
                 font_size=13.5,

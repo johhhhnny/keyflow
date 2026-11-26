@@ -497,6 +497,7 @@ def _resolve_canvas_scene(
                         categories=list(ch.categories),
                         series=placed_series,
                         unit=ch.unit,
+                        show_title=ch.show_title,
                         show_legend=show_leg,
                         show_value_labels=ch.show_value_labels,
                         axis_min=ax_min,

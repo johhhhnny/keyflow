@@ -214,6 +214,7 @@ class PlacedChart:
     categories: list[str]
     series: list[PlacedChartSeries]
     unit: str | None = None
+    show_title: bool | None = None
     show_legend: bool = True
     show_value_labels: bool = True
     axis_min: float | None = None
