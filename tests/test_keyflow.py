@@ -2755,3 +2755,41 @@ def test_unlock_mcp_overrides_sequence_diagram_align_and_visual_monotony(tmp_pat
     monotony_msgs = [w.message for w in mono_rep.warnings if w.category == "visual_monotony"]
     assert any("3+ consecutive scenes" in m for m in monotony_msgs)
     assert any("surface=filled" in m for m in monotony_msgs)
+
+
+def test_audit_catches_card_text_bloat_on_multi_layer_plain_cards() -> None:
+    deck = {
+        "title": "Card Bloat Check",
+        "scenes": [
+            {
+                "id": "sc1",
+                "title": "Bloated Plain Card",
+                "layout": "canvas",
+                "grid": {"columns": 12, "rows": 1},
+                "regions": [
+                    {"id": "r1", "col": 1, "row": 1, "col_span": 6, "row_span": 1},
+                    {"id": "r2", "col": 7, "row": 1, "col_span": 6, "row_span": 1},
+                ],
+                "objects": [
+                    {
+                        "id": "bloated_1",
+                        "kind": "card",
+                        "region": "r1",
+                        "badge": "01",
+                        "label": "Short Label",
+                        "sublabel": "Extra prose that belongs in note",
+                    },
+                    {
+                        "id": "bloated_2",
+                        "kind": "card",
+                        "region": "r2",
+                        "badge": "02",
+                        "label": "Another Label",
+                        "sublabel": "More prose that belongs in note",
+                    },
+                ],
+            }
+        ],
+    }
+    rep = audit_deck(deck, strict=False)
+    assert any(w.category == "card_text_bloat" and w.target_id == "bloated_1" for w in rep.warnings)

@@ -60,10 +60,11 @@ Before authoring any Scene Graph JSON, produce a concise **Stage 0 Narrative Bri
 
 Translate the Stage 0 brief into clean Stage 1 diagrams. Do **not** hand-write `frames` unless custom choreography is required:
 
-1. **Zero-Bullet Canvas**: Each card holds **1 short `label`** (1–4 words / ≤ 12 CJK chars) plus optional micro-hierarchy fields:
-   - `badge`: crisp eyebrow tag (e.g., `"FACT"`, `"THESIS"`, `"LEGACY"`, `"TARGET"`, `"STEP 01"`)
-   - `metric`: hero number/stat for KPI or single-thesis centerpiece cards (e.g., `"75%"`, `"10×"`, `"0 依赖"`)
-   - `sublabel`: brief secondary line (e.g., `"商业常识"`, `"7s → 0.7s"`)
+1. **Zero-Bullet Canvas (1-Line Card Default)**: Default cards should hold **only 1 short `label` line** (1–4 words / ≤ 12 CJK chars). Do **not** pack `badge + label + sublabel` onto every card by default—move explanations into `note` (Presenter Notes). Add extra text layers only when they serve an explicit visual purpose:
+   - `children` in-place unpack (total -> parts decomposition across frames);
+   - `badge`: crisp epistemic or sequence tag (e.g., `"FACT"`, `"THESIS"`, `"COUNTER"`, `"STEP 01"`);
+   - `metric`: hero number/stat for KPI or single-thesis centerpiece blocks (e.g., `"75%"`, `"10×"`, `"0 依赖"`);
+   - `sublabel`: brief secondary line only when needed for `callout` or `metric` context;
    - `variant`: `"primary"` | `"accent"` (yellow highlight) | `"success"` (teal-green) | `"warn"` (amber) | `"muted"`
    - `surface`: `"filled"` (default solid card) | `"ghost"` (border-only lightweight frame) | `"borderless"` (no fill/border; prefer `"borderless"` for hero stats, core thesis statements, and open editorial typography instead of wrapping every element in a filled card)
    Put all prose explanations, caveats, citations, and presenter context into each node/child's **`note`** field (and scene `intro_note`).

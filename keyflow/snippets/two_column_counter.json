@@ -34,7 +34,7 @@
         "variant": "muted",
         "badge": "FACT",
         "label": "历史毛利率维持高位",
-        "sublabel": "过去四个季度均高于行业均值"
+        "note": "过去四个季度均高于行业均值"
       },
       {
         "id": "counter_claim",
@@ -54,7 +54,7 @@
         "variant": "muted",
         "badge": "LIMIT",
         "label": "仅在核心区域成立",
-        "sublabel": "下沉市场尚未验证相同回收周期"
+        "note": "下沉市场尚未验证相同回收周期"
       }
     ]
   }

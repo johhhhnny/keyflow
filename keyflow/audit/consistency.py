@@ -17,7 +17,39 @@ def _audit_cross_page_consistency(
     scene_frames: list[tuple[str, int, list[ResolvedFrame]]],
     findings: list[AuditFinding],
 ) -> None:
-    """Detect abrupt cross-scene density jumps, variant drift, and fragmented palettes."""
+    """Detect abrupt cross-scene density jumps, variant drift, visual monotony, and card text bloat."""
+    # 0. Card text-layer bloat check: >= 2 plain canvas cards packing badge + label + sublabel without metric/unpack
+    bloated_cards: list[tuple[int, str, str]] = []
+    for sc_idx, sc in enumerate(deck.scenes):
+        if sc.layout != "canvas":
+            continue
+        first_slide = scene_frames[sc_idx][1] if sc_idx < len(scene_frames) else 1
+        for obj in sc.objects:
+            if (
+                obj.kind == "card"
+                and obj.surface != "borderless"
+                and not obj.metric
+                and obj.badge
+                and obj.label
+                and obj.sublabel
+            ):
+                bloated_cards.append((first_slide, sc.id, obj.id))
+    if len(bloated_cards) >= 2:
+        for slide_num, sid, oid in bloated_cards:
+            findings.append(
+                AuditFinding(
+                    severity="warning",
+                    category="card_text_bloat",
+                    slide_num=slide_num,
+                    scene_id=sid,
+                    frame_index=0,
+                    target_id=oid,
+                    message=f"Card '{oid}' packs 3 text layers (badge + label + sublabel) without a metric or unpack structure.",
+                    suggestion="Keep plain cards to 1 line ('label') and move explanatory 'sublabel' text into 'note' (Presenter Notes).",
+                    suggested_action="move_sublabel_to_note",
+                )
+            )
+
     if len(scene_frames) < 2:
         return
 

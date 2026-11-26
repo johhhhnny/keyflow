@@ -35,7 +35,7 @@
         "variant": "primary",
         "badge": "01",
         "label": "供给侧锁定",
-        "sublabel": "关键产能与供应链排他协议"
+        "note": "关键产能与供应链排他协议"
       },
       {
         "id": "pillar_2",
@@ -45,7 +45,7 @@
         "variant": "primary",
         "badge": "02",
         "label": "生态标准控制",
-        "sublabel": "工具链与开发者迁移壁垒"
+        "note": "工具链与开发者迁移壁垒"
       },
       {
         "id": "pillar_3",
@@ -55,7 +55,7 @@
         "variant": "primary",
         "badge": "03",
         "label": "定价权传导",
-        "sublabel": "高毛利反哺下一代研发投入"
+        "note": "高毛利反哺下一代研发投入"
       },
       {
         "id": "pillar_4",
@@ -65,7 +65,7 @@
         "variant": "primary",
         "badge": "04",
         "label": "客户替换成本",
-        "sublabel": "全栈绑定下的高昂切换代价"
+        "note": "全栈绑定下的高昂切换代价"
       }
     ]
   }
