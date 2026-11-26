@@ -459,13 +459,14 @@ def _resolve_pinned_flow(
     canvas_h: float,
     *,
     centered: bool,
+    docked_cy: float = 160.0,
 ) -> PlacedPinnedFlow:
     nodes = pf.nodes
     n = len(nodes)
     if n == 0:
         return PlacedPinnedFlow([], [], [], is_centered=centered)
 
-    node_h = 104.0 if centered else 84.0
+    node_h = 104.0 if centered else 72.0
     gap = 92.0 if centered else 78.0
     widths = [
         _estimate_card_size(node.label, min_w=175.0 if not centered else 200.0, max_w=270.0, base_h=node_h)[0]
@@ -477,7 +478,7 @@ def _resolve_pinned_flow(
 
     scaled_total_w = raw_total_w * scale
     cursor_x = (canvas_w - scaled_total_w) / 2.0
-    cy = (canvas_h * 0.48) if centered else 104.0
+    cy = (canvas_h * 0.50) if centered else docked_cy
     sh = node_h * max(0.84, scale)
 
     node_rects: dict[str, BoxRect] = {}
@@ -1822,15 +1823,17 @@ def resolve_scene(
     pinned_flow: PinnedFlowSpec | None = None,
 ) -> list[ResolvedFrame]:
     """Compute anchor-preserved geometry for every progressive frame in a scene."""
+    effective_pf = scene.pinned_flow if scene.pinned_flow is not None else pinned_flow
+
     def _frame_uses_ribbon(fr: FrameSpec) -> bool:
-        if not pinned_flow:
+        if not effective_pf:
             return False
         return fr.show_pinned_flow if fr.show_pinned_flow is not None else scene.show_pinned_flow
 
     any_ribbon = (
         any(_frame_uses_ribbon(f) for f in scene.frames)
         if scene.frames
-        else bool(pinned_flow and scene.show_pinned_flow)
+        else bool(effective_pf and scene.show_pinned_flow)
     )
     is_macro_only = (
         any_ribbon
@@ -1840,18 +1843,6 @@ def resolve_scene(
         and scene.matrix is None
     )
 
-    placed_ribbon = (
-        _resolve_pinned_flow(
-            pinned_flow,
-            scene.active_flow_node,
-            float(canvas_w),
-            float(canvas_h),
-            centered=is_macro_only,
-        )
-        if any_ribbon and pinned_flow is not None
-        else None
-    )
-
     has_any_subtitle = bool(scene.subtitle or any(f.subtitle for f in scene.frames))
     title_rect = BoxRect(160.0, 86.0, canvas_w - 320.0, 112.0)
     subtitle_rect = BoxRect(260.0, 198.0, canvas_w - 520.0, 50.0) if has_any_subtitle else None
@@ -1859,25 +1850,38 @@ def resolve_scene(
     if is_macro_only:
         ribbon_title_rect = BoxRect(160.0, 72.0, canvas_w - 320.0, 92.0)
         ribbon_subtitle_rect = BoxRect(260.0, 168.0, canvas_w - 520.0, 44.0) if has_any_subtitle else None
-        area_top = 224.0 if has_any_subtitle else 184.0
+        docked_cy = 160.0
     else:
-        pf_bottom = (
-            max(
-                [n.rect.y + n.rect.h for n in placed_ribbon.nodes]
-                + [g.rect.y + g.rect.h for g in placed_ribbon.groups],
-                default=146.0,
-            )
-            if placed_ribbon is not None
-            else 146.0
+        # Title & optional subtitle sit ABOVE the docked ribbon so the slide headline stays the top anchor.
+        ribbon_title_rect = BoxRect(160.0, 44.0, canvas_w - 320.0, 56.0)
+        ribbon_subtitle_rect = BoxRect(260.0, 102.0, canvas_w - 520.0, 38.0) if has_any_subtitle else None
+        has_groups = bool(effective_pf and effective_pf.groups)
+        docked_cy = (198.0 if has_any_subtitle else 156.0) + (42.0 if has_groups else 0.0)
+
+    placed_ribbon = (
+        _resolve_pinned_flow(
+            effective_pf,
+            scene.active_flow_node,
+            float(canvas_w),
+            float(canvas_h),
+            centered=is_macro_only,
+            docked_cy=docked_cy,
         )
-        r_title_y = pf_bottom + 10.0
-        ribbon_title_rect = BoxRect(160.0, r_title_y, canvas_w - 320.0, 52.0)
-        r_sub_y = r_title_y + 56.0
-        ribbon_subtitle_rect = BoxRect(260.0, r_sub_y, canvas_w - 520.0, 38.0) if has_any_subtitle else None
-        if any_ribbon:
-            area_top = (r_sub_y + 46.0) if has_any_subtitle else (r_title_y + 62.0)
-        else:
-            area_top = 262.0 if has_any_subtitle else 225.0
+        if any_ribbon and effective_pf is not None
+        else None
+    )
+
+    if is_macro_only:
+        area_top = 224.0 if has_any_subtitle else 184.0
+    elif any_ribbon and placed_ribbon is not None:
+        pf_bottom = max(
+            [n.rect.y + n.rect.h for n in placed_ribbon.nodes]
+            + [g.rect.y + g.rect.h for g in placed_ribbon.groups],
+            default=docked_cy + 36.0,
+        )
+        area_top = pf_bottom + 20.0
+    else:
+        area_top = 262.0 if has_any_subtitle else 225.0
 
     area_bottom = float(canvas_h) - 72.0
 

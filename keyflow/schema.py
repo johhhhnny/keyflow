@@ -323,6 +323,7 @@ class SceneSpec:
     intro_note: str = ""
     active_flow_node: str | None = None
     show_pinned_flow: bool = True
+    pinned_flow: PinnedFlowSpec | None = None
     palette: dict[str, Any] | None = None
     grid: GridSpec | None = None
     regions: list[RegionSpec] = field(default_factory=list)
@@ -412,6 +413,19 @@ def _parse_nodes_and_edges(raw_nodes: list[dict[str, Any]], raw_edges: list[dict
     return nodes, edges
 
 
+def _parse_pinned_flow(pf_raw: dict[str, Any]) -> PinnedFlowSpec:
+    pf_nodes, pf_edges = _parse_nodes_and_edges(pf_raw.get("nodes", []), pf_raw.get("edges", []))
+    pf_groups = [
+        PinnedFlowGroupSpec(
+            id=str(g["id"]),
+            label=str(g["label"]),
+            node_ids=[str(nid) for nid in g.get("node_ids", [])],
+        )
+        for g in pf_raw.get("groups", [])
+    ]
+    return PinnedFlowSpec(nodes=pf_nodes, edges=pf_edges, groups=pf_groups)
+
+
 def parse_deck(raw: dict[str, Any]) -> DeckSpec:
     """Parse a raw JSON dictionary into typed DeckSpec dataclasses."""
     if not isinstance(raw, dict):
@@ -419,17 +433,7 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
 
     pinned_flow: PinnedFlowSpec | None = None
     if raw.get("pinned_flow"):
-        pf_raw = raw["pinned_flow"]
-        pf_nodes, pf_edges = _parse_nodes_and_edges(pf_raw.get("nodes", []), pf_raw.get("edges", []))
-        pf_groups = [
-            PinnedFlowGroupSpec(
-                id=str(g["id"]),
-                label=str(g["label"]),
-                node_ids=[str(nid) for nid in g.get("node_ids", [])],
-            )
-            for g in pf_raw.get("groups", [])
-        ]
-        pinned_flow = PinnedFlowSpec(nodes=pf_nodes, edges=pf_edges, groups=pf_groups)
+        pinned_flow = _parse_pinned_flow(raw["pinned_flow"])
 
     story_model: StoryModelSpec | None = None
     if raw.get("story_model"):
@@ -699,6 +703,7 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
                 intro_note=str(s_raw.get("intro_note", "")),
                 active_flow_node=str(s_raw["active_flow_node"]) if s_raw.get("active_flow_node") else None,
                 show_pinned_flow=bool(s_raw.get("show_pinned_flow", True)),
+                pinned_flow=_parse_pinned_flow(s_raw["pinned_flow"]) if isinstance(s_raw.get("pinned_flow"), dict) else None,
                 palette=dict(s_raw["palette"]) if isinstance(s_raw.get("palette"), dict) else None,
                 grid=grid,
                 regions=regions,
@@ -834,7 +839,7 @@ def _schema_key_sets() -> dict[str, frozenset[str]]:
     raw = json.loads(schema_path.read_text(encoding="utf-8"))
     props = raw.get("properties", {})
     defs = raw.get("$defs", {})
-    pf_props = props.get("pinned_flow", {}).get("properties", {})
+    pf_props = defs.get("pinned_flow", {}).get("properties", {}) or props.get("pinned_flow", {}).get("properties", {})
     sm_props = props.get("story_model", {}).get("properties", {})
     sc_props = props.get("scenes", {}).get("items", {}).get("properties", {})
     node_props = defs.get("node", {}).get("properties", {})
@@ -1395,6 +1400,65 @@ def _validate_canvas_scene(
     return set(object_map), object_map
 
 
+def _validate_pinned_flow(pf: Any, prefix: str, errors: list[str]) -> set[str]:
+    """Validate a deck-level or scene-level pinned_flow block and return its node IDs."""
+    pf_node_ids: set[str] = set()
+    if not isinstance(pf, dict):
+        errors.append(f"'{prefix}' must be an object.")
+        return pf_node_ids
+    _check_allowed_keys(pf, "pinned_flow", prefix, errors)
+    pf_nodes = pf.get("nodes", [])
+    if not isinstance(pf_nodes, list) or not pf_nodes:
+        errors.append(f"{prefix}.nodes must be a non-empty list.")
+        return pf_node_ids
+    for idx, n in enumerate(pf_nodes):
+        if not isinstance(n, dict):
+            errors.append(f"{prefix}.nodes[{idx}]: must be an object.")
+            continue
+        _check_allowed_keys(n, "pf_node", f"{prefix}.nodes[{idx}]", errors)
+        nid = n.get("id")
+        if not isinstance(nid, str) or not nid:
+            errors.append(f"{prefix}.nodes[{idx}]: missing 'id'.")
+        elif nid in pf_node_ids:
+            errors.append(f"{prefix}: duplicate node id '{nid}'.")
+        else:
+            pf_node_ids.add(nid)
+        if not isinstance(n.get("label"), str) or not n.get("label"):
+            errors.append(f"{prefix}.nodes[{idx}]: missing 'label'.")
+    pf_edges = pf.get("edges", [])
+    if not isinstance(pf_edges, list):
+        errors.append(f"{prefix}.edges must be a list.")
+    else:
+        for e_idx, e in enumerate(pf_edges):
+            if not isinstance(e, dict):
+                errors.append(f"{prefix}.edges[{e_idx}]: must be an object.")
+                continue
+            _check_allowed_keys(e, "pf_edge", f"{prefix}.edges[{e_idx}]", errors)
+            if e.get("from") not in pf_node_ids:
+                errors.append(f"{prefix}.edges[{e_idx}]: unknown 'from' node '{e.get('from')}'.")
+            if e.get("to") not in pf_node_ids:
+                errors.append(f"{prefix}.edges[{e_idx}]: unknown 'to' node '{e.get('to')}'.")
+    pf_groups = pf.get("groups", [])
+    if not isinstance(pf_groups, list):
+        errors.append(f"{prefix}.groups must be a list.")
+    else:
+        for g_idx, g in enumerate(pf_groups):
+            if not isinstance(g, dict):
+                errors.append(f"{prefix}.groups[{g_idx}]: must be an object.")
+                continue
+            _check_allowed_keys(g, "pf_group", f"{prefix}.groups[{g_idx}]", errors)
+            if not isinstance(g.get("label"), str) or not g.get("label"):
+                errors.append(f"{prefix}.groups[{g_idx}]: missing 'label'.")
+            g_nids = g.get("node_ids", [])
+            if not isinstance(g_nids, list):
+                errors.append(f"{prefix}.groups[{g_idx}]: 'node_ids' must be a list.")
+            else:
+                for nid in g_nids:
+                    if nid not in pf_node_ids:
+                        errors.append(f"{prefix}.groups[{g_idx}]: unknown node '{nid}'.")
+    return pf_node_ids
+
+
 def validate_deck(
     raw: dict[str, Any],
     *,
@@ -1476,60 +1540,7 @@ def validate_deck(
 
     pf_node_ids: set[str] = set()
     if raw.get("pinned_flow") is not None:
-        pf = raw["pinned_flow"]
-        if not isinstance(pf, dict):
-            errors.append("'pinned_flow' must be an object.")
-        else:
-            _check_allowed_keys(pf, "pinned_flow", "pinned_flow", errors)
-            pf_nodes = pf.get("nodes", [])
-            if not isinstance(pf_nodes, list) or not pf_nodes:
-                errors.append("pinned_flow.nodes must be a non-empty list.")
-            else:
-                for idx, n in enumerate(pf_nodes):
-                    if not isinstance(n, dict):
-                        errors.append(f"pinned_flow.nodes[{idx}]: must be an object.")
-                        continue
-                    _check_allowed_keys(n, "pf_node", f"pinned_flow.nodes[{idx}]", errors)
-                    nid = n.get("id")
-                    if not isinstance(nid, str) or not nid:
-                        errors.append(f"pinned_flow.nodes[{idx}]: missing 'id'.")
-                    elif nid in pf_node_ids:
-                        errors.append(f"pinned_flow: duplicate node id '{nid}'.")
-                    else:
-                        pf_node_ids.add(nid)
-                    if not isinstance(n.get("label"), str) or not n.get("label"):
-                        errors.append(f"pinned_flow.nodes[{idx}]: missing 'label'.")
-                pf_edges = pf.get("edges", [])
-                if not isinstance(pf_edges, list):
-                    errors.append("pinned_flow.edges must be a list.")
-                else:
-                    for e_idx, e in enumerate(pf_edges):
-                        if not isinstance(e, dict):
-                            errors.append(f"pinned_flow.edges[{e_idx}]: must be an object.")
-                            continue
-                        _check_allowed_keys(e, "pf_edge", f"pinned_flow.edges[{e_idx}]", errors)
-                        if e.get("from") not in pf_node_ids:
-                            errors.append(f"pinned_flow.edges[{e_idx}]: unknown 'from' node '{e.get('from')}'.")
-                        if e.get("to") not in pf_node_ids:
-                            errors.append(f"pinned_flow.edges[{e_idx}]: unknown 'to' node '{e.get('to')}'.")
-                pf_groups = pf.get("groups", [])
-                if not isinstance(pf_groups, list):
-                    errors.append("pinned_flow.groups must be a list.")
-                else:
-                    for g_idx, g in enumerate(pf_groups):
-                        if not isinstance(g, dict):
-                            errors.append(f"pinned_flow.groups[{g_idx}]: must be an object.")
-                            continue
-                        _check_allowed_keys(g, "pf_group", f"pinned_flow.groups[{g_idx}]", errors)
-                        if not isinstance(g.get("label"), str) or not g.get("label"):
-                            errors.append(f"pinned_flow.groups[{g_idx}]: missing 'label'.")
-                        g_nids = g.get("node_ids", [])
-                        if not isinstance(g_nids, list):
-                            errors.append(f"pinned_flow.groups[{g_idx}]: 'node_ids' must be a list.")
-                        else:
-                            for nid in g_nids:
-                                if nid not in pf_node_ids:
-                                    errors.append(f"pinned_flow.groups[{g_idx}]: unknown node '{nid}'.")
+        pf_node_ids = _validate_pinned_flow(raw["pinned_flow"], "pinned_flow", errors)
 
     raw_scenes = raw.get("scenes")
     if not isinstance(raw_scenes, list) or not raw_scenes:
@@ -1588,14 +1599,18 @@ def validate_deck(
         if s.get("palette") is not None and not eff_use_templates:
             _validate_palette(s["palette"], f"{prefix}.palette", errors)
 
+        scene_pf_node_ids = pf_node_ids
+        if s.get("pinned_flow") is not None:
+            scene_pf_node_ids = _validate_pinned_flow(s["pinned_flow"], f"{prefix}.pinned_flow", errors)
+
         active_fn = s.get("active_flow_node")
         if active_fn is not None:
             if not isinstance(active_fn, str):
                 errors.append(f"{prefix}: 'active_flow_node' must be a string.")
             elif active_fn:
-                if not pf_node_ids:
-                    errors.append(f"{prefix}: 'active_flow_node' set to '{active_fn}' without top-level 'pinned_flow'.")
-                elif active_fn not in pf_node_ids:
+                if not scene_pf_node_ids:
+                    errors.append(f"{prefix}: 'active_flow_node' set to '{active_fn}' without 'pinned_flow'.")
+                elif active_fn not in scene_pf_node_ids:
                     errors.append(f"{prefix}: unknown active_flow_node '{active_fn}'.")
 
         has_frames = "frames" in s and s["frames"] is not None

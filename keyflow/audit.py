@@ -386,7 +386,17 @@ def _audit_frame(
     # Pinned top flow collision with scene header / content
     if frame.pinned_flow is not None and not frame.pinned_flow.is_centered and pf_bottom > 0.0:
         header_bottom = pf_bottom
-        if frame.title_rect and frame.title_rect.y < header_bottom - 4.0:
+        pf_top = min(
+            [n.rect.y for n in frame.pinned_flow.nodes]
+            + [g.rect.y for g in frame.pinned_flow.groups]
+            + [g.legend_rect.y for g in frame.pinned_flow.groups]
+        )
+        title_bottom = 0.0
+        if frame.title_rect is not None:
+            title_bottom = max(title_bottom, frame.title_rect.y + frame.title_rect.h)
+        if frame.subtitle and frame.subtitle_rect is not None:
+            title_bottom = max(title_bottom, frame.subtitle_rect.y + frame.subtitle_rect.h)
+        if title_bottom > pf_top + 4.0:
             findings.append(
                 AuditFinding(
                     severity="error",
@@ -1138,7 +1148,10 @@ def _audit_scene_anchor_stability(
 
         # Pinned flow intra-scene stability
         if cur.pinned_flow is not None and nxt.pinned_flow is not None:
-            _check_pinned_flow_pair(
+            cur_ids = [n.id for n in cur.pinned_flow.nodes]
+            nxt_ids = [n.id for n in nxt.pinned_flow.nodes]
+            if cur_ids == nxt_ids:
+                _check_pinned_flow_pair(
                 cur.pinned_flow,
                 nxt.pinned_flow,
                 slide_num=slide_num,
@@ -1159,14 +1172,17 @@ def _audit_deck_pinned_flow_stability(
         if cur.scene_id == nxt.scene_id:
             continue
         if cur.pinned_flow is not None and nxt.pinned_flow is not None:
-            _check_pinned_flow_pair(
-                cur.pinned_flow,
-                nxt.pinned_flow,
-                slide_num=idx + 2,
-                scene_id=nxt.scene_id,
-                frame_index=nxt.frame_index,
-                findings=findings,
-            )
+            cur_ids = [n.id for n in cur.pinned_flow.nodes]
+            nxt_ids = [n.id for n in nxt.pinned_flow.nodes]
+            if cur_ids == nxt_ids:
+                _check_pinned_flow_pair(
+                    cur.pinned_flow,
+                    nxt.pinned_flow,
+                    slide_num=idx + 2,
+                    scene_id=nxt.scene_id,
+                    frame_index=nxt.frame_index,
+                    findings=findings,
+                )
 
 
 def select_review_slides(

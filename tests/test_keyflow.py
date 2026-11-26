@@ -2261,6 +2261,27 @@ def test_pinned_flow_preserves_title_and_supports_per_frame_toggle(tmp_path: Pat
                     {"visible_nodes": ["n1", "n2"], "show_pinned_flow": False, "notes": "Without ribbon"},
                 ],
             },
+            {
+                "id": "no_ribbon_scene",
+                "title": "无导航条独立幕",
+                "show_pinned_flow": False,
+                "nodes": [{"id": "solo", "label": "独立主题", "note": "No ribbon here"}],
+                "frames": [{"visible_nodes": ["solo"], "notes": "No ribbon"}],
+            },
+            {
+                "id": "custom_ribbon_scene",
+                "title": "第二套独立导航条幕",
+                "active_flow_node": "alt_b",
+                "pinned_flow": {
+                    "nodes": [
+                        {"id": "alt_a", "label": "支线甲"},
+                        {"id": "alt_b", "label": "支线乙"},
+                    ],
+                    "edges": [{"id": "ae1", "from": "alt_a", "to": "alt_b"}],
+                },
+                "nodes": [{"id": "c1", "label": "支线结论", "note": "Uses scene-level ribbon"}],
+                "frames": [{"visible_nodes": ["c1"], "notes": "Custom ribbon"}],
+            },
         ],
     }
     res = validate_deck(raw)
@@ -2275,11 +2296,19 @@ def test_pinned_flow_preserves_title_and_supports_per_frame_toggle(tmp_path: Pat
 
     detail_frames = resolve_scene(parsed.scenes[1], parsed.slide_width, parsed.slide_height, pinned_flow=parsed.pinned_flow)
     assert detail_frames[0].pinned_flow is not None
-    assert detail_frames[0].title_rect is not None and detail_frames[0].title_rect.y >= 156.0
+    assert detail_frames[0].title_rect is not None
+    # Title sits ABOVE the docked ribbon
+    pf_top = min(n.rect.y for n in detail_frames[0].pinned_flow.nodes)
+    assert detail_frames[0].title_rect.y + detail_frames[0].title_rect.h <= pf_top
     assert detail_frames[1].pinned_flow is None
-    assert detail_frames[1].title_rect is not None and detail_frames[1].title_rect.y < 100.0
+    assert detail_frames[1].title_rect is not None
     # Content node n1 keeps exact locked coordinates across ribbon-on and ribbon-off frames
     assert detail_frames[0].boxes[0].rect == detail_frames[1].boxes[0].rect
+
+    custom_frames = resolve_scene(parsed.scenes[3], parsed.slide_width, parsed.slide_height, pinned_flow=parsed.pinned_flow)
+    assert custom_frames[0].pinned_flow is not None
+    assert [n.id for n in custom_frames[0].pinned_flow.nodes] == ["alt_a", "alt_b"]
+    assert custom_frames[0].pinned_flow.nodes[1].is_active is True
 
     out = tmp_path / "per_frame_ribbon.keyx"
     compile_deck(raw, out)

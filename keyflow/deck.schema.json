@@ -25,52 +25,7 @@
         "height": { "type": "integer", "minimum": 480, "default": 1080 }
       }
     },
-    "pinned_flow": {
-      "type": "object",
-      "required": ["nodes"],
-      "additionalProperties": false,
-      "properties": {
-        "nodes": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["id", "label"],
-            "additionalProperties": false,
-            "properties": {
-              "id": { "type": "string", "minLength": 1 },
-              "label": { "type": "string", "minLength": 1 }
-            }
-          }
-        },
-        "edges": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["id", "from", "to"],
-            "additionalProperties": false,
-            "properties": {
-              "id": { "type": "string", "minLength": 1 },
-              "from": { "type": "string", "minLength": 1 },
-              "to": { "type": "string", "minLength": 1 },
-              "style": { "type": "string", "enum": ["solid", "dashed"], "default": "solid" }
-            }
-          }
-        },
-        "groups": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["id", "label", "node_ids"],
-            "additionalProperties": false,
-            "properties": {
-              "id": { "type": "string", "minLength": 1 },
-              "label": { "type": "string", "minLength": 1 },
-              "node_ids": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
-            }
-          }
-        }
-      }
-    },
+    "pinned_flow": { "$ref": "#/$defs/pinned_flow" },
     "story_model": {
       "type": "object",
       "required": ["claims"],
@@ -118,6 +73,7 @@
           "intro_note": { "type": "string", "default": "" },
           "active_flow_node": { "type": "string" },
           "show_pinned_flow": { "type": "boolean", "default": true },
+          "pinned_flow": { "$ref": "#/$defs/pinned_flow" },
           "palette": { "$ref": "#/$defs/palette" },
           "pacing": {
             "type": "string",
@@ -444,6 +400,52 @@
     }
   },
   "$defs": {
+    "pinned_flow": {
+      "type": "object",
+      "required": ["nodes"],
+      "additionalProperties": false,
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "label"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "label": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "from", "to"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "from": { "type": "string", "minLength": 1 },
+              "to": { "type": "string", "minLength": 1 },
+              "style": { "type": "string", "enum": ["solid", "dashed"], "default": "solid" }
+            }
+          }
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "label", "node_ids"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "label": { "type": "string", "minLength": 1 },
+              "node_ids": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+            }
+          }
+        }
+      }
+    },
     "palette": {
       "type": "object",
       "additionalProperties": false,
