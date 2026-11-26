@@ -9,6 +9,13 @@ from typing import Any, Literal, Sequence
 from keyflow.layout import BoxRect, PlacedBox, ResolvedFrame, resolve_scene
 from keyflow.pace import pace_deck
 from keyflow.schema import DeckSpec, parse_deck, validate_deck
+from keyflow.themes import (
+    ThemePreset,
+    apply_palette_overrides,
+    contrast_ratio,
+    get_theme,
+    hex_to_rgb_float,
+)
 
 Severity = Literal["error", "warning"]
 
@@ -153,6 +160,7 @@ def _audit_frame(
     slide_w: int,
     slide_h: int,
     findings: list[AuditFinding],
+    theme: ThemePreset | None = None,
 ) -> None:
     # 1. Scale check
     if frame.scale < 0.72:
@@ -527,6 +535,240 @@ def _audit_frame(
                         )
                     )
 
+    # Freeform canvas objects: region frames, charts, tables, shapes, textboxes, contrast & collisions
+    canvas_rects: list[tuple[str, BoxRect]] = [(b.id, b.rect) for b in top_cards]
+    for ga in dashed_groups:
+        canvas_rects.append((ga.id, ga.rect))
+
+    for rf in frame.region_frames:
+        _check_rect_bounds(
+            findings,
+            rf.rect,
+            f"Region '{rf.id}'",
+            slide_w=slide_w,
+            slide_h=slide_h,
+            slide_num=slide_num,
+            scene_id=frame.scene_id,
+            frame_index=frame.frame_index,
+            target_id=rf.id,
+        )
+
+    for ch in frame.charts:
+        _check_rect_bounds(
+            findings,
+            ch.rect,
+            f"Chart '{ch.id}'",
+            slide_w=slide_w,
+            slide_h=slide_h,
+            slide_num=slide_num,
+            scene_id=frame.scene_id,
+            frame_index=frame.frame_index,
+            target_id=ch.id,
+        )
+        canvas_rects.append((ch.id, ch.rect))
+        all_vals = [v for sr in ch.series for v in sr.values if v is not None]
+        if ch.chart_type in ("pie", "donut"):
+            if any(v < 0 for v in all_vals):
+                findings.append(
+                    AuditFinding(
+                        severity="error",
+                        category="invalid_chart_data",
+                        slide_num=slide_num,
+                        scene_id=frame.scene_id,
+                        frame_index=frame.frame_index,
+                        message=f"{ch.chart_type} chart '{ch.id}' contains negative values.",
+                        suggestion="Use non-negative values for pie/donut charts or switch to column/bar chart.",
+                        target_id=ch.id,
+                        suggested_action="fix_chart_values",
+                    )
+                )
+            elif all_vals and sum(all_vals) <= 0:
+                findings.append(
+                    AuditFinding(
+                        severity="warning",
+                        category="invalid_chart_data",
+                        slide_num=slide_num,
+                        scene_id=frame.scene_id,
+                        frame_index=frame.frame_index,
+                        message=f"{ch.chart_type} chart '{ch.id}' sums to zero.",
+                        suggestion="Ensure at least one positive slice value.",
+                        target_id=ch.id,
+                        suggested_action="fix_chart_values",
+                    )
+                )
+        if ch.chart_type in ("column", "stacked_column", "line", "area") and len(ch.categories) * 56.0 > ch.rect.w:
+            findings.append(
+                AuditFinding(
+                    severity="warning",
+                    category="chart_crowded",
+                    slide_num=slide_num,
+                    scene_id=frame.scene_id,
+                    frame_index=frame.frame_index,
+                    message=f"Chart '{ch.id}' has {len(ch.categories)} categories inside {ch.rect.w:.0f}px width.",
+                    suggestion="Widen the chart region, group tail categories, or switch to horizontal bar chart.",
+                    target_id=ch.id,
+                    suggested_action="widen_chart_or_reduce_categories",
+                )
+            )
+
+    for tbl in frame.tables:
+        _check_rect_bounds(
+            findings,
+            tbl.rect,
+            f"Table '{tbl.id}'",
+            slide_w=slide_w,
+            slide_h=slide_h,
+            slide_num=slide_num,
+            scene_id=frame.scene_id,
+            frame_index=frame.frame_index,
+            target_id=tbl.id,
+        )
+        canvas_rects.append((tbl.id, tbl.rect))
+        n_cols = max(1, len(tbl.headers))
+        n_rows = 1 + len(tbl.rows)
+        col_w = tbl.rect.w / n_cols
+        row_h = tbl.rect.h / n_rows
+        if col_w < 85.0 or row_h < 34.0:
+            findings.append(
+                AuditFinding(
+                    severity="warning",
+                    category="table_crowded",
+                    slide_num=slide_num,
+                    scene_id=frame.scene_id,
+                    frame_index=frame.frame_index,
+                    message=f"Table '{tbl.id}' cells are tight ({col_w:.0f}x{row_h:.0f}px).",
+                    suggestion="Give the table a wider/taller region or reduce columns/rows.",
+                    target_id=tbl.id,
+                    suggested_action="reduce_table_density",
+                )
+            )
+
+    for sh in frame.shapes:
+        _check_rect_bounds(
+            findings,
+            sh.rect,
+            f"Shape '{sh.id}'",
+            slide_w=slide_w,
+            slide_h=slide_h,
+            slide_num=slide_num,
+            scene_id=frame.scene_id,
+            frame_index=frame.frame_index,
+            target_id=sh.id,
+        )
+        canvas_rects.append((sh.id, sh.rect))
+        if theme is not None and sh.label and (sh.fill_hex or sh.color_hex or frame.palette):
+            fg = hex_to_rgb_float(sh.color_hex) if sh.color_hex else theme.text_rgb
+            bg_rgb = hex_to_rgb_float(sh.fill_hex) if sh.fill_hex else theme.card_fill_rgb
+            ratio = contrast_ratio(fg, bg_rgb)
+            if ratio < 3.0:
+                findings.append(
+                    AuditFinding(
+                        severity="error",
+                        category="low_contrast",
+                        slide_num=slide_num,
+                        scene_id=frame.scene_id,
+                        frame_index=frame.frame_index,
+                        message=f"Shape '{sh.id}' text contrast ratio {ratio:.2f} is below 3.0.",
+                        suggestion="Adjust fill_hex or color_hex so text remains clearly legible.",
+                        target_id=sh.id,
+                        suggested_action="adjust_contrast",
+                    )
+                )
+
+    for tb in frame.textboxes:
+        _check_rect_bounds(
+            findings,
+            tb.rect,
+            f"Textbox '{tb.id}'",
+            slide_w=slide_w,
+            slide_h=slide_h,
+            slide_num=slide_num,
+            scene_id=frame.scene_id,
+            frame_index=frame.frame_index,
+            target_id=tb.id,
+        )
+        canvas_rects.append((tb.id, tb.rect))
+        est_w = _text_units(tb.text) * tb.font_size * 0.56
+        lines = max(1.0, est_w / max(tb.rect.w - 16.0, 40.0))
+        if lines * tb.font_size * 1.35 > tb.rect.h * 1.15:
+            findings.append(
+                AuditFinding(
+                    severity="warning",
+                    category="text_overflow",
+                    slide_num=slide_num,
+                    scene_id=frame.scene_id,
+                    frame_index=frame.frame_index,
+                    message=f"Textbox '{tb.id}' may overflow {tb.rect.w:.0f}x{tb.rect.h:.0f}px bounds.",
+                    suggestion="Shorten text, lower font_size, or give this region more height.",
+                    target_id=tb.id,
+                    suggested_action="shorten_text_or_expand_region",
+                )
+            )
+        if theme is not None and (tb.color_hex or tb.fill_hex or frame.palette):
+            fg = hex_to_rgb_float(tb.color_hex) if tb.color_hex else theme.text_rgb
+            bg_rgb = (
+                hex_to_rgb_float(tb.fill_hex)
+                if tb.fill_hex
+                else (theme.bg_rgb[0] / 255.0, theme.bg_rgb[1] / 255.0, theme.bg_rgb[2] / 255.0)
+            )
+            ratio = contrast_ratio(fg, bg_rgb)
+            if ratio < 3.0:
+                findings.append(
+                    AuditFinding(
+                        severity="error",
+                        category="low_contrast",
+                        slide_num=slide_num,
+                        scene_id=frame.scene_id,
+                        frame_index=frame.frame_index,
+                        message=f"Textbox '{tb.id}' contrast ratio {ratio:.2f} is below 3.0.",
+                        suggestion="Adjust color_hex/fill_hex or palette bg_hex for higher contrast.",
+                        target_id=tb.id,
+                        suggested_action="adjust_contrast",
+                    )
+                )
+
+    if theme is not None:
+        for box in top_cards:
+            if box.fill_hex or box.color_hex or frame.palette:
+                fg = hex_to_rgb_float(box.color_hex) if box.color_hex else theme.text_rgb
+                bg_rgb = hex_to_rgb_float(box.fill_hex) if box.fill_hex else theme.card_fill_rgb
+                ratio = contrast_ratio(fg, bg_rgb)
+                if ratio < 3.0:
+                    findings.append(
+                        AuditFinding(
+                            severity="error",
+                            category="low_contrast",
+                            slide_num=slide_num,
+                            scene_id=frame.scene_id,
+                            frame_index=frame.frame_index,
+                            message=f"Card '{box.id}' text contrast ratio {ratio:.2f} is below 3.0.",
+                            suggestion="Adjust fill_hex or color_hex to meet >= 3.0 contrast.",
+                            target_id=box.id,
+                            suggested_action="adjust_contrast",
+                        )
+                    )
+
+    # Check collisions between heterogeneous freeform objects (e.g., chart vs card, table vs textbox)
+    box_ids = {b.id for b in top_cards} | {g.id for g in dashed_groups}
+    for i, (id_a, rect_a) in enumerate(canvas_rects):
+        for id_b, rect_b in canvas_rects[i + 1 :]:
+            if id_a in box_ids and id_b in box_ids:
+                continue  # Already checked in box/group section above
+            if _overlap_area(rect_a, rect_b):
+                findings.append(
+                    AuditFinding(
+                        severity="error",
+                        category="overlap",
+                        slide_num=slide_num,
+                        scene_id=frame.scene_id,
+                        frame_index=frame.frame_index,
+                        message=f"Canvas objects '{id_a}' and '{id_b}' overlap.",
+                        suggestion="Assign objects to non-overlapping grid regions or let region arrange='stack'/'row'.",
+                        target_id=f"{id_a},{id_b}",
+                        suggested_action="adjust_regions_or_split_scene",
+                    )
+                )
+
 
 def _emit_jitter(
     findings: list[AuditFinding],
@@ -680,23 +922,36 @@ def _audit_scene_anchor_stability(
                     message=f"Box '{nb.id}' shifted by {delta:.1f}pt between frames {f_idx} and {f_idx + 1}.",
                 )
 
-        # Persistent edges whose endpoints did not collapse/expand across the frame step
+        # Persistent edges/connectors whose endpoints did not collapse/expand across the frame step
         cur_edges = {e.id: e for e in cur.edges}
+        cur_rects = {b.id: (b.kind, b.rect) for b in cur.boxes}
+        nxt_rects = {b.id: (b.kind, b.rect) for b in nxt.boxes}
+        for group_name, cur_items, nxt_items in (
+            ("chart", cur.charts, nxt.charts),
+            ("table", cur.tables, nxt.tables),
+            ("shape", cur.shapes, nxt.shapes),
+            ("textbox", cur.textboxes, nxt.textboxes),
+        ):
+            for it in cur_items:
+                cur_rects[it.id] = (group_name, it.rect)
+            for it in nxt_items:
+                nxt_rects[it.id] = (group_name, it.rect)
+
         for ne in nxt.edges:
             pe = cur_edges.get(ne.id)
             if pe is None:
                 continue
-            pf_box = cur_map.get(pe.from_id)
-            nf_box = nxt_map.get(ne.from_id)
-            pt_box = cur_map.get(pe.to_id)
-            nt_box = nxt_map.get(ne.to_id)
+            pf_entry = cur_rects.get(pe.from_id)
+            nf_entry = nxt_rects.get(ne.from_id)
+            pt_entry = cur_rects.get(pe.to_id)
+            nt_entry = nxt_rects.get(ne.to_id)
             if (
-                pf_box is None
-                or nf_box is None
-                or pt_box is None
-                or nt_box is None
-                or pf_box.kind != nf_box.kind
-                or pt_box.kind != nt_box.kind
+                pf_entry is None
+                or nf_entry is None
+                or pt_entry is None
+                or nt_entry is None
+                or pf_entry[0] != nf_entry[0]
+                or pt_entry[0] != nt_entry[0]
             ):
                 continue
             delta = max(
@@ -716,6 +971,38 @@ def _audit_scene_anchor_stability(
                     target_id=ne.id,
                     message=f"Edge '{ne.id}' shifted by {delta:.1f}pt between frames {f_idx} and {f_idx + 1}.",
                 )
+
+        # Freeform charts, tables, shapes, and textboxes anchor & axis stability
+        for kind_label, cur_list, nxt_list in (
+            ("Chart", cur.charts, nxt.charts),
+            ("Table", cur.tables, nxt.tables),
+            ("Shape", cur.shapes, nxt.shapes),
+            ("Textbox", cur.textboxes, nxt.textboxes),
+        ):
+            c_by_id = {it.id: it for it in cur_list}
+            for nit in nxt_list:
+                cit = c_by_id.get(nit.id)
+                if cit is None:
+                    continue
+                delta = _max_rect_delta(cit.rect, nit.rect)
+                if delta > 0.5:
+                    _emit_jitter(
+                        findings,
+                        slide_num=slide_num,
+                        scene_id=cur.scene_id,
+                        frame_index=f_idx + 1,
+                        target_id=nit.id,
+                        message=f"{kind_label} '{nit.id}' shifted by {delta:.1f}pt between frames {f_idx} and {f_idx + 1}.",
+                    )
+                if kind_label == "Chart" and (cit.axis_min != nit.axis_min or cit.axis_max != nit.axis_max):  # type: ignore[attr-defined]
+                    _emit_jitter(
+                        findings,
+                        slide_num=slide_num,
+                        scene_id=cur.scene_id,
+                        frame_index=f_idx + 1,
+                        target_id=nit.id,
+                        message=f"Chart '{nit.id}' value axis bounds changed between frames {f_idx} and {f_idx + 1}.",
+                    )
 
         # Dividers
         if len(cur.dividers) == len(nxt.dividers):
@@ -889,7 +1176,7 @@ def _audit_story_fidelity(
                     continue
                 if cl.metric_scope:
                     scene_scopes.add(cl.metric_scope)
-                if badge and _badge_is_factual(badge) and cl.type in ("inference", "thesis"):
+                if badge and _badge_is_factual(badge) and cl.type in ("inference", "thesis", "example"):
                     findings.append(
                         AuditFinding(
                             severity="error",
@@ -905,6 +1192,13 @@ def _audit_story_fidelity(
                     )
 
         _inspect_refs(scene.id, scene.evidence_refs)
+        for obj in scene.objects:
+            _inspect_refs(obj.id, obj.evidence_refs, obj.badge)
+            if obj.diagram is not None:
+                for node in obj.diagram.nodes:
+                    _inspect_refs(f"{obj.id}__{node.id}", node.evidence_refs, node.badge)
+                    for child in node.children:
+                        _inspect_refs(f"{obj.id}__{node.id}__{child.id}", child.evidence_refs, child.badge)
         for node in scene.nodes:
             _inspect_refs(node.id, node.evidence_refs, node.badge)
             for child in node.children:
@@ -969,10 +1263,11 @@ def audit_deck(
     deck_or_raw: DeckSpec | dict[str, Any],
     *,
     strict: bool = False,
+    use_templates: bool | None = None,
 ) -> AuditReport:
-    """Run Tier 1 deterministic geometry, stability, and readability audit on a deck."""
+    """Run Tier 1 deterministic geometry, stability, contrast, and readability audit on a deck."""
     if isinstance(deck_or_raw, dict):
-        validation = validate_deck(deck_or_raw)
+        validation = validate_deck(deck_or_raw, use_templates=use_templates)
         if not validation.valid:
             findings = [
                 AuditFinding(
@@ -993,6 +1288,7 @@ def audit_deck(
     else:
         deck = deck_or_raw
 
+    base_theme = apply_palette_overrides(get_theme(deck.theme), deck.palette)
     all_findings: list[AuditFinding] = []
     all_frames: list[ResolvedFrame] = []
     scene_ranges: list[tuple[str, int, int]] = []
@@ -1000,6 +1296,7 @@ def audit_deck(
     min_scale = 1.0
 
     for scene in deck.scenes:
+        scene_theme = apply_palette_overrides(base_theme, scene.palette)
         resolved = resolve_scene(
             scene,
             deck.slide_width,
@@ -1016,6 +1313,7 @@ def audit_deck(
                 slide_w=deck.slide_width,
                 slide_h=deck.slide_height,
                 findings=all_findings,
+                theme=scene_theme,
             )
             slide_num += 1
         _audit_scene_anchor_stability(resolved, scene_ranges[-1][1], all_findings)

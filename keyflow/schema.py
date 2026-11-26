@@ -9,9 +9,10 @@ import json
 from pathlib import Path
 from typing import Any, Literal, Sequence
 
-from keyflow.themes import THEMES
+from keyflow.themes import THEMES, is_valid_hex_color
 
 LayoutMode = Literal[
+    "canvas",
     "horizontal_flow",
     "vertical_flow",
     "comparison",
@@ -30,8 +31,16 @@ CaptionPosition = Literal["bottom", "top", "inside"]
 EdgeStyle = Literal["solid", "dashed"]
 PacingMode = Literal["auto", "compact", "manual"]
 TrendDirection = Literal["up", "down", "neutral"]
-EvidenceType = Literal["thesis", "fact", "relation", "inference", "counter_evidence", "conclusion"]
+EvidenceType = Literal["thesis", "fact", "relation", "inference", "counter_evidence", "conclusion", "example"]
 ConfidenceLevel = Literal["high", "medium", "low"]
+RegionArrange = Literal["stack", "row", "grid"]
+CanvasObjectKind = Literal["chart", "table", "card", "textbox", "shape", "callout", "diagram"]
+ChartType = Literal["column", "bar", "pie", "donut", "line", "area", "stacked_column", "stacked_bar", "scatter"]
+ChartReveal = Literal["whole", "by_series", "by_category"]
+TableReveal = Literal["whole", "by_row", "by_column"]
+ShapeType = Literal["rounded_rect", "rect", "ellipse", "pill", "custom"]
+DiagramLayout = Literal["horizontal", "vertical", "dag", "hub_spoke"]
+TextAlign = Literal["left", "center", "right"]
 
 
 @dataclass(slots=True)
@@ -175,6 +184,108 @@ class ComparisonMatrixSpec:
 
 
 @dataclass(slots=True)
+class GridSpec:
+    """12-column (or custom) grid specification for a freeform canvas scene."""
+
+    columns: int = 12
+    rows: int | None = None
+    gap: float = 28.0
+
+
+@dataclass(slots=True)
+class RegionSpec:
+    """One named grid region inside a freeform canvas scene."""
+
+    id: str
+    col: int = 1
+    row: int = 1
+    col_span: int = 12
+    row_span: int = 1
+    arrange: RegionArrange = "stack"
+    gap: float = 20.0
+    padding: float = 0.0
+    title: str | None = None
+    frame: bool = False
+
+
+@dataclass(slots=True)
+class ChartSeriesSpec:
+    """One data series inside a native .keyx Chart primitive."""
+
+    name: str
+    values: list[float] = field(default_factory=list)
+    color_hex: str | None = None
+
+
+@dataclass(slots=True)
+class ChartSpec:
+    """Native .keyx Chart specification."""
+
+    chart_type: ChartType
+    categories: list[str] = field(default_factory=list)
+    series: list[ChartSeriesSpec] = field(default_factory=list)
+    title: str | None = None
+    unit: str | None = None
+    show_legend: bool | None = None
+    show_value_labels: bool = True
+    axis_min: float | None = None
+    axis_max: float | None = None
+    reveal: ChartReveal = "whole"
+
+
+@dataclass(slots=True)
+class TableSpec:
+    """Native .keyx Table specification."""
+
+    headers: list[str] = field(default_factory=list)
+    rows: list[list[str]] = field(default_factory=list)
+    title: str | None = None
+    highlight_cols: list[int] = field(default_factory=list)
+    highlight_rows: list[int] = field(default_factory=list)
+    reveal: TableReveal = "whole"
+
+
+@dataclass(slots=True)
+class DiagramSpec:
+    """Inline node-and-edge diagram placed inside a canvas region."""
+
+    diagram_layout: DiagramLayout = "horizontal"
+    nodes: list[NodeSpec] = field(default_factory=list)
+    edges: list[EdgeSpec] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class CanvasObjectSpec:
+    """One freeform visual object aligned to native .keyx primitives."""
+
+    id: str
+    kind: CanvasObjectKind
+    region: str | None = None
+    step: int = 1
+    variant: NodeVariant = "primary"
+    note: str = ""
+    evidence_refs: list[str] = field(default_factory=list)
+    weight: float = 1.0
+    label: str | None = None
+    sublabel: str | None = None
+    badge: str | None = None
+    metric: str | None = None
+    text: str | None = None
+    font_size: float | None = None
+    bold: bool | None = None
+    align: TextAlign = "center"
+    fill_hex: str | None = None
+    border_hex: str | None = None
+    color_hex: str | None = None
+    shape_type: ShapeType = "rounded_rect"
+    svg_path: str | None = None
+    dashed: bool = False
+    chart: ChartSpec | None = None
+    table: TableSpec | None = None
+    diagram: DiagramSpec | None = None
+
+
+@dataclass(slots=True)
 class FrameSpec:
     """One progressive visual frame within a scene."""
 
@@ -184,6 +295,9 @@ class FrameSpec:
     focus_nodes: list[str] | None = None
     visible_items: list[str] | None = None
     visible_columns: list[str] | None = None
+    visible_objects: list[str] | None = None
+    focus_objects: list[str] | None = None
+    object_states: dict[str, dict[str, int]] = field(default_factory=dict)
     show_annotations: bool = True
     notes: str = ""
     subtitle: str | None = None
@@ -191,12 +305,13 @@ class FrameSpec:
 
 @dataclass(slots=True)
 class SceneSpec:
-    """One conceptual diagram sequence (rendered as 1..N progressive slides)."""
+    """One conceptual diagram or freeform canvas sequence (rendered as 1..N progressive slides)."""
 
     id: str
     title: str
     layout: LayoutMode = "horizontal_flow"
     subtitle: str | None = None
+    source_section: str | None = None
     claim: str | None = None
     metric_scope: str | None = None
     evidence_refs: list[str] = field(default_factory=list)
@@ -204,6 +319,11 @@ class SceneSpec:
     intro_note: str = ""
     active_flow_node: str | None = None
     show_pinned_flow: bool = True
+    palette: dict[str, Any] | None = None
+    grid: GridSpec | None = None
+    regions: list[RegionSpec] = field(default_factory=list)
+    objects: list[CanvasObjectSpec] = field(default_factory=list)
+    connectors: list[EdgeSpec] = field(default_factory=list)
     nodes: list[NodeSpec] = field(default_factory=list)
     edges: list[EdgeSpec] = field(default_factory=list)
     proportion_bar: ProportionBarSpec | None = None
@@ -216,7 +336,9 @@ class DeckSpec:
     """Complete presentation specification compiled into a .keyx bundle."""
 
     title: str
+    use_templates: bool = False
     theme: str = "slate_dark"
+    palette: dict[str, Any] | None = None
     slide_width: int = 1920
     slide_height: int = 1080
     pinned_flow: PinnedFlowSpec | None = None
@@ -383,6 +505,12 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
 
         frames: list[FrameSpec] = []
         for f_raw in s_raw.get("frames") or []:
+            raw_obj_states = f_raw.get("object_states") or {}
+            obj_states = {
+                str(k): {str(sk): int(sv) for sk, sv in v.items()}
+                for k, v in raw_obj_states.items()
+                if isinstance(v, dict)
+            }
             frames.append(
                 FrameSpec(
                     visible_nodes=[str(x) for x in f_raw.get("visible_nodes", [])],
@@ -403,19 +531,148 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
                         if f_raw.get("visible_columns") is not None
                         else None
                     ),
+                    visible_objects=(
+                        [str(x) for x in f_raw["visible_objects"]]
+                        if f_raw.get("visible_objects") is not None
+                        else None
+                    ),
+                    focus_objects=(
+                        [str(x) for x in f_raw["focus_objects"]]
+                        if f_raw.get("focus_objects") is not None
+                        else None
+                    ),
+                    object_states=obj_states,
                     show_annotations=bool(f_raw.get("show_annotations", True)),
                     notes=str(f_raw.get("notes", "")),
                     subtitle=f_raw.get("subtitle"),
                 )
             )
 
+        grid: GridSpec | None = None
+        if s_raw.get("grid"):
+            g_raw = s_raw["grid"]
+            grid = GridSpec(
+                columns=int(g_raw.get("columns", 12)),
+                rows=int(g_raw["rows"]) if g_raw.get("rows") is not None else None,
+                gap=float(g_raw.get("gap", 28.0)),
+            )
+
+        regions: list[RegionSpec] = [
+            RegionSpec(
+                id=str(r["id"]),
+                col=int(r.get("col", 1)),
+                row=int(r.get("row", 1)),
+                col_span=int(r.get("col_span", 12)),
+                row_span=int(r.get("row_span", 1)),
+                arrange=r.get("arrange", "stack"),
+                gap=float(r.get("gap", 20.0)),
+                padding=float(r.get("padding", 0.0)),
+                title=str(r["title"]) if r.get("title") else None,
+                frame=bool(r.get("frame", False)),
+            )
+            for r in s_raw.get("regions", [])
+        ]
+
+        objects: list[CanvasObjectSpec] = []
+        for obj_raw in s_raw.get("objects", []):
+            chart_spec: ChartSpec | None = None
+            if obj_raw.get("chart"):
+                ch_raw = obj_raw["chart"]
+                chart_spec = ChartSpec(
+                    chart_type=ch_raw["chart_type"],
+                    categories=[str(c) for c in ch_raw.get("categories", [])],
+                    series=[
+                        ChartSeriesSpec(
+                            name=str(sr["name"]),
+                            values=[float(v) for v in sr.get("values", [])],
+                            color_hex=str(sr["color_hex"]) if sr.get("color_hex") else None,
+                        )
+                        for sr in ch_raw.get("series", [])
+                    ],
+                    title=str(ch_raw["title"]) if ch_raw.get("title") else None,
+                    unit=str(ch_raw["unit"]) if ch_raw.get("unit") else None,
+                    show_legend=ch_raw.get("show_legend"),
+                    show_value_labels=bool(ch_raw.get("show_value_labels", True)),
+                    axis_min=float(ch_raw["axis_min"]) if ch_raw.get("axis_min") is not None else None,
+                    axis_max=float(ch_raw["axis_max"]) if ch_raw.get("axis_max") is not None else None,
+                    reveal=ch_raw.get("reveal", "whole"),
+                )
+
+            table_spec: TableSpec | None = None
+            if obj_raw.get("table"):
+                tb_raw = obj_raw["table"]
+                table_spec = TableSpec(
+                    headers=[str(h) for h in tb_raw.get("headers", [])],
+                    rows=[[str(cell) for cell in row] for row in tb_raw.get("rows", [])],
+                    title=str(tb_raw["title"]) if tb_raw.get("title") else None,
+                    highlight_cols=[int(i) for i in tb_raw.get("highlight_cols", [])],
+                    highlight_rows=[int(i) for i in tb_raw.get("highlight_rows", [])],
+                    reveal=tb_raw.get("reveal", "whole"),
+                )
+
+            diagram_spec: DiagramSpec | None = None
+            if obj_raw.get("diagram"):
+                dg_raw = obj_raw["diagram"]
+                dg_nodes, dg_edges = _parse_nodes_and_edges(
+                    dg_raw.get("nodes", []),
+                    dg_raw.get("edges", []),
+                )
+                diagram_spec = DiagramSpec(
+                    diagram_layout=dg_raw.get("diagram_layout", "horizontal"),
+                    nodes=dg_nodes,
+                    edges=dg_edges,
+                )
+
+            objects.append(
+                CanvasObjectSpec(
+                    id=str(obj_raw["id"]),
+                    kind=obj_raw["kind"],
+                    region=str(obj_raw["region"]) if obj_raw.get("region") else None,
+                    step=int(obj_raw.get("step", 1)),
+                    variant=obj_raw.get("variant", "primary"),
+                    note=str(obj_raw.get("note", "")),
+                    evidence_refs=[str(r) for r in obj_raw.get("evidence_refs", [])],
+                    weight=float(obj_raw.get("weight", 1.0)),
+                    label=str(obj_raw["label"]) if obj_raw.get("label") else None,
+                    sublabel=str(obj_raw["sublabel"]) if obj_raw.get("sublabel") else None,
+                    badge=str(obj_raw["badge"]) if obj_raw.get("badge") else None,
+                    metric=str(obj_raw["metric"]) if obj_raw.get("metric") else None,
+                    text=str(obj_raw["text"]) if obj_raw.get("text") else None,
+                    font_size=float(obj_raw["font_size"]) if obj_raw.get("font_size") is not None else None,
+                    bold=obj_raw.get("bold"),
+                    align=obj_raw.get("align", "center"),
+                    fill_hex=str(obj_raw["fill_hex"]) if obj_raw.get("fill_hex") else None,
+                    border_hex=str(obj_raw["border_hex"]) if obj_raw.get("border_hex") else None,
+                    color_hex=str(obj_raw["color_hex"]) if obj_raw.get("color_hex") else None,
+                    shape_type=obj_raw.get("shape_type", "rounded_rect"),
+                    svg_path=str(obj_raw["svg_path"]) if obj_raw.get("svg_path") else None,
+                    dashed=bool(obj_raw.get("dashed", False)),
+                    chart=chart_spec,
+                    table=table_spec,
+                    diagram=diagram_spec,
+                )
+            )
+
+        connectors = [
+            EdgeSpec(
+                id=str(e["id"]),
+                from_id=str(e["from"]),
+                to_id=str(e["to"]),
+                label=str(e["label"]) if e.get("label") else None,
+                style=e.get("style", "solid"),
+            )
+            for e in s_raw.get("connectors", [])
+        ]
+
         default_pacing = "manual" if frames else "auto"
+        inferred_layout = "canvas" if ("objects" in s_raw or "regions" in s_raw) else "horizontal_flow"
         scenes.append(
             SceneSpec(
                 id=str(s_raw["id"]),
                 title=str(s_raw["title"]),
-                layout=s_raw.get("layout", "horizontal_flow"),
+                layout=s_raw.get("layout", inferred_layout),
                 subtitle=s_raw.get("subtitle"),
+                source_section=str(s_raw["source_section"]) if s_raw.get("source_section") else None,
                 claim=str(s_raw["claim"]) if s_raw.get("claim") is not None else None,
                 metric_scope=str(s_raw["metric_scope"]) if s_raw.get("metric_scope") is not None else None,
                 evidence_refs=[str(r) for r in s_raw.get("evidence_refs", [])],
@@ -423,6 +680,11 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
                 intro_note=str(s_raw.get("intro_note", "")),
                 active_flow_node=str(s_raw["active_flow_node"]) if s_raw.get("active_flow_node") else None,
                 show_pinned_flow=bool(s_raw.get("show_pinned_flow", True)),
+                palette=dict(s_raw["palette"]) if isinstance(s_raw.get("palette"), dict) else None,
+                grid=grid,
+                regions=regions,
+                objects=objects,
+                connectors=connectors,
                 nodes=nodes,
                 edges=edges,
                 proportion_bar=prop_bar,
@@ -434,7 +696,9 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
     slide_size = raw.get("slide_size", {})
     return DeckSpec(
         title=str(raw.get("title", "Untitled Deck")),
+        use_templates=bool(raw.get("use_templates", False)),
         theme=str(raw.get("theme", "slate_dark")),
+        palette=dict(raw["palette"]) if isinstance(raw.get("palette"), dict) else None,
         slide_width=int(slide_size.get("width", 1920)),
         slide_height=int(slide_size.get("height", 1080)),
         pinned_flow=pinned_flow,
@@ -537,20 +801,26 @@ def _schema_key_sets() -> dict[str, frozenset[str]]:
         return {}
     raw = json.loads(schema_path.read_text(encoding="utf-8"))
     props = raw.get("properties", {})
+    defs = raw.get("$defs", {})
     pf_props = props.get("pinned_flow", {}).get("properties", {})
     sm_props = props.get("story_model", {}).get("properties", {})
     sc_props = props.get("scenes", {}).get("items", {}).get("properties", {})
-    node_props = sc_props.get("nodes", {}).get("items", {}).get("properties", {})
+    node_props = defs.get("node", {}).get("properties", {})
     child_props = node_props.get("children", {}).get("items", {}).get("properties", {})
-    edge_props = sc_props.get("edges", {}).get("items", {}).get("properties", {})
+    edge_props = defs.get("edge", {}).get("properties", {})
     pb_props = sc_props.get("proportion_bar", {}).get("properties", {})
     pb_item_props = pb_props.get("items", {}).get("items", {}).get("properties", {})
     mx_props = sc_props.get("matrix", {}).get("properties", {})
     mx_col_props = mx_props.get("columns", {}).get("items", {}).get("properties", {})
     mx_row_props = mx_col_props.get("rows", {}).get("items", {}).get("properties", {})
     frame_props = sc_props.get("frames", {}).get("items", {}).get("properties", {})
+    obj_props = sc_props.get("objects", {}).get("items", {}).get("properties", {})
+    chart_props = obj_props.get("chart", {}).get("properties", {})
+    table_props = obj_props.get("table", {}).get("properties", {})
+    diagram_props = obj_props.get("diagram", {}).get("properties", {})
     return {
         "deck": frozenset(props),
+        "palette": frozenset(defs.get("palette", {}).get("properties", {})),
         "slide_size": frozenset(props.get("slide_size", {}).get("properties", {})),
         "pinned_flow": frozenset(pf_props),
         "pf_node": frozenset(pf_props.get("nodes", {}).get("items", {}).get("properties", {})),
@@ -559,6 +829,13 @@ def _schema_key_sets() -> dict[str, frozenset[str]]:
         "story_model": frozenset(sm_props),
         "story_claim": frozenset(sm_props.get("claims", {}).get("items", {}).get("properties", {})),
         "scene": frozenset(sc_props),
+        "grid": frozenset(sc_props.get("grid", {}).get("properties", {})),
+        "region": frozenset(sc_props.get("regions", {}).get("items", {}).get("properties", {})),
+        "canvas_object": frozenset(obj_props),
+        "chart": frozenset(chart_props),
+        "chart_series": frozenset(chart_props.get("series", {}).get("items", {}).get("properties", {})),
+        "table": frozenset(table_props),
+        "diagram": frozenset(diagram_props),
         "node": frozenset(node_props),
         "child": frozenset(child_props),
         "edge": frozenset(edge_props),
@@ -568,6 +845,9 @@ def _schema_key_sets() -> dict[str, frozenset[str]]:
         "matrix_column": frozenset(mx_col_props),
         "matrix_row": frozenset(mx_row_props),
         "frame": frozenset(frame_props),
+        "object_state": frozenset(
+            frame_props.get("object_states", {}).get("additionalProperties", {}).get("properties", {})
+        ),
     }
 
 
@@ -602,8 +882,424 @@ def _check_evidence_refs(
             errors.append(f"{path}: unknown evidence_ref '{cid}'.")
 
 
-def validate_deck(raw: dict[str, Any]) -> ValidationResult:
-    """Validate structural integrity, references, and visual density rules."""
+def _validate_palette(pal: Any, path: str, errors: list[str]) -> None:
+    if not isinstance(pal, dict):
+        errors.append(f"{path} must be an object.")
+        return
+    _check_allowed_keys(pal, "palette", path, errors)
+    for k, v in pal.items():
+        if k == "series_colors":
+            if not isinstance(v, list) or not v:
+                errors.append(f"{path}.series_colors must be a non-empty list of #RRGGBB hex colors.")
+            else:
+                for idx, item in enumerate(v):
+                    if not isinstance(item, str) or not is_valid_hex_color(item):
+                        errors.append(f"{path}.series_colors[{idx}]: invalid hex color '{item}' (expected #RRGGBB).")
+        elif not isinstance(v, str) or not is_valid_hex_color(v):
+            errors.append(f"{path}.{k}: invalid hex color '{v}' (expected #RRGGBB).")
+
+
+def _validate_nodes_and_edges(
+    nodes: Any,
+    edges: Any,
+    *,
+    prefix: str,
+    layout_kind: str,
+    claim_ids: set[str],
+    errors: list[str],
+    warnings: list[str],
+) -> tuple[dict[str, dict[str, Any]], set[str]]:
+    valid_child_layouts = {"row", "column", "grid"}
+    valid_variants = {"primary", "accent", "muted", "success", "warn"}
+    node_map: dict[str, dict[str, Any]] = {}
+    node_order: list[str] = []
+
+    if not isinstance(nodes, list):
+        errors.append(f"{prefix}.nodes must be a list.")
+        return node_map, set()
+
+    for n_idx, n in enumerate(nodes):
+        if not isinstance(n, dict):
+            errors.append(f"{prefix}.nodes[{n_idx}]: must be an object.")
+            continue
+        _check_allowed_keys(n, "node", f"{prefix}.nodes[{n_idx}]", errors)
+        nid = n.get("id")
+        if not isinstance(nid, str) or not nid:
+            errors.append(f"{prefix}.nodes[{n_idx}]: missing 'id'.")
+            continue
+        if nid in node_map:
+            errors.append(f"{prefix}: duplicate node id '{nid}'.")
+        else:
+            node_order.append(nid)
+        node_map[nid] = n
+        _check_evidence_refs(n, claim_ids, f"{prefix}.nodes['{nid}']", errors)
+
+        variant = n.get("variant", "primary")
+        if variant not in valid_variants:
+            errors.append(f"{prefix}.nodes['{nid}']: invalid variant '{variant}'.")
+
+        raw_label = n.get("label")
+        if not isinstance(raw_label, str) or not raw_label:
+            errors.append(f"{prefix}.nodes[{n_idx}] ('{nid}'): missing 'label'.")
+        else:
+            _check_label_density(
+                f"{prefix}.nodes['{nid}']",
+                raw_label,
+                n.get("sublabel") if isinstance(n.get("sublabel"), str) else None,
+                n.get("badge") if isinstance(n.get("badge"), str) else None,
+                n.get("metric") if isinstance(n.get("metric"), str) else None,
+                warnings,
+            )
+
+        child_layout = n.get("child_layout", "row")
+        if child_layout not in valid_child_layouts:
+            errors.append(f"{prefix}.nodes['{nid}']: invalid child_layout '{child_layout}'.")
+
+        children = n.get("children", [])
+        if not isinstance(children, list):
+            errors.append(f"{prefix}.nodes['{nid}'].children must be a list.")
+            children = []
+        if n.get("kind") == "group_dashed" and not children:
+            errors.append(f"{prefix}.nodes['{nid}']: kind='group_dashed' requires non-empty 'children'.")
+        if layout_kind in ("horizontal_flow", "horizontal") and len(children) >= 4 and child_layout == "row":
+            warnings.append(
+                f"{prefix}.nodes['{nid}']: {len(children)} children in horizontal 'row' may squeeze the flow; consider child_layout='grid'."
+            )
+
+        child_ids: set[str] = set()
+        for c_idx, c in enumerate(children):
+            if not isinstance(c, dict):
+                errors.append(f"{prefix}.nodes['{nid}'].children[{c_idx}]: must be an object.")
+                continue
+            _check_allowed_keys(c, "child", f"{prefix}.nodes['{nid}'].children[{c_idx}]", errors)
+            cid = c.get("id")
+            if not isinstance(cid, str) or not cid:
+                errors.append(f"{prefix}.nodes['{nid}'].children[{c_idx}]: missing 'id'.")
+            elif cid in child_ids:
+                errors.append(f"{prefix}.nodes['{nid}']: duplicate child id '{cid}'.")
+            else:
+                child_ids.add(cid)
+            _check_evidence_refs(c, claim_ids, f"{prefix}.nodes['{nid}'].children['{cid}']", errors)
+
+            cvar = c.get("variant", "primary")
+            if cvar not in valid_variants:
+                errors.append(f"{prefix}.nodes['{nid}'].children['{cid}']: invalid variant '{cvar}'.")
+
+            clabel = c.get("label")
+            if not isinstance(clabel, str) or not clabel:
+                errors.append(f"{prefix}.nodes['{nid}'].children[{c_idx}]: missing 'label'.")
+            else:
+                _check_label_density(
+                    f"{prefix}.nodes['{nid}'].children['{cid}']",
+                    clabel,
+                    c.get("sublabel") if isinstance(c.get("sublabel"), str) else None,
+                    c.get("badge") if isinstance(c.get("badge"), str) else None,
+                    c.get("metric") if isinstance(c.get("metric"), str) else None,
+                    warnings,
+                )
+
+    edge_ids: set[str] = set()
+    valid_edge_pairs: list[tuple[str, str]] = []
+    if not isinstance(edges, list):
+        errors.append(f"{prefix}.edges must be a list.")
+    else:
+        for e_idx, e in enumerate(edges):
+            if not isinstance(e, dict):
+                errors.append(f"{prefix}.edges[{e_idx}]: must be an object.")
+                continue
+            _check_allowed_keys(e, "edge", f"{prefix}.edges[{e_idx}]", errors)
+            eid = e.get("id")
+            if not isinstance(eid, str) or not eid:
+                errors.append(f"{prefix}.edges[{e_idx}]: missing 'id'.")
+            elif eid in edge_ids:
+                errors.append(f"{prefix}: duplicate edge id '{eid}'.")
+            else:
+                edge_ids.add(eid)
+            src = e.get("from")
+            dst = e.get("to")
+            if src not in node_map:
+                errors.append(f"{prefix}.edges['{eid}']: unknown 'from' node '{src}'.")
+            if dst not in node_map:
+                errors.append(f"{prefix}.edges['{eid}']: unknown 'to' node '{dst}'.")
+            if isinstance(src, str) and isinstance(dst, str) and src in node_map and dst in node_map:
+                if src == dst and layout_kind in ("flow_dag", "dag"):
+                    errors.append(f"{prefix}.edges['{eid}']: self-loop '{src} -> {dst}' is not allowed in DAG.")
+                valid_edge_pairs.append((src, dst))
+
+    if layout_kind in ("flow_dag", "dag") and node_order and valid_edge_pairs:
+        _, cyclic_nodes = compute_dag_layers(node_order, valid_edge_pairs)
+        if cyclic_nodes:
+            errors.append(
+                f"{prefix}: DAG contains cyclic dependencies involving: {', '.join(cyclic_nodes)}."
+            )
+
+    return node_map, edge_ids
+
+
+def _validate_canvas_scene(
+    s: dict[str, Any],
+    *,
+    prefix: str,
+    claim_ids: set[str],
+    errors: list[str],
+    warnings: list[str],
+) -> tuple[set[str], dict[str, dict[str, Any]]]:
+    """Validate grid, regions, freeform .keyx objects, and cross-object connectors."""
+    grid_cols = 12
+    grid_rows: int | None = None
+    if s.get("grid") is not None:
+        g = s["grid"]
+        if not isinstance(g, dict):
+            errors.append(f"{prefix}.grid must be an object.")
+        else:
+            _check_allowed_keys(g, "grid", f"{prefix}.grid", errors)
+            cols_val = _as_float(g.get("columns", 12))
+            if cols_val is None or cols_val < 1 or cols_val > 24:
+                errors.append(f"{prefix}.grid.columns must be an integer in [1, 24].")
+            else:
+                grid_cols = int(cols_val)
+            if g.get("rows") is not None:
+                rows_val = _as_float(g["rows"])
+                if rows_val is None or rows_val < 1 or rows_val > 12:
+                    errors.append(f"{prefix}.grid.rows must be an integer in [1, 12].")
+                else:
+                    grid_rows = int(rows_val)
+            if "gap" in g:
+                gap_val = _as_float(g["gap"])
+                if gap_val is None or gap_val < 0:
+                    errors.append(f"{prefix}.grid.gap must be non-negative.")
+
+    region_ids: set[str] = set()
+    occupied_cells: dict[tuple[int, int], str] = {}
+    valid_arranges = {"stack", "row", "grid"}
+    if s.get("regions") is not None:
+        regs = s["regions"]
+        if not isinstance(regs, list):
+            errors.append(f"{prefix}.regions must be a list.")
+        else:
+            for r_idx, reg in enumerate(regs):
+                if not isinstance(reg, dict):
+                    errors.append(f"{prefix}.regions[{r_idx}]: must be an object.")
+                    continue
+                _check_allowed_keys(reg, "region", f"{prefix}.regions[{r_idx}]", errors)
+                rid = reg.get("id")
+                if not isinstance(rid, str) or not rid:
+                    errors.append(f"{prefix}.regions[{r_idx}]: missing 'id'.")
+                    continue
+                if rid in region_ids:
+                    errors.append(f"{prefix}: duplicate region id '{rid}'.")
+                else:
+                    region_ids.add(rid)
+                arrange = reg.get("arrange", "stack")
+                if arrange not in valid_arranges:
+                    errors.append(f"{prefix}.regions['{rid}']: invalid arrange '{arrange}'.")
+                col = int(_as_float(reg.get("col", 1)) or 0)
+                row = int(_as_float(reg.get("row", 1)) or 0)
+                cspan = int(_as_float(reg.get("col_span", 12)) or 0)
+                rspan = int(_as_float(reg.get("row_span", 1)) or 0)
+                if col < 1 or cspan < 1 or col + cspan - 1 > grid_cols:
+                    errors.append(
+                        f"{prefix}.regions['{rid}']: col={col}, col_span={cspan} exceeds grid columns={grid_cols}."
+                    )
+                if row < 1 or rspan < 1 or (grid_rows is not None and row + rspan - 1 > grid_rows):
+                    errors.append(
+                        f"{prefix}.regions['{rid}']: row={row}, row_span={rspan} out of grid row bounds."
+                    )
+                for rr in range(max(1, row), max(1, row) + max(0, rspan)):
+                    for cc in range(max(1, col), max(1, col) + max(0, cspan)):
+                        prev = occupied_cells.get((rr, cc))
+                        if prev and prev != rid:
+                            errors.append(
+                                f"{prefix}.regions['{rid}']: overlaps grid cell ({rr}, {cc}) with region '{prev}'."
+                            )
+                        else:
+                            occupied_cells[(rr, cc)] = rid
+
+    valid_kinds = {"chart", "table", "card", "textbox", "shape", "callout", "diagram"}
+    valid_variants = {"primary", "accent", "muted", "success", "warn"}
+    valid_chart_types = {"column", "bar", "pie", "donut", "line", "area", "stacked_column", "stacked_bar", "scatter"}
+    valid_chart_reveals = {"whole", "by_series", "by_category"}
+    valid_table_reveals = {"whole", "by_row", "by_column"}
+    valid_shape_types = {"rounded_rect", "rect", "ellipse", "pill", "custom"}
+    valid_diagram_layouts = {"horizontal", "vertical", "dag", "hub_spoke"}
+
+    object_map: dict[str, dict[str, Any]] = {}
+    raw_objects = s.get("objects")
+    if raw_objects is None:
+        errors.append(f"{prefix}: layout='canvas' requires an 'objects' list.")
+        return set(), object_map
+    if not isinstance(raw_objects, list):
+        errors.append(f"{prefix}.objects must be a list.")
+        return set(), object_map
+
+    for o_idx, obj in enumerate(raw_objects):
+        if not isinstance(obj, dict):
+            errors.append(f"{prefix}.objects[{o_idx}]: must be an object.")
+            continue
+        _check_allowed_keys(obj, "canvas_object", f"{prefix}.objects[{o_idx}]", errors)
+        oid = obj.get("id")
+        if not isinstance(oid, str) or not oid:
+            errors.append(f"{prefix}.objects[{o_idx}]: missing 'id'.")
+            continue
+        if oid in object_map:
+            errors.append(f"{prefix}: duplicate object id '{oid}'.")
+            continue
+        object_map[oid] = obj
+        _check_evidence_refs(obj, claim_ids, f"{prefix}.objects['{oid}']", errors)
+
+        kind = obj.get("kind")
+        if not isinstance(kind, str) or kind not in valid_kinds:
+            errors.append(f"{prefix}.objects['{oid}']: invalid kind '{kind}'.")
+            continue
+
+        reg_ref = obj.get("region")
+        if reg_ref is not None and region_ids and reg_ref not in region_ids:
+            errors.append(f"{prefix}.objects['{oid}']: unknown region '{reg_ref}'.")
+
+        variant = obj.get("variant", "primary")
+        if variant not in valid_variants:
+            errors.append(f"{prefix}.objects['{oid}']: invalid variant '{variant}'.")
+
+        step_val = _as_float(obj.get("step", 1))
+        if step_val is None or step_val < 0:
+            errors.append(f"{prefix}.objects['{oid}']: 'step' must be a non-negative integer.")
+
+        for hex_field in ("fill_hex", "border_hex", "color_hex"):
+            if obj.get(hex_field) is not None and not is_valid_hex_color(str(obj[hex_field])):
+                errors.append(f"{prefix}.objects['{oid}'].{hex_field}: invalid hex color '{obj[hex_field]}'.")
+
+        if kind in ("card", "callout"):
+            lbl = obj.get("label")
+            if not isinstance(lbl, str) or not lbl:
+                errors.append(f"{prefix}.objects['{oid}']: kind='{kind}' requires 'label'.")
+            else:
+                _check_label_density(
+                    f"{prefix}.objects['{oid}']",
+                    lbl,
+                    obj.get("sublabel") if isinstance(obj.get("sublabel"), str) else None,
+                    obj.get("badge") if isinstance(obj.get("badge"), str) else None,
+                    obj.get("metric") if isinstance(obj.get("metric"), str) else None,
+                    warnings,
+                )
+        elif kind == "textbox":
+            if not isinstance(obj.get("text"), str) or not obj.get("text"):
+                errors.append(f"{prefix}.objects['{oid}']: kind='textbox' requires non-empty 'text'.")
+        elif kind == "shape":
+            st = obj.get("shape_type", "rounded_rect")
+            if st not in valid_shape_types:
+                errors.append(f"{prefix}.objects['{oid}']: invalid shape_type '{st}'.")
+            if st == "custom" and (not isinstance(obj.get("svg_path"), str) or not obj.get("svg_path")):
+                errors.append(f"{prefix}.objects['{oid}']: shape_type='custom' requires 'svg_path'.")
+        elif kind == "chart":
+            ch = obj.get("chart")
+            if not isinstance(ch, dict):
+                errors.append(f"{prefix}.objects['{oid}']: kind='chart' requires 'chart' object.")
+            else:
+                _check_allowed_keys(ch, "chart", f"{prefix}.objects['{oid}'].chart", errors)
+                ctype = ch.get("chart_type")
+                if ctype not in valid_chart_types:
+                    errors.append(f"{prefix}.objects['{oid}'].chart: invalid chart_type '{ctype}'.")
+                crev = ch.get("reveal", "whole")
+                if crev not in valid_chart_reveals:
+                    errors.append(f"{prefix}.objects['{oid}'].chart: invalid reveal '{crev}'.")
+                cats = ch.get("categories")
+                series = ch.get("series")
+                if not isinstance(cats, list) or not cats:
+                    errors.append(f"{prefix}.objects['{oid}'].chart: 'categories' must be a non-empty list.")
+                    cats = []
+                if not isinstance(series, list) or not series:
+                    errors.append(f"{prefix}.objects['{oid}'].chart: 'series' must be a non-empty list.")
+                else:
+                    for sr_idx, sr in enumerate(series):
+                        if not isinstance(sr, dict):
+                            errors.append(f"{prefix}.objects['{oid}'].chart.series[{sr_idx}]: must be an object.")
+                            continue
+                        _check_allowed_keys(sr, "chart_series", f"{prefix}.objects['{oid}'].chart.series[{sr_idx}]", errors)
+                        if not isinstance(sr.get("name"), str) or not sr.get("name"):
+                            errors.append(f"{prefix}.objects['{oid}'].chart.series[{sr_idx}]: missing 'name'.")
+                        vals = sr.get("values")
+                        if not isinstance(vals, list) or (cats and len(vals) != len(cats)):
+                            errors.append(
+                                f"{prefix}.objects['{oid}'].chart.series[{sr_idx}]: 'values' length must match 'categories' ({len(cats)})."
+                            )
+                        elif any(_as_float(v) is None for v in vals):
+                            errors.append(f"{prefix}.objects['{oid}'].chart.series[{sr_idx}]: all values must be numeric.")
+                        if sr.get("color_hex") is not None and not is_valid_hex_color(str(sr["color_hex"])):
+                            errors.append(
+                                f"{prefix}.objects['{oid}'].chart.series[{sr_idx}].color_hex: invalid hex '{sr['color_hex']}'."
+                            )
+        elif kind == "table":
+            tb = obj.get("table")
+            if not isinstance(tb, dict):
+                errors.append(f"{prefix}.objects['{oid}']: kind='table' requires 'table' object.")
+            else:
+                _check_allowed_keys(tb, "table", f"{prefix}.objects['{oid}'].table", errors)
+                trev = tb.get("reveal", "whole")
+                if trev not in valid_table_reveals:
+                    errors.append(f"{prefix}.objects['{oid}'].table: invalid reveal '{trev}'.")
+                hdrs = tb.get("headers")
+                trows = tb.get("rows")
+                if not isinstance(hdrs, list) or not hdrs:
+                    errors.append(f"{prefix}.objects['{oid}'].table: 'headers' must be a non-empty list.")
+                    hdrs = []
+                if not isinstance(trows, list) or not trows:
+                    errors.append(f"{prefix}.objects['{oid}'].table: 'rows' must be a non-empty list.")
+                else:
+                    for r_idx, row in enumerate(trows):
+                        if not isinstance(row, list) or (hdrs and len(row) != len(hdrs)):
+                            errors.append(
+                                f"{prefix}.objects['{oid}'].table.rows[{r_idx}]: column count must match headers ({len(hdrs)})."
+                            )
+        elif kind == "diagram":
+            dg = obj.get("diagram")
+            if not isinstance(dg, dict):
+                errors.append(f"{prefix}.objects['{oid}']: kind='diagram' requires 'diagram' object.")
+            else:
+                _check_allowed_keys(dg, "diagram", f"{prefix}.objects['{oid}'].diagram", errors)
+                dl = dg.get("diagram_layout", "horizontal")
+                if dl not in valid_diagram_layouts:
+                    errors.append(f"{prefix}.objects['{oid}'].diagram: invalid diagram_layout '{dl}'.")
+                _validate_nodes_and_edges(
+                    dg.get("nodes", []),
+                    dg.get("edges", []),
+                    prefix=f"{prefix}.objects['{oid}'].diagram",
+                    layout_kind=dl,
+                    claim_ids=claim_ids,
+                    errors=errors,
+                    warnings=warnings,
+                )
+
+    connectors = s.get("connectors", [])
+    if not isinstance(connectors, list):
+        errors.append(f"{prefix}.connectors must be a list.")
+    else:
+        conn_ids: set[str] = set()
+        for e_idx, e in enumerate(connectors):
+            if not isinstance(e, dict):
+                errors.append(f"{prefix}.connectors[{e_idx}]: must be an object.")
+                continue
+            _check_allowed_keys(e, "edge", f"{prefix}.connectors[{e_idx}]", errors)
+            eid = e.get("id")
+            if not isinstance(eid, str) or not eid:
+                errors.append(f"{prefix}.connectors[{e_idx}]: missing 'id'.")
+            elif eid in conn_ids:
+                errors.append(f"{prefix}: duplicate connector id '{eid}'.")
+            else:
+                conn_ids.add(eid)
+            if e.get("from") not in object_map:
+                errors.append(f"{prefix}.connectors['{eid}']: unknown 'from' object '{e.get('from')}'.")
+            if e.get("to") not in object_map:
+                errors.append(f"{prefix}.connectors['{eid}']: unknown 'to' object '{e.get('to')}'.")
+
+    return set(object_map), object_map
+
+
+def validate_deck(
+    raw: dict[str, Any],
+    *,
+    use_templates: bool | None = None,
+) -> ValidationResult:
+    """Validate structural integrity, references, mode switch, and visual density rules."""
     errors: list[str] = []
     warnings: list[str] = []
 
@@ -612,6 +1308,10 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
 
     _check_allowed_keys(raw, "deck", "deck", errors)
 
+    if "use_templates" in raw and not isinstance(raw["use_templates"], bool):
+        errors.append("Top-level 'use_templates' must be a boolean.")
+    eff_use_templates = bool(raw.get("use_templates", False)) if use_templates is None else use_templates
+
     title = raw.get("title")
     if not isinstance(title, str) or not title.strip():
         errors.append("Missing or invalid top-level 'title'.")
@@ -619,6 +1319,12 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
     theme = raw.get("theme", "slate_dark")
     if not isinstance(theme, str) or theme not in THEMES:
         errors.append(f"Unknown theme '{theme}'. Valid options: {', '.join(sorted(THEMES))}.")
+
+    if raw.get("palette") is not None:
+        if eff_use_templates:
+            errors.append("Custom top-level 'palette' is forbidden when use_templates=true; set use_templates=false.")
+        else:
+            _validate_palette(raw["palette"], "deck.palette", errors)
 
     if raw.get("slide_size") is not None:
         ss = raw["slide_size"]
@@ -631,7 +1337,7 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
                     errors.append(f"slide_size.{dim} must be numeric.")
 
     claim_ids: set[str] = set()
-    valid_claim_types = {"thesis", "fact", "relation", "inference", "counter_evidence", "conclusion"}
+    valid_claim_types = {"thesis", "fact", "relation", "inference", "counter_evidence", "conclusion", "example"}
     valid_confidence = {"high", "medium", "low"}
     if raw.get("story_model") is not None:
         sm = raw["story_model"]
@@ -730,6 +1436,7 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
         return ValidationResult(valid=False, errors=errors, warnings=warnings)
 
     valid_layouts = {
+        "canvas",
         "horizontal_flow",
         "vertical_flow",
         "comparison",
@@ -741,9 +1448,7 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
         "proportion_bar",
         "comparison_matrix",
     }
-    valid_child_layouts = {"row", "column", "grid"}
     valid_pacing = {"auto", "compact", "manual"}
-    valid_variants = {"primary", "accent", "muted", "success", "warn"}
     scene_ids: set[str] = set()
 
     for s_idx, s in enumerate(raw_scenes):
@@ -766,9 +1471,21 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
         if not isinstance(stitle, str) or not stitle:
             errors.append(f"{prefix}: missing or invalid 'title'.")
 
-        layout = s.get("layout", "horizontal_flow")
+        inferred_layout = "canvas" if ("objects" in s or "regions" in s) else "horizontal_flow"
+        layout = s.get("layout", inferred_layout)
         if not isinstance(layout, str) or layout not in valid_layouts:
             errors.append(f"{prefix}: invalid layout '{layout}'.")
+
+        has_freeform_fields = any(
+            s.get(k) is not None for k in ("grid", "regions", "objects", "connectors", "palette")
+        )
+        if eff_use_templates and (layout == "canvas" or has_freeform_fields):
+            errors.append(
+                f"{prefix}: freeform 'canvas'/'regions'/'objects'/'palette' are forbidden when use_templates=true; set use_templates=false."
+            )
+
+        if s.get("palette") is not None and not eff_use_templates:
+            _validate_palette(s["palette"], f"{prefix}.palette", errors)
 
         active_fn = s.get("active_flow_node")
         if active_fn is not None:
@@ -785,133 +1502,32 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
         if not isinstance(pacing, str) or pacing not in valid_pacing:
             errors.append(f"{prefix}: invalid pacing '{pacing}'.")
 
+        object_ids: set[str] = set()
+        if layout == "canvas":
+            object_ids, _ = _validate_canvas_scene(
+                s,
+                prefix=prefix,
+                claim_ids=claim_ids,
+                errors=errors,
+                warnings=warnings,
+            )
+
         nodes = s.get("nodes", [])
-        if not isinstance(nodes, list):
-            errors.append(f"{prefix}.nodes must be a list.")
-            continue
+        edges = s.get("edges", [])
+        node_map, edge_ids = _validate_nodes_and_edges(
+            nodes,
+            edges,
+            prefix=prefix,
+            layout_kind=str(layout),
+            claim_ids=claim_ids,
+            errors=errors,
+            warnings=warnings,
+        )
 
-        node_map: dict[str, dict[str, Any]] = {}
-        node_order: list[str] = []
-        for n_idx, n in enumerate(nodes):
-            if not isinstance(n, dict):
-                errors.append(f"{prefix}.nodes[{n_idx}]: must be an object.")
-                continue
-            _check_allowed_keys(n, "node", f"{prefix}.nodes[{n_idx}]", errors)
-            nid = n.get("id")
-            if not isinstance(nid, str) or not nid:
-                errors.append(f"{prefix}.nodes[{n_idx}]: missing 'id'.")
-                continue
-            if nid in node_map:
-                errors.append(f"{prefix}: duplicate node id '{nid}'.")
-            else:
-                node_order.append(nid)
-            node_map[nid] = n
-            _check_evidence_refs(n, claim_ids, f"{prefix}.nodes['{nid}']", errors)
-
-            variant = n.get("variant", "primary")
-            if variant not in valid_variants:
-                errors.append(f"{prefix}.nodes['{nid}']: invalid variant '{variant}'.")
-
-            raw_label = n.get("label")
-            if not isinstance(raw_label, str) or not raw_label:
-                errors.append(f"{prefix}.nodes[{n_idx}] ('{nid}'): missing 'label'.")
-            else:
-                _check_label_density(
-                    f"{prefix}.nodes['{nid}']",
-                    raw_label,
-                    n.get("sublabel") if isinstance(n.get("sublabel"), str) else None,
-                    n.get("badge") if isinstance(n.get("badge"), str) else None,
-                    n.get("metric") if isinstance(n.get("metric"), str) else None,
-                    warnings,
-                )
-
-            child_layout = n.get("child_layout", "row")
-            if child_layout not in valid_child_layouts:
-                errors.append(f"{prefix}.nodes['{nid}']: invalid child_layout '{child_layout}'.")
-
-            children = n.get("children", [])
-            if not isinstance(children, list):
-                errors.append(f"{prefix}.nodes['{nid}'].children must be a list.")
-                children = []
-            if n.get("kind") == "group_dashed" and not children:
-                errors.append(f"{prefix}.nodes['{nid}']: kind='group_dashed' requires non-empty 'children'.")
-            if layout == "horizontal_flow" and len(children) >= 4 and child_layout == "row":
-                warnings.append(
-                    f"{prefix}.nodes['{nid}']: {len(children)} children in horizontal 'row' may squeeze the flow; consider child_layout='grid'."
-                )
-
-            child_ids: set[str] = set()
-            for c_idx, c in enumerate(children):
-                if not isinstance(c, dict):
-                    errors.append(f"{prefix}.nodes['{nid}'].children[{c_idx}]: must be an object.")
-                    continue
-                _check_allowed_keys(c, "child", f"{prefix}.nodes['{nid}'].children[{c_idx}]", errors)
-                cid = c.get("id")
-                if not isinstance(cid, str) or not cid:
-                    errors.append(f"{prefix}.nodes['{nid}'].children[{c_idx}]: missing 'id'.")
-                elif cid in child_ids:
-                    errors.append(f"{prefix}.nodes['{nid}']: duplicate child id '{cid}'.")
-                else:
-                    child_ids.add(cid)
-                _check_evidence_refs(c, claim_ids, f"{prefix}.nodes['{nid}'].children['{cid}']", errors)
-
-                cvar = c.get("variant", "primary")
-                if cvar not in valid_variants:
-                    errors.append(f"{prefix}.nodes['{nid}'].children['{cid}']: invalid variant '{cvar}'.")
-
-                clabel = c.get("label")
-                if not isinstance(clabel, str) or not clabel:
-                    errors.append(f"{prefix}.nodes['{nid}'].children[{c_idx}]: missing 'label'.")
-                else:
-                    _check_label_density(
-                        f"{prefix}.nodes['{nid}'].children['{cid}']",
-                        clabel,
-                        c.get("sublabel") if isinstance(c.get("sublabel"), str) else None,
-                        c.get("badge") if isinstance(c.get("badge"), str) else None,
-                        c.get("metric") if isinstance(c.get("metric"), str) else None,
-                        warnings,
-                    )
-
-        if layout == "horizontal_flow" and len(nodes) > 5:
+        if layout == "horizontal_flow" and isinstance(nodes, list) and len(nodes) > 5:
             warnings.append(
                 f"{prefix}: {len(nodes)} top-level nodes in horizontal_flow may feel crowded; 3-5 pillars is recommended."
             )
-
-        edges = s.get("edges", [])
-        edge_ids: set[str] = set()
-        valid_edge_pairs: list[tuple[str, str]] = []
-        if not isinstance(edges, list):
-            errors.append(f"{prefix}.edges must be a list.")
-        else:
-            for e_idx, e in enumerate(edges):
-                if not isinstance(e, dict):
-                    errors.append(f"{prefix}.edges[{e_idx}]: must be an object.")
-                    continue
-                _check_allowed_keys(e, "edge", f"{prefix}.edges[{e_idx}]", errors)
-                eid = e.get("id")
-                if not isinstance(eid, str) or not eid:
-                    errors.append(f"{prefix}.edges[{e_idx}]: missing 'id'.")
-                elif eid in edge_ids:
-                    errors.append(f"{prefix}: duplicate edge id '{eid}'.")
-                else:
-                    edge_ids.add(eid)
-                src = e.get("from")
-                dst = e.get("to")
-                if src not in node_map:
-                    errors.append(f"{prefix}.edges['{eid}']: unknown 'from' node '{src}'.")
-                if dst not in node_map:
-                    errors.append(f"{prefix}.edges['{eid}']: unknown 'to' node '{dst}'.")
-                if isinstance(src, str) and isinstance(dst, str) and src in node_map and dst in node_map:
-                    if src == dst and layout == "flow_dag":
-                        errors.append(f"{prefix}.edges['{eid}']: self-loop '{src} -> {dst}' is not allowed in flow_dag.")
-                    valid_edge_pairs.append((src, dst))
-
-        if layout == "flow_dag" and node_order and valid_edge_pairs:
-            _, cyclic_nodes = compute_dag_layers(node_order, valid_edge_pairs)
-            if cyclic_nodes:
-                errors.append(
-                    f"{prefix}: flow_dag contains cyclic dependencies involving: {', '.join(cyclic_nodes)}."
-                )
 
         item_ids: set[str] = set()
         if layout == "proportion_bar":
@@ -987,7 +1603,7 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
             errors.append(f"{prefix}: 'frames' must be a non-empty list when provided.")
             continue
 
-        if len(nodes) >= 2 and len(frames) == 1 and pacing == "manual":
+        if isinstance(nodes, list) and len(nodes) >= 2 and len(frames) == 1 and pacing == "manual":
             warnings.append(
                 f"{prefix}: {len(nodes)} nodes rendered in a single frame; consider splitting into progressive step-by-step frames or running `keyflow pace`."
             )
@@ -1030,6 +1646,8 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
                 ("focus_nodes", node_map),
                 ("visible_items", item_ids),
                 ("visible_columns", col_ids),
+                ("visible_objects", object_ids),
+                ("focus_objects", object_ids),
             ):
                 field_val = f.get(list_field)
                 if field_val is not None:
@@ -1039,6 +1657,19 @@ def validate_deck(raw: dict[str, Any]) -> ValidationResult:
                         for item_id in field_val:
                             if not isinstance(item_id, str) or item_id not in valid_pool:
                                 errors.append(f"{prefix}.frames[{f_idx}]: unknown {list_field} id '{item_id}'.")
+
+            obj_states = f.get("object_states")
+            if obj_states is not None:
+                if not isinstance(obj_states, dict):
+                    errors.append(f"{prefix}.frames[{f_idx}]: 'object_states' must be an object.")
+                else:
+                    for oid, st_val in obj_states.items():
+                        if oid not in object_ids:
+                            errors.append(f"{prefix}.frames[{f_idx}].object_states: unknown object '{oid}'.")
+                        elif not isinstance(st_val, dict):
+                            errors.append(f"{prefix}.frames[{f_idx}].object_states['{oid}']: must be an object.")
+                        else:
+                            _check_allowed_keys(st_val, "object_state", f"{prefix}.frames[{f_idx}].object_states['{oid}']", errors)
 
             if not f.get("notes"):
                 warnings.append(

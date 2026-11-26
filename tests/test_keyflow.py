@@ -1328,3 +1328,356 @@ def test_story_model_validation_and_fidelity_audit_checks(tmp_path: Path) -> Non
     bad_val = validate_deck(flawed)
     assert bad_val.valid is False
     assert any("missing_claim_id" in e for e in bad_val.errors)
+
+
+def _freeform_canvas_stage1() -> dict:
+    return {
+        "title": "Freeform Canvas & Native Chart/Table Demo",
+        "palette": {
+            "bg_hex": "#1B2230",
+            "bg_gradient_end_hex": "#111622",
+            "title_hex": "#F5D76E",
+            "text_hex": "#FFFFFF",
+            "series_colors": ["#F5D76E", "#4ECDC4", "#FF6B6B"],
+        },
+        "story_model": {
+            "core_question": "How do illustrative examples and real metrics coexist cleanly?",
+            "claims": [
+                {
+                    "id": "fact_latency",
+                    "type": "fact",
+                    "claim": "Compiler latency dropped from 7.0s to 0.7s.",
+                    "source_quote": "Compile latency dropped from 7.0s to 0.7s.",
+                    "metric_scope": "compile_seconds",
+                },
+                {
+                    "id": "ex_alloc",
+                    "type": "example",
+                    "claim": "Illustrative token allocation split across 3 buckets.",
+                    "metric_scope": "illustrative_pct",
+                },
+                {
+                    "id": "ex_latency_note",
+                    "type": "example",
+                    "claim": "Illustrative breakdown of parse vs layout latency.",
+                    "metric_scope": "compile_seconds",
+                },
+            ],
+        },
+        "scenes": [
+            {
+                "id": "chart_and_table",
+                "title": "Latency & Allocation Overview",
+                "source_section": "Section 2: Performance",
+                "grid": {"columns": 12, "rows": 2, "gap": 24},
+                "regions": [
+                    {"id": "left", "col": 1, "row": 1, "col_span": 7, "row_span": 2, "frame": True, "title": "Native Chart"},
+                    {"id": "right_top", "col": 8, "row": 1, "col_span": 5, "row_span": 1, "arrange": "stack"},
+                    {"id": "right_bot", "col": 8, "row": 2, "col_span": 5, "row_span": 1, "arrange": "row"},
+                ],
+                "objects": [
+                    {
+                        "id": "latency_col",
+                        "kind": "chart",
+                        "region": "left",
+                        "step": 1,
+                        "note": "对比优化前后的延迟变化。",
+                        "evidence_refs": ["fact_latency"],
+                        "chart": {
+                            "chart_type": "column",
+                            "title": "Latency (s)",
+                            "unit": "s",
+                            "categories": ["Parse", "Layout", "Save"],
+                            "series": [
+                                {"name": "Before", "values": [2.1, 3.4, 1.5]},
+                                {"name": "After", "values": [0.2, 0.3, 0.2]},
+                            ],
+                            "reveal": "by_series",
+                        },
+                    },
+                    {
+                        "id": "perf_tbl",
+                        "kind": "table",
+                        "region": "right_top",
+                        "step": 2,
+                        "note": "关键指标对照表。",
+                        "table": {
+                            "title": "Benchmarks",
+                            "headers": ["Metric", "Before", "After"],
+                            "rows": [
+                                ["Latency", "7.0s", "0.7s"],
+                                ["Size", "20 MB", "20 KB"],
+                            ],
+                            "highlight_cols": [2],
+                            "reveal": "by_row",
+                        },
+                    },
+                    {
+                        "id": "hero_kpi",
+                        "kind": "callout",
+                        "region": "right_bot",
+                        "step": 3,
+                        "badge": "FACT",
+                        "metric": "10x",
+                        "label": "Faster Compile",
+                        "evidence_refs": ["fact_latency"],
+                        "note": "实证提速 10 倍。",
+                    },
+                    {
+                        "id": "ex_badge_card",
+                        "kind": "card",
+                        "region": "right_bot",
+                        "step": 3,
+                        "badge": "EXAMPLE",
+                        "label": "Sample Breakdown",
+                        "sublabel": "Illustrative",
+                        "evidence_refs": ["ex_latency_note"],
+                        "note": "示意算例说明。",
+                    },
+                ],
+                "connectors": [
+                    {"id": "c1", "from": "latency_col", "to": "perf_tbl", "style": "dashed"}
+                ],
+            },
+            {
+                "id": "pie_and_diagram",
+                "title": "Share & Inline Flow",
+                "grid": {"columns": 12, "rows": 1, "gap": 24},
+                "regions": [
+                    {"id": "pie_zone", "col": 1, "row": 1, "col_span": 5, "row_span": 1},
+                    {"id": "flow_zone", "col": 6, "row": 1, "col_span": 7, "row_span": 1},
+                ],
+                "objects": [
+                    {
+                        "id": "share_pie",
+                        "kind": "chart",
+                        "region": "pie_zone",
+                        "step": 1,
+                        "evidence_refs": ["ex_alloc"],
+                        "note": "示意占比分布。",
+                        "chart": {
+                            "chart_type": "donut",
+                            "title": "Token Split",
+                            "categories": ["Context", "Code", "Tests"],
+                            "series": [{"name": "Share", "values": [50, 30, 20]}],
+                        },
+                    },
+                    {
+                        "id": "mini_flow",
+                        "kind": "diagram",
+                        "region": "flow_zone",
+                        "step": 2,
+                        "note": "局部逻辑流程。",
+                        "diagram": {
+                            "diagram_layout": "horizontal",
+                            "nodes": [
+                                {"id": "a", "label": "Read"},
+                                {"id": "b", "label": "Solve"},
+                                {"id": "c", "label": "Emit", "variant": "success"},
+                            ],
+                            "edges": [
+                                {"id": "de1", "from": "a", "to": "b"},
+                                {"id": "de2", "from": "b", "to": "c"},
+                            ],
+                        },
+                    },
+                ],
+            },
+        ],
+    }
+
+
+def test_use_templates_switch_defaults_false_and_enforces_true() -> None:
+    canvas_deck = _freeform_canvas_stage1()
+    # Default (use_templates omitted -> false) permits freeform canvas + palette
+    val_free = validate_deck(canvas_deck)
+    assert val_free.valid is True, val_free.errors
+
+    # Explicitly enabling template-only mode rejects freeform canvas & palette
+    val_locked = validate_deck(canvas_deck, use_templates=True)
+    assert val_locked.valid is False
+    joined = "\n".join(val_locked.errors)
+    assert "use_templates=true" in joined
+
+    # Legacy preset deck continues to pass in both modes
+    assert validate_deck(_agent_skill_stage1(), use_templates=True).valid is True
+    assert validate_deck(_agent_skill_stage1(), use_templates=False).valid is True
+
+
+def test_freeform_canvas_paces_compiles_native_charts_and_tables(tmp_path: Path) -> None:
+    from creator_studio_doc_format.core import KeyxDocument
+
+    raw = _freeform_canvas_stage1()
+    paced = pace_deck(raw)
+    s0_frames = paced["scenes"][0]["frames"]
+    # step1 by_series (2 frames) + step2 by_row (2 frames) + step3 (1 frame) + summary (1 frame) = 6 frames
+    assert len(s0_frames) == 6
+    assert s0_frames[0]["object_states"]["latency_col"]["series_count"] == 1
+    assert s0_frames[1]["object_states"]["latency_col"]["series_count"] == 2
+    assert s0_frames[2]["object_states"]["perf_tbl"]["row_count"] == 1
+    assert s0_frames[3]["object_states"]["perf_tbl"]["row_count"] == 2
+
+    # Audit passes strictly with zero errors or warnings
+    report = audit_deck(paced, strict=True)
+    assert report.passed is True, [e.to_dict() for e in report.errors]
+    assert report.errors == []
+    assert report.warnings == []
+
+    # Axis bounds & coordinates must stay locked across progressive frames
+    parsed = parse_deck(paced)
+    resolved = resolve_scene(parsed.scenes[0], parsed.slide_width, parsed.slide_height)
+    assert resolved[0].charts[0].rect == resolved[1].charts[0].rect
+    assert resolved[0].charts[0].axis_min == resolved[1].charts[0].axis_min
+    assert resolved[0].charts[0].axis_max == resolved[1].charts[0].axis_max
+    assert resolved[2].tables[0].rect == resolved[3].tables[0].rect
+
+    # Compile to .keyx and verify native Chart + Table + Shape roundtrip
+    out = tmp_path / "freeform_loop.keyx"
+    compile_deck(raw, out)
+    assert out.exists()
+
+    with KeyxDocument.open(out) as loaded:
+        slides = loaded.payload.slides
+        assert len(slides) == 9  # 6 frames + 3 frames (step1, step2, summary)
+        # First slide has native ColumnChart
+        first_charts = [obj.object.chart for obj in slides[0].contents if obj.object.chart is not None]
+        assert len(first_charts) == 1
+        assert first_charts[0].column is not None
+        assert len(first_charts[0].column.series) == 1
+        # Fourth slide has 2-series ColumnChart + native Table
+        fourth_charts = [obj.object.chart for obj in slides[3].contents if obj.object.chart is not None]
+        fourth_tables = [obj.object.table for obj in slides[3].contents if obj.object.table is not None]
+        assert len(fourth_charts) == 1 and len(fourth_charts[0].column.series) == 2
+        assert len(fourth_tables) == 1
+        assert fourth_tables[0].number_of_columns == 3
+        assert fourth_tables[0].number_of_rows == 3
+        # Seventh slide has native DonutChart
+        donut_charts = [obj.object.chart for obj in slides[6].contents if obj.object.chart is not None]
+        assert len(donut_charts) == 1 and donut_charts[0].donut is not None
+
+
+def test_freeform_all_native_chart_types_and_shapes_compile(tmp_path: Path) -> None:
+    raw = {
+        "title": "All Native Primitives",
+        "scenes": [
+            {
+                "id": "all_objs",
+                "title": "Shapes, Text, and Charts",
+                "grid": {"columns": 12, "rows": 2, "gap": 24},
+                "regions": [
+                    {"id": "r1", "col": 1, "row": 1, "col_span": 4, "row_span": 1},
+                    {"id": "r2", "col": 5, "row": 1, "col_span": 4, "row_span": 1},
+                    {"id": "r3", "col": 9, "row": 1, "col_span": 4, "row_span": 1},
+                    {"id": "r4", "col": 1, "row": 2, "col_span": 6, "row_span": 1, "arrange": "row"},
+                    {"id": "r5", "col": 7, "row": 2, "col_span": 6, "row_span": 1},
+                ],
+                "objects": [
+                    {
+                        "id": "c_bar",
+                        "kind": "chart",
+                        "region": "r1",
+                        "chart": {
+                            "chart_type": "stacked_bar",
+                            "categories": ["Q1", "Q2"],
+                            "series": [{"name": "A", "values": [30, 45]}, {"name": "B", "values": [70, 55]}],
+                            "reveal": "by_category",
+                        },
+                    },
+                    {
+                        "id": "c_line",
+                        "kind": "chart",
+                        "region": "r2",
+                        "chart": {
+                            "chart_type": "line",
+                            "categories": ["W1", "W2", "W3"],
+                            "series": [{"name": "Trend", "values": [12, 25, 41]}],
+                        },
+                    },
+                    {
+                        "id": "c_pie",
+                        "kind": "chart",
+                        "region": "r3",
+                        "chart": {
+                            "chart_type": "pie",
+                            "categories": ["Alpha", "Beta"],
+                            "series": [{"name": "Mix", "values": [65, 35]}],
+                        },
+                    },
+                    {
+                        "id": "sh_ellipse",
+                        "kind": "shape",
+                        "region": "r4",
+                        "shape_type": "ellipse",
+                        "label": "Core",
+                    },
+                    {
+                        "id": "sh_custom",
+                        "kind": "shape",
+                        "region": "r4",
+                        "shape_type": "custom",
+                        "svg_path": "M 0,0.5 L 0.5,0 L 1,0.5 L 0.5,1 Z",
+                        "label": "Gate",
+                    },
+                    {
+                        "id": "tb_note",
+                        "kind": "textbox",
+                        "region": "r5",
+                        "text": "Freeform summary block",
+                        "align": "left",
+                        "font_size": 26,
+                    },
+                ],
+            }
+        ],
+    }
+    assert validate_deck(raw).valid is True
+    assert audit_deck(raw, strict=True).passed is True
+    out = tmp_path / "all_primitives.keyx"
+    compile_deck(raw, out)
+    assert out.exists()
+
+
+def test_freeform_audit_catches_contrast_bad_pie_and_example_as_fact() -> None:
+    bad = _freeform_canvas_stage1()
+    # 1) Contrast violation: dark text on dark fill
+    bad["scenes"][0]["objects"][3]["fill_hex"] = "#1A1A1A"
+    bad["scenes"][0]["objects"][3]["color_hex"] = "#222222"
+    # 2) Epistemic mismatch: FACT badge referencing example claim
+    bad["scenes"][0]["objects"][3]["badge"] = "FACT"
+    # 3) Negative slice in donut chart
+    bad["scenes"][1]["objects"][0]["chart"]["series"][0]["values"] = [50, -10, 60]
+
+    report = audit_deck(bad)
+    err_cats = {e.category for e in report.errors}
+    assert {"low_contrast", "epistemic_mismatch", "invalid_chart_data"}.issubset(err_cats)
+
+    # 4) Overlapping grid regions caught by schema validation
+    overlap_deck = _freeform_canvas_stage1()
+    overlap_deck["scenes"][0]["regions"][1]["col"] = 6
+    val = validate_deck(overlap_deck)
+    assert val.valid is False
+    assert any("overlaps grid cell" in err for err in val.errors)
+
+
+def test_cli_and_mcp_use_templates_switch_and_freeform_compile(tmp_path: Path) -> None:
+    raw = _freeform_canvas_stage1()
+    stage1_path = tmp_path / "freeform.json"
+    out_keyx = tmp_path / "freeform.keyx"
+    stage1_path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+
+    # Default CLI validate allows freeform
+    assert cli_main(["validate", "-i", str(stage1_path)]) == 0
+    # Strict --use-templates rejects freeform
+    assert cli_main(["validate", "-i", str(stage1_path), "--use-templates"]) == 1
+    # Default CLI compile succeeds with audit gate
+    assert cli_main(["compile", "-i", str(stage1_path), "-o", str(out_keyx), "--fail-on-audit"]) == 0
+    assert out_keyx.exists()
+
+    # MCP dispatch supports use_templates switch
+    mcp_locked = dispatch_tool("validate_storyboard", {"storyboard": raw, "use_templates": True})
+    assert mcp_locked["valid"] is False
+    mcp_out = tmp_path / "mcp_freeform.keyx"
+    mcp_ok = dispatch_tool("compile_keyx", {"storyboard": raw, "output_path": str(mcp_out), "fail_on_audit": True})
+    assert mcp_ok["compiled"] is True
+    assert mcp_ok["audit"]["passed"] is True
+    assert mcp_out.exists()

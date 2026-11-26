@@ -47,6 +47,7 @@ TOOLS: list[dict[str, Any]] = [
                 "output_path": {"type": "string", "description": "Optional path to save the paced storyboard JSON."},
                 "density": {"type": "string", "enum": ["standard", "compact"], "default": "standard"},
                 "overwrite": {"type": "boolean", "default": False},
+                "use_templates": {"type": "boolean", "description": "Optional override: true enforces preset template-only mode; false (default) enables freeform canvas."},
             },
         },
     },
@@ -58,18 +59,20 @@ TOOLS: list[dict[str, Any]] = [
             "properties": {
                 "storyboard": {"type": "object", "description": "Inline storyboard JSON object."},
                 "input_path": {"type": "string", "description": "Path to a storyboard JSON file."},
+                "use_templates": {"type": "boolean", "description": "Optional override: true enforces preset template-only mode; false (default) enables freeform canvas."},
             },
         },
     },
     {
         "name": "audit_storyboard",
-        "description": "Run deterministic visual self-checks (bounds, overlaps, cross-frame anchor stability, scale, overflow) with JSON fix hints.",
+        "description": "Run deterministic visual self-checks (bounds, overlaps, cross-frame anchor stability, contrast, scale, overflow) with JSON fix hints.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "storyboard": {"type": "object", "description": "Inline storyboard JSON object."},
                 "input_path": {"type": "string", "description": "Path to a storyboard JSON file."},
                 "strict": {"type": "boolean", "default": False, "description": "Treat visual warnings as errors."},
+                "use_templates": {"type": "boolean", "description": "Optional override: true enforces preset template-only mode; false (default) enables freeform canvas."},
             },
         },
     },
@@ -84,6 +87,7 @@ TOOLS: list[dict[str, Any]] = [
                 "input_path": {"type": "string", "description": "Path to a storyboard JSON file."},
                 "output_path": {"type": "string", "description": "Destination .keyx file path."},
                 "theme": {"type": "string", "enum": sorted(THEMES), "description": "Optional theme override."},
+                "use_templates": {"type": "boolean", "description": "Optional override: true enforces preset template-only mode; false (default) enables freeform canvas."},
                 "preview_dir": {"type": "string", "description": "Optional directory to export PNG previews via Keynote."},
                 "fail_on_audit": {
                     "type": "boolean",
@@ -166,7 +170,8 @@ def dispatch_tool(
 
     if name == "pace_storyboard":
         raw = _load_storyboard(args, root)
-        val = validate_deck(raw)
+        use_templates = args.get("use_templates")
+        val = validate_deck(raw, use_templates=use_templates)
         if not val.valid:
             return {"paced": False, **val.to_dict()}
         paced = pace_deck(
@@ -174,7 +179,7 @@ def dispatch_tool(
             density=args.get("density", "standard"),
             overwrite_existing=bool(args.get("overwrite", False)),
         )
-        paced_val = validate_deck(paced)
+        paced_val = validate_deck(paced, use_templates=use_templates)
         if not paced_val.valid:
             return {
                 "paced": False,
@@ -194,20 +199,25 @@ def dispatch_tool(
 
     if name == "validate_storyboard":
         raw = _load_storyboard(args, root)
-        return validate_deck(raw).to_dict()
+        return validate_deck(raw, use_templates=args.get("use_templates")).to_dict()
 
     if name == "audit_storyboard":
         raw = _load_storyboard(args, root)
-        return audit_deck(raw, strict=bool(args.get("strict", False))).to_dict()
+        return audit_deck(
+            raw,
+            strict=bool(args.get("strict", False)),
+            use_templates=args.get("use_templates"),
+        ).to_dict()
 
     if name == "compile_keyx":
         raw = _load_storyboard(args, root)
-        val = validate_deck(raw)
+        use_templates = args.get("use_templates")
+        val = validate_deck(raw, use_templates=use_templates)
         if not val.valid:
             return {"compiled": False, **val.to_dict()}
         strict = bool(args.get("strict", False))
         fail_on_audit = bool(args.get("fail_on_audit", False)) or strict
-        report = audit_deck(raw, strict=strict)
+        report = audit_deck(raw, strict=strict, use_templates=use_templates)
         if fail_on_audit and not report.passed:
             return {
                 "compiled": False,
@@ -216,7 +226,7 @@ def dispatch_tool(
             }
         out_dest = _check_path(args["output_path"], root)
         preview_dest = _check_path(args["preview_dir"], root) if args.get("preview_dir") else None
-        out = compile_deck(raw, out_dest, theme_override=args.get("theme"))
+        out = compile_deck(raw, out_dest, theme_override=args.get("theme"), use_templates=use_templates)
         pngs: list[Path] | None = None
         if preview_dest is not None:
             pngs = export_slide_pngs(out, preview_dest)

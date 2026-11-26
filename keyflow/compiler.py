@@ -12,39 +12,72 @@ from typing import Any
 from creator_studio_doc_format.core import (
     RGBA,
     AlignmentType,
+    AreaChart,
+    BarChart,
     BezierPath,
+    BodyStrokeProperties,
     CanvasObject,
+    Cell,
+    CellProperties,
     CharacterProperties,
+    Chart,
+    ChartCategoryAxis,
+    ChartColor,
+    ChartData,
+    ChartDataRow,
+    ChartDataSource,
+    ChartDataValue,
+    ChartLegend,
+    ChartSeries,
+    ChartValueAxis,
     Color,
+    ColumnChart,
+    ColumnHeader,
     Constituent,
+    DonutChart,
     Fill,
     Flavor,
     Geometry,
     Gradient,
     KeynoteTheme,
     KeyxDocument,
+    Label,
     LayoutProperties,
     Line,
+    LineChart,
     LineEnd,
     Linear,
+    OverallProperties,
     Paragraph,
     ParagraphProperties,
     Pattern,
+    PieChart,
+    PlotDirection,
     Position,
     Presentation,
     Preset,
     Rect,
+    Row,
+    ScatterChart,
     Shape,
     Size,
     Slide,
     SlideBackground,
     SlideObject,
+    StackedBarChart,
+    StackedColumnChart,
     Stop,
     Stroke,
+    Table,
+    TableColumnHeaderKind,
+    TableColumnHeaderVisibilityState,
+    TableRowKind,
+    TableRowVisibilityState,
     Text,
     Textbox,
     TextRun,
     VerticalAlignmentType,
+    VisualProperties,
 )
 from creator_studio_doc_format.core import Path as ShapePath
 from creator_studio_doc_format.validation import validate_document
@@ -52,17 +85,23 @@ from creator_studio_doc_format.validation import validate_document
 from keyflow.layout import (
     BoxRect,
     PlacedBox,
+    PlacedChart,
     PlacedComparisonMatrix,
     PlacedDivider,
     PlacedEdge,
     PlacedPinnedFlow,
     PlacedProportionBar,
+    PlacedRegionFrame,
+    PlacedShape,
+    PlacedTable,
+    PlacedTextbox,
     ResolvedFrame,
+    _text_units,
     resolve_scene,
 )
 from keyflow.pace import pace_deck
 from keyflow.schema import DeckSpec, NodeVariant, parse_deck, validate_deck
-from keyflow.themes import ThemePreset, get_theme
+from keyflow.themes import ThemePreset, apply_palette_overrides, get_theme, hex_to_rgb_float
 
 _BG_PRESET_ID = "keyflow_bg_fill"
 
@@ -129,8 +168,8 @@ def _stroke_for_box(theme: ThemePreset, variant: NodeVariant, is_subcard: bool) 
     )
 
 
-def _build_background_preset(theme: ThemePreset) -> Preset:
-    """Build a single shared Fill preset (linear gradient or solid color) stored once in presets.json."""
+def _build_background_preset(theme: ThemePreset, ident: str = _BG_PRESET_ID) -> Preset:
+    """Build a shared Fill preset (linear gradient or solid color) stored in presets.json."""
     if theme.bg_gradient_end_rgb is not None:
         props: dict[str, Any] = {
             "gradient": Gradient(
@@ -143,7 +182,14 @@ def _build_background_preset(theme: ThemePreset) -> Preset:
         }
     else:
         props = {"color": {"rgba": _rgba_int(theme.bg_rgb).model_dump(mode="json")}}
-    return Preset(identifier=_BG_PRESET_ID, properties=props)
+    return Preset(identifier=ident, properties=props)
+
+
+_ALIGN_MAP: dict[str, AlignmentType] = {
+    "left": AlignmentType.LEFT,
+    "center": AlignmentType.CENTER,
+    "right": AlignmentType.RIGHT,
+}
 
 
 def _make_textbox(
@@ -157,6 +203,7 @@ def _make_textbox(
     bold: bool = True,
     opacity: float = 1.0,
     fill: Fill | None = None,
+    alignment: AlignmentType = AlignmentType.CENTER,
 ) -> SlideObject:
     tb = Textbox(
         identifier=ident,
@@ -169,7 +216,7 @@ def _make_textbox(
         opacity=opacity,
         layout_properties=LayoutProperties(vertical_alignment=VerticalAlignmentType.CENTER),
         paragraph_properties=ParagraphProperties(
-            alignment=AlignmentType.CENTER,
+            alignment=alignment,
             character_properties=CharacterProperties(
                 font_name=font_name,
                 font_size=font_size,
@@ -388,13 +435,14 @@ def _card_text_payload(
     main_size: float,
     font_scale: float,
 ) -> tuple[ParagraphProperties, Text]:
+    text_rgba = _rgba(hex_to_rgb_float(box.color_hex)) if box.color_hex else _rgba(theme.text_rgb)
     base_para = ParagraphProperties(
         alignment=AlignmentType.CENTER,
         character_properties=CharacterProperties(
             font_name=theme.font_body,
             font_size=main_size,
             bold=True,
-            character_fill=Fill(color=Color(rgba=_rgba(theme.text_rgb))),
+            character_fill=Fill(color=Color(rgba=text_rgba)),
         ),
     )
     if not box.badge and not box.metric and not box.sublabel:
@@ -443,7 +491,7 @@ def _card_text_payload(
                     font_name=theme.font_body,
                     font_size=label_size,
                     bold=True,
-                    character_fill=Fill(color=Color(rgba=_rgba(theme.text_rgb))),
+                    character_fill=Fill(color=Color(rgba=text_rgba)),
                 ),
             ),
             contents=[Constituent(run=TextRun(string=box.label))],
@@ -482,7 +530,8 @@ def _make_box_objects(
     """Create Shape (and optional external caption/badge Textbox) for a PlacedBox."""
     obj_id = f"{slide_prefix}_{box.id}"
     objs: list[SlideObject] = []
-    font_scale = max(0.74, scale)
+    eff_scale = box.font_scale if box.font_scale is not None else scale
+    font_scale = max(0.68, eff_scale)
 
     if box.kind == "group_dashed":
         objs.append(
@@ -524,9 +573,18 @@ def _make_box_objects(
         return objs, obj_id
 
     is_sub = box.kind == "subcard"
-    base_size = 29.0 if is_sub else 34.0
+    base_size = 29.0 if is_sub else (30.0 if box.kind == "callout" else 34.0)
     main_size = round(base_size * font_scale, 1)
+    if box.label:
+        max_fit = max(18.0, (box.rect.w - 24.0) / max(1.0, _text_units(box.label) * 0.56))
+        main_size = round(min(main_size, max_fit), 1)
     para_props, text_obj = _card_text_payload(box, theme, main_size, font_scale)
+    fill_rgba = _rgba(hex_to_rgb_float(box.fill_hex)) if box.fill_hex else _fill_for_variant(theme, box.variant, is_sub)
+    stroke = (
+        Stroke(line=Line(color=Color(rgba=_rgba(hex_to_rgb_float(box.border_hex))), width=2.2, pattern=Pattern.SOLID))
+        if box.border_hex
+        else _stroke_for_box(theme, box.variant, is_sub)
+    )
 
     sh = Shape(
         identifier=obj_id,
@@ -540,8 +598,8 @@ def _make_box_objects(
                 space=_UNIT_SPACE,
             )
         ),
-        fill=Fill(color=Color(rgba=_fill_for_variant(theme, box.variant, is_sub))),
-        stroke=_stroke_for_box(theme, box.variant, is_sub),
+        fill=Fill(color=Color(rgba=fill_rgba)),
+        stroke=stroke,
         opacity=box.opacity,
         layout_properties=LayoutProperties(vertical_alignment=VerticalAlignmentType.CENTER),
         paragraph_properties=para_props,
@@ -975,6 +1033,444 @@ def _make_divider_objects(
     return objs
 
 
+def _ellipse_unit_path() -> str:
+    """Unit-space SVG ellipse path inside [0, 1] x [0, 1]."""
+    return "M 0.5,0 A 0.5,0.5 0 1 1 0.4999,0 Z"
+
+
+def _shape_path_for(shape: PlacedShape) -> str:
+    if shape.shape_type == "custom" and shape.svg_path:
+        return shape.svg_path
+    if shape.shape_type == "ellipse":
+        return _ellipse_unit_path()
+    if shape.shape_type == "rect":
+        return "M 0,0 H 1 V 1 H 0 Z"
+    if shape.shape_type == "pill":
+        return _rounded_rect_path(shape.rect.w, shape.rect.h, corner_px=min(shape.rect.w, shape.rect.h) / 2.0)
+    return _rounded_rect_path(shape.rect.w, shape.rect.h, corner_px=16.0)
+
+
+def _make_shape_object(slide_prefix: str, shape: PlacedShape, theme: ThemePreset) -> SlideObject:
+    fill_rgba = (
+        _rgba(hex_to_rgb_float(shape.fill_hex))
+        if shape.fill_hex
+        else _fill_for_variant(theme, shape.variant, is_subcard=False)
+    )
+    if shape.border_hex:
+        stroke_rgb = _rgba(hex_to_rgb_float(shape.border_hex))
+        stroke = Stroke(
+            line=Line(
+                color=Color(rgba=stroke_rgb),
+                width=2.0,
+                pattern=Pattern.MEDIUM_DASH if shape.dashed else Pattern.SOLID,
+            )
+        )
+    elif shape.dashed:
+        stroke = Stroke(
+            line=Line(
+                color=Color(rgba=_rgba(theme.group_border_rgb)),
+                width=2.0,
+                pattern=Pattern.MEDIUM_DASH,
+            )
+        )
+    else:
+        stroke = _stroke_for_box(theme, shape.variant, is_subcard=False)
+
+    text_rgba = _rgba(hex_to_rgb_float(shape.color_hex)) if shape.color_hex else _rgba(theme.text_rgb)
+    sh = Shape(
+        identifier=f"{slide_prefix}_{shape.id}",
+        geometry=Geometry(
+            position=Position(x=shape.rect.x, y=shape.rect.y),
+            size=Size(width=shape.rect.w, height=shape.rect.h),
+        ),
+        path=ShapePath(bezier=BezierPath(path=_shape_path_for(shape), space=_UNIT_SPACE)),
+        fill=Fill(color=Color(rgba=fill_rgba)),
+        stroke=stroke,
+        opacity=shape.opacity,
+        layout_properties=LayoutProperties(vertical_alignment=VerticalAlignmentType.CENTER),
+        paragraph_properties=ParagraphProperties(
+            alignment=AlignmentType.CENTER,
+            character_properties=CharacterProperties(
+                font_name=theme.font_body,
+                font_size=28.0,
+                bold=True,
+                character_fill=Fill(color=Color(rgba=text_rgba)),
+            ),
+        ),
+        text=Text(string=shape.label) if shape.label else None,
+    )
+    return SlideObject(object=CanvasObject(shape=sh))
+
+
+def _make_region_frame_objects(
+    slide_prefix: str,
+    rf: PlacedRegionFrame,
+    theme: ThemePreset,
+) -> list[SlideObject]:
+    objs: list[SlideObject] = [
+        _make_dashed_container(
+            f"{slide_prefix}_reg_{rf.id}",
+            rf.rect,
+            theme,
+            corner_px=18.0,
+        )
+    ]
+    if rf.title and rf.title_rect:
+        objs.append(
+            _make_textbox(
+                f"{slide_prefix}_reg_{rf.id}_title",
+                rf.title_rect,
+                rf.title,
+                font_name=theme.font_title,
+                font_size=22.0,
+                color=_rgba(theme.badge_text_rgb),
+                bold=True,
+                alignment=AlignmentType.LEFT,
+            )
+        )
+    return objs
+
+
+_CHART_MODEL_MAP: dict[str, tuple[str, Any]] = {
+    "column": ("column", ColumnChart),
+    "bar": ("bar", BarChart),
+    "pie": ("pie", PieChart),
+    "donut": ("donut", DonutChart),
+    "line": ("line", LineChart),
+    "area": ("area", AreaChart),
+    "stacked_column": ("stacked_column", StackedColumnChart),
+    "stacked_bar": ("stacked_bar", StackedBarChart),
+    "scatter": ("scatter", ScatterChart),
+}
+
+
+def _make_chart_objects(slide_prefix: str, chart: PlacedChart, theme: ThemePreset) -> list[SlideObject]:
+    """Compile a PlacedChart into a native editable .keyx Chart (plus internal title Textbox)."""
+    field_name, chart_cls = _CHART_MODEL_MAP[chart.chart_type]
+    objs: list[SlideObject] = []
+    top_offset = 0.0
+    if chart.title:
+        title_h = 40.0
+        objs.append(
+            _make_textbox(
+                f"{slide_prefix}_{chart.id}_title",
+                BoxRect(chart.rect.x, chart.rect.y, chart.rect.w, title_h),
+                chart.title,
+                font_name=theme.font_title,
+                font_size=24.0,
+                color=_rgba(theme.title_rgb),
+                bold=True,
+                opacity=chart.opacity,
+            )
+        )
+        top_offset = title_h + 6.0
+
+    legend_h = 34.0 if chart.show_legend else 0.0
+    left_pad = 135.0 if chart.chart_type in ("bar", "stacked_bar") else (20.0 if chart.chart_type in ("pie", "donut") else 42.0)
+    plot_x = chart.rect.x + left_pad
+    plot_y = chart.rect.y + top_offset + legend_h
+    plot_w = max(120.0, chart.rect.w - left_pad - 12.0)
+    plot_h = max(120.0, chart.rect.h - top_offset - legend_h - 10.0)
+
+    cat_count = len(chart.categories)
+    data_rows: list[ChartDataRow] = []
+    for c_idx in range(cat_count):
+        vals: list[ChartDataValue] = []
+        for sr in chart.series:
+            v = sr.values[c_idx] if c_idx < len(sr.values) else None
+            vals.append(ChartDataValue(number=float(v)) if v is not None else ChartDataValue(empty=True))
+        data_rows.append(ChartDataRow(values=vals))
+
+    data = ChartData(
+        chart_data_source=ChartDataSource.CHART_DATA_GRID,
+        plot_direction=PlotDirection.COLUMNS_AS_SERIES,
+        column_labels=[sr.name for sr in chart.series],
+        row_labels=list(chart.categories),
+        rows=data_rows,
+    )
+
+    label_style = ParagraphProperties(
+        character_properties=CharacterProperties(
+            font_name=theme.font_body,
+            font_size=16.0,
+            bold=False,
+            character_fill=Fill(color=Color(rgba=_rgba(theme.subtitle_rgb))),
+        )
+    )
+    value_label_style = ParagraphProperties(
+        character_properties=CharacterProperties(
+            font_name=theme.font_body,
+            font_size=15.0,
+            bold=True,
+            character_fill=Fill(color=Color(rgba=_rgba(theme.text_rgb))),
+        )
+    )
+    legend_style = ParagraphProperties(
+        character_properties=CharacterProperties(
+            font_name=theme.font_body,
+            font_size=16.0,
+            bold=False,
+            character_fill=Fill(color=Color(rgba=_rgba(theme.text_rgb))),
+        )
+    )
+
+    palette = theme.segment_palette
+    if chart.show_legend:
+        legend_items: list[tuple[str, tuple[float, float, float]]] = []
+        if chart.chart_type in ("pie", "donut"):
+            for i, cat in enumerate(chart.categories):
+                legend_items.append((cat, palette[i % len(palette)]))
+        else:
+            for s_idx, sr in enumerate(chart.series):
+                s_rgb = hex_to_rgb_float(sr.color_hex) if sr.color_hex else palette[s_idx % len(palette)]
+                legend_items.append((sr.name, s_rgb))
+
+        swatch_sz = 14.0
+        item_gap = 22.0
+        item_widths = [swatch_sz + 8.0 + max(42.0, _text_units(lbl) * 10.5) for lbl, _ in legend_items]
+        total_leg_w = sum(item_widths) + max(0, len(legend_items) - 1) * item_gap
+        lx = chart.rect.x + max(12.0, (chart.rect.w - total_leg_w) / 2.0)
+        ly = chart.rect.y + top_offset
+        for l_idx, ((lbl, rgb), iw) in enumerate(zip(legend_items, item_widths)):
+            objs.append(
+                _make_solid_card(
+                    f"{slide_prefix}_{chart.id}_leg_sw_{l_idx}",
+                    BoxRect(lx, ly + 8.0, swatch_sz, swatch_sz),
+                    fill_rgb=_rgba(rgb),
+                    stroke=Stroke(empty=True),
+                    corner_px=3.0,
+                    opacity=chart.opacity,
+                )
+            )
+            objs.append(
+                _make_textbox(
+                    f"{slide_prefix}_{chart.id}_leg_tx_{l_idx}",
+                    BoxRect(lx + swatch_sz + 6.0, ly, iw - swatch_sz - 6.0, 30.0),
+                    lbl,
+                    font_name=theme.font_body,
+                    font_size=16.0,
+                    color=_rgba(theme.text_rgb),
+                    bold=False,
+                    opacity=chart.opacity,
+                    alignment=AlignmentType.LEFT,
+                )
+            )
+            lx += iw + item_gap
+
+    series_models: list[ChartSeries] = []
+    for s_idx, sr in enumerate(chart.series):
+        s_rgb = hex_to_rgb_float(sr.color_hex) if sr.color_hex else palette[s_idx % len(palette)]
+        s_fill = Fill(color=Color(rgba=_rgba(s_rgb)))
+        s_stroke = (
+            Stroke(line=Line(color=Color(rgba=_rgba(s_rgb)), width=3.5, pattern=Pattern.SOLID))
+            if chart.chart_type in ("line", "area")
+            else None
+        )
+        series_models.append(
+            ChartSeries(
+                series_index=s_idx,
+                show_value_labels=chart.show_value_labels,
+                value_label_text_style=value_label_style,
+                fill=s_fill,
+                stroke=s_stroke,
+                symbol_fill=s_fill,
+            )
+        )
+
+    kwargs: dict[str, Any] = {
+        "identifier": f"{slide_prefix}_{chart.id}",
+        "geometry": Geometry(
+            position=Position(x=plot_x, y=plot_y),
+            size=Size(width=plot_w, height=plot_h),
+        ),
+        "title": None,
+        "data": data,
+        "show_legend": False,
+        "legend": None,
+        "series": series_models,
+    }
+
+    if chart.chart_type in ("pie", "donut"):
+        kwargs["chart_colors"] = [
+            ChartColor(fill=Fill(color=Color(rgba=_rgba(palette[i % len(palette)]))))
+            for i in range(max(1, cat_count))
+        ]
+    else:
+        kwargs["category_axis"] = ChartCategoryAxis(
+            label_text_style=label_style,
+            show_axis=True,
+        )
+        val_axis_kwargs: dict[str, Any] = {
+            "label_text_style": label_style,
+            "show_axis": True,
+            "show_major_gridlines": True,
+        }
+        if chart.unit:
+            val_axis_kwargs["title"] = chart.unit
+            val_axis_kwargs["show_title"] = True
+            val_axis_kwargs["title_text_style"] = label_style
+        if chart.axis_min is not None:
+            val_axis_kwargs["min"] = ChartDataValue(number=float(chart.axis_min))
+        if chart.axis_max is not None:
+            val_axis_kwargs["max"] = ChartDataValue(number=float(chart.axis_max))
+        kwargs["value_axis"] = ChartValueAxis(**val_axis_kwargs)
+
+    inner_chart = chart_cls(**kwargs)
+    objs.append(SlideObject(object=CanvasObject(chart=Chart(**{field_name: inner_chart}))))
+    return objs
+
+
+def _make_table_objects(slide_prefix: str, table: PlacedTable, theme: ThemePreset) -> list[SlideObject]:
+    """Compile a PlacedTable into a native editable .keyx Table object (with optional title Textbox)."""
+    objs: list[SlideObject] = []
+    table_rect = table.rect
+    if table.title:
+        title_h = 44.0
+        objs.append(
+            _make_textbox(
+                f"{slide_prefix}_{table.id}_title",
+                BoxRect(table.rect.x, table.rect.y, table.rect.w, title_h),
+                table.title,
+                font_name=theme.font_title,
+                font_size=24.0,
+                color=_rgba(theme.title_rgb),
+                bold=True,
+                opacity=table.opacity,
+            )
+        )
+        table_rect = BoxRect(table.rect.x, table.rect.y + title_h + 6.0, table.rect.w, max(80.0, table.rect.h - title_h - 6.0))
+
+    n_cols = max(1, len(table.headers))
+    n_rows = 1 + len(table.rows)
+    col_w = round(table_rect.w / n_cols, 2)
+    row_h = round(table_rect.h / n_rows, 2)
+
+    grid_line = Stroke(line=Line(color=Color(rgba=_rgba(theme.card_border_rgb, 0.55)), width=1.0, pattern=Pattern.SOLID))
+    header_fill = Fill(color=Color(rgba=_rgba(theme.flow_node_fill_rgb)))
+    body_fill = Fill(color=Color(rgba=_rgba(theme.card_fill_rgb)))
+    highlight_fill = Fill(color=Color(rgba=_rgba(theme.accent_fill_rgb)))
+
+    header_text_props = ParagraphProperties(
+        alignment=AlignmentType.CENTER,
+        character_properties=CharacterProperties(
+            font_name=theme.font_title,
+            font_size=20.0,
+            bold=True,
+            character_fill=Fill(color=Color(rgba=_rgba(theme.title_rgb))),
+        ),
+    )
+    body_text_props = ParagraphProperties(
+        alignment=AlignmentType.CENTER,
+        character_properties=CharacterProperties(
+            font_name=theme.font_body,
+            font_size=18.0,
+            bold=False,
+            character_fill=Fill(color=Color(rgba=_rgba(theme.text_rgb))),
+        ),
+    )
+    highlight_text_props = ParagraphProperties(
+        alignment=AlignmentType.CENTER,
+        character_properties=CharacterProperties(
+            font_name=theme.font_body,
+            font_size=18.0,
+            bold=True,
+            character_fill=Fill(color=Color(rgba=_rgba(theme.accent_text_rgb))),
+        ),
+    )
+
+    col_headers = [
+        ColumnHeader(
+            title=hdr if c_idx < table.visible_cols else "",
+            column_width=col_w,
+            visibility_state=TableColumnHeaderVisibilityState.VISIBLE,
+            kind=TableColumnHeaderKind(body=True),
+        )
+        for c_idx, hdr in enumerate(table.headers)
+    ]
+
+    content_rows: list[Row] = [
+        Row(
+            row_index=0,
+            row_height=row_h,
+            visibility_state=TableRowVisibilityState.VISIBLE,
+            kind=TableRowKind(body=True),
+            cells=[
+                Cell(
+                    value=hdr if c_idx < table.visible_cols else "",
+                    column_index=c_idx,
+                    cell_properties=CellProperties(
+                        fill=highlight_fill if c_idx in table.highlight_cols else header_fill,
+                        vertical_alignment=VerticalAlignmentType.CENTER,
+                    ),
+                    text_properties=header_text_props,
+                )
+                for c_idx, hdr in enumerate(table.headers)
+            ],
+        )
+    ]
+
+    for r_idx, raw_row in enumerate(table.rows):
+        row_visible = r_idx < table.visible_rows
+        is_hl_row = r_idx in table.highlight_rows
+        cells: list[Cell] = []
+        for c_idx in range(n_cols):
+            val = raw_row[c_idx] if (row_visible and c_idx < table.visible_cols and c_idx < len(raw_row)) else ""
+            is_hl = is_hl_row or (c_idx in table.highlight_cols)
+            cells.append(
+                Cell(
+                    value=val,
+                    column_index=c_idx,
+                    cell_properties=CellProperties(
+                        fill=highlight_fill if is_hl else body_fill,
+                        vertical_alignment=VerticalAlignmentType.CENTER,
+                    ),
+                    text_properties=highlight_text_props if is_hl else body_text_props,
+                )
+            )
+        content_rows.append(
+            Row(
+                row_index=r_idx + 1,
+                row_height=row_h,
+                visibility_state=TableRowVisibilityState.VISIBLE,
+                kind=TableRowKind(body=True),
+                cells=cells,
+            )
+        )
+
+    tbl = Table(
+        identifier=f"{slide_prefix}_{table.id}",
+        geometry=Geometry(
+            position=Position(x=table_rect.x, y=table_rect.y),
+            size=Size(width=table_rect.w, height=table_rect.h),
+        ),
+        number_of_columns=n_cols,
+        number_of_rows=n_rows,
+        number_of_header_rows=1,
+        default_column_width=col_w,
+        default_row_height=row_h,
+        visual_properties=VisualProperties(
+            overall_properties=OverallProperties(has_alternating_rows=False, auto_resize=False),
+            header_row_cell_properties=CellProperties(fill=header_fill, vertical_alignment=VerticalAlignmentType.CENTER),
+            header_row_text_properties=header_text_props,
+            body_cell_properties=CellProperties(fill=body_fill, vertical_alignment=VerticalAlignmentType.CENTER),
+            body_text_properties=body_text_props,
+            body_stroke_properties=BodyStrokeProperties(
+                horizontal_stroke=grid_line,
+                vertical_stroke=grid_line,
+                horizontal_border_stroke=grid_line,
+                vertical_border_stroke=grid_line,
+                border_strokes_visible=True,
+                horizontal_strokes_visible=True,
+                vertical_strokes_visible=True,
+            ),
+        ),
+        column_headers=col_headers,
+        content=content_rows,
+    )
+    objs.append(SlideObject(object=CanvasObject(table=tbl)))
+    return objs
+
+
 def _render_slide(
     slide_num: int,
     frame: ResolvedFrame,
@@ -988,13 +1484,14 @@ def _render_slide(
         contents.extend(_make_pinned_flow_objects(slide_prefix, frame.pinned_flow, theme))
 
     if frame.title_rect is not None:
+        title_size = round(min(78.0, max(44.0, (frame.title_rect.w - 40.0) / max(1.0, _text_units(frame.title) * 0.56))), 1)
         contents.append(
             _make_textbox(
                 f"{slide_prefix}_title",
                 frame.title_rect,
                 frame.title,
                 font_name=theme.font_title,
-                font_size=80.0,
+                font_size=title_size,
                 color=_rgba(theme.title_rgb),
                 bold=True,
             )
@@ -1013,6 +1510,9 @@ def _render_slide(
             )
         )
 
+    for rf in frame.region_frames:
+        contents.extend(_make_region_frame_objects(slide_prefix, rf, theme))
+
     for d_idx, divider in enumerate(frame.dividers):
         contents.extend(_make_divider_objects(slide_prefix, d_idx, divider, theme))
 
@@ -1022,8 +1522,39 @@ def _render_slide(
     if frame.comparison_matrix is not None:
         contents.extend(_make_comparison_matrix_objects(slide_prefix, frame.comparison_matrix, theme))
 
+    connector_rects: dict[str, BoxRect] = {}
+    for shape in frame.shapes:
+        contents.append(_make_shape_object(slide_prefix, shape, theme))
+        connector_rects[shape.id] = shape.rect
+
+    for chart in frame.charts:
+        contents.extend(_make_chart_objects(slide_prefix, chart, theme))
+        connector_rects[chart.id] = chart.rect
+
+    for table in frame.tables:
+        contents.extend(_make_table_objects(slide_prefix, table, theme))
+        connector_rects[table.id] = table.rect
+
+    for tb in frame.textboxes:
+        t_color = _rgba(hex_to_rgb_float(tb.color_hex)) if tb.color_hex else _rgba(theme.text_rgb)
+        t_fill = Fill(color=Color(rgba=_rgba(hex_to_rgb_float(tb.fill_hex)))) if tb.fill_hex else None
+        contents.append(
+            _make_textbox(
+                f"{slide_prefix}_{tb.id}",
+                tb.rect,
+                tb.text,
+                font_name=theme.font_body,
+                font_size=tb.font_size,
+                color=t_color,
+                bold=tb.bold,
+                opacity=tb.opacity,
+                fill=t_fill,
+                alignment=_ALIGN_MAP.get(tb.align, AlignmentType.CENTER),
+            )
+        )
+        connector_rects[tb.id] = tb.rect
+
     caption_color = _rgba(theme.arrow_rgb)
-    box_rects: dict[str, BoxRect] = {}
     for box in frame.boxes:
         objs, _ = _make_box_objects(
             slide_prefix,
@@ -1033,11 +1564,11 @@ def _render_slide(
             caption_color=caption_color,
         )
         contents.extend(objs)
-        box_rects[box.id] = box.rect
+        connector_rects[box.id] = box.rect
 
     for edge in frame.edges:
-        if edge.from_id in box_rects and edge.to_id in box_rects:
-            contents.extend(_make_edge_objects(slide_prefix, edge, box_rects, theme, scale=frame.scale))
+        if edge.from_id in connector_rects and edge.to_id in connector_rects:
+            contents.extend(_make_edge_objects(slide_prefix, edge, connector_rects, theme, scale=frame.scale))
 
     return Slide(
         background=bg,
@@ -1052,10 +1583,11 @@ def compile_deck(
     output_path: str | Path,
     *,
     theme_override: str | None = None,
+    use_templates: bool | None = None,
 ) -> Path:
     """Validate, pace if needed, lay out, and compile a KeyFlow deck specification into a .keyx file."""
     if isinstance(deck_or_raw, dict):
-        validation = validate_deck(deck_or_raw)
+        validation = validate_deck(deck_or_raw, use_templates=use_templates)
         if not validation.valid:
             raise ValueError("Invalid storyboard:\n- " + "\n- ".join(validation.errors))
         materialized = pace_deck(deck_or_raw, overwrite_existing=False)
@@ -1063,13 +1595,24 @@ def compile_deck(
     else:
         deck = deck_or_raw
 
-    theme = get_theme(theme_override or deck.theme)
-    bg_preset = _build_background_preset(theme)
-    bg = SlideBackground(standard=Fill(preset_identifier=_BG_PRESET_ID))
+    base_theme = apply_palette_overrides(get_theme(theme_override or deck.theme), deck.palette)
+    presets: list[Preset] = [_build_background_preset(base_theme, _BG_PRESET_ID)]
+    seen_preset_ids: set[str] = {_BG_PRESET_ID}
+    default_bg = SlideBackground(standard=Fill(preset_identifier=_BG_PRESET_ID))
 
     slides: list[Slide] = []
     slide_counter = 1
     for scene in deck.scenes:
+        scene_theme = apply_palette_overrides(base_theme, scene.palette)
+        if scene.palette and any(k in scene.palette for k in ("bg_hex", "bg_gradient_end_hex")):
+            bg_id = f"{_BG_PRESET_ID}_{scene.id}"
+            if bg_id not in seen_preset_ids:
+                presets.append(_build_background_preset(scene_theme, bg_id))
+                seen_preset_ids.add(bg_id)
+            scene_bg = SlideBackground(standard=Fill(preset_identifier=bg_id))
+        else:
+            scene_bg = default_bg
+
         resolved_frames = resolve_scene(
             scene,
             deck.slide_width,
@@ -1077,7 +1620,7 @@ def compile_deck(
             pinned_flow=deck.pinned_flow,
         )
         for frame in resolved_frames:
-            slides.append(_render_slide(slide_counter, frame, theme, bg))
+            slides.append(_render_slide(slide_counter, frame, scene_theme, scene_bg))
             slide_counter += 1
 
     doc = KeyxDocument(
@@ -1086,7 +1629,7 @@ def compile_deck(
             slide_size=Size(width=deck.slide_width, height=deck.slide_height),
             slides=slides,
         ),
-        presets=[bg_preset],
+        presets=presets,
     )
 
     out = Path(output_path)
