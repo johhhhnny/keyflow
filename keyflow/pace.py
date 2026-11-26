@@ -451,8 +451,24 @@ def _canvas_object_note(obj: dict[str, Any]) -> str:
     return str(obj["id"])
 
 
+def _step_counts(total: int, max_steps: int = 4) -> list[int]:
+    """Return strictly increasing cumulative counts ending at total, capped at max_steps."""
+    if total <= 1:
+        return [total] if total == 1 else []
+    if total <= max_steps:
+        return list(range(1, total + 1))
+    counts: list[int] = []
+    for i in range(1, max_steps + 1):
+        c = max(1, round(total * i / max_steps))
+        if not counts or c > counts[-1]:
+            counts.append(c)
+    if counts[-1] != total:
+        counts[-1] = total
+    return counts
+
+
 def _pace_canvas(scene: dict[str, Any], density: DensityMode) -> list[dict[str, Any]]:
-    """Expand a freeform canvas scene deterministically by object step and chart/table reveal rules."""
+    """Expand a freeform canvas scene deterministically by object step and chart/table/diagram reveal rules."""
     objects: list[dict[str, Any]] = scene.get("objects", [])
     if not objects:
         return [{"visible_objects": [], "notes": str(scene.get("intro_note") or scene.get("title", ""))}]
@@ -461,6 +477,13 @@ def _pace_canvas(scene: dict[str, Any], density: DensityMode) -> list[dict[str, 
         has_progressive_sub = any(
             (o.get("kind") == "chart" and (o.get("chart") or {}).get("reveal", "whole") != "whole")
             or (o.get("kind") == "table" and (o.get("table") or {}).get("reveal", "whole") != "whole")
+            or (
+                o.get("kind") == "diagram"
+                and (
+                    len((o.get("diagram") or {}).get("nodes", [])) > 1
+                    or any(bool(n.get("children")) for n in (o.get("diagram") or {}).get("nodes", []))
+                )
+            )
             for o in objects
         )
         if not has_progressive_sub and len({int(o.get("step", 1)) for o in objects}) <= 1:
@@ -471,21 +494,28 @@ def _pace_canvas(scene: dict[str, Any], density: DensityMode) -> list[dict[str, 
                 }
             ]
 
+    diagram_layout_map = {
+        "horizontal": "horizontal_flow",
+        "vertical": "vertical_flow",
+        "dag": "flow_dag",
+        "hub_spoke": "hub_spoke",
+    }
+
     frames: list[dict[str, Any]] = []
     step_values = sorted({int(o.get("step", 1)) for o in objects})
-    if scene.get("intro_note") and density == "standard" and 0 not in step_values:
-        frames.append({"visible_objects": [], "notes": str(scene["intro_note"])})
+    intro_note = str(scene["intro_note"]).strip() if scene.get("intro_note") else ""
 
     visible: list[str] = []
-    committed_states: dict[str, dict[str, int]] = {}
+    committed_states: dict[str, dict[str, Any]] = {}
 
     for step_num in step_values:
         batch = [o for o in objects if int(o.get("step", 1)) == step_num]
         batch_ids = [str(o["id"]) for o in batch]
         visible.extend(batch_ids)
 
-        # Check if any object in this step has sub-frame progressive reveal (chart/table)
-        sub_stages: list[tuple[dict[str, dict[str, int]], str]] = []
+        # Expand progressive sub-stages for chart / table / diagram objects in this step
+        sub_stages: list[tuple[dict[str, dict[str, Any]], str]] = []
+        prog_oids: set[str] = set()
         if density == "standard":
             for obj in batch:
                 oid = str(obj["id"])
@@ -494,12 +524,14 @@ def _pace_canvas(scene: dict[str, Any], density: DensityMode) -> list[dict[str, 
                     ch = obj.get("chart") or {}
                     rev = ch.get("reveal", "whole")
                     if rev == "by_series" and len(ch.get("series", [])) > 1:
+                        prog_oids.add(oid)
                         for k in range(1, len(ch["series"]) + 1):
                             sr_name = ch["series"][k - 1].get("name", f"Series {k}")
                             sub_stages.append(({oid: {"series_count": k}}, f"{_canvas_object_note(obj)}（{sr_name}）"))
                         committed_states[oid] = {"series_count": len(ch["series"])}
                     elif rev == "by_category" and len(ch.get("categories", [])) > 1:
-                        for k in range(1, len(ch["categories"]) + 1):
+                        prog_oids.add(oid)
+                        for k in _step_counts(len(ch["categories"]), max_steps=6):
                             cat_name = ch["categories"][k - 1]
                             sub_stages.append(({oid: {"category_count": k}}, f"{_canvas_object_note(obj)}（{cat_name}）"))
                         committed_states[oid] = {"category_count": len(ch["categories"])}
@@ -507,14 +539,60 @@ def _pace_canvas(scene: dict[str, Any], density: DensityMode) -> list[dict[str, 
                     tb = obj.get("table") or {}
                     rev = tb.get("reveal", "whole")
                     if rev == "by_row" and len(tb.get("rows", [])) > 1:
-                        for k in range(1, len(tb["rows"]) + 1):
-                            sub_stages.append(({oid: {"row_count": k}}, f"{_canvas_object_note(obj)}（第 {k} 行）"))
+                        prog_oids.add(oid)
+                        for k in _step_counts(len(tb["rows"]), max_steps=4):
+                            sub_stages.append(({oid: {"row_count": k}}, f"{_canvas_object_note(obj)}（前 {k} 行）"))
                         committed_states[oid] = {"row_count": len(tb["rows"])}
                     elif rev == "by_column" and len(tb.get("headers", [])) > 1:
-                        for k in range(1, len(tb["headers"]) + 1):
+                        prog_oids.add(oid)
+                        for k in _step_counts(len(tb["headers"]), max_steps=4):
                             hdr = tb["headers"][k - 1]
                             sub_stages.append(({oid: {"col_count": k}}, f"{_canvas_object_note(obj)}（{hdr}）"))
                         committed_states[oid] = {"col_count": len(tb["headers"])}
+                elif kind == "diagram":
+                    dg = obj.get("diagram") or {}
+                    dg_nodes = dg.get("nodes", [])
+                    has_children = any(bool(n.get("children")) for n in dg_nodes)
+                    if len(dg_nodes) > 1 or has_children:
+                        prog_oids.add(oid)
+                        sub_layout = diagram_layout_map.get(dg.get("diagram_layout", "horizontal"), "horizontal_flow")
+                        dummy_dg_scene = {
+                            "id": oid,
+                            "title": str(obj.get("label") or oid),
+                            "layout": sub_layout,
+                            "nodes": dg_nodes,
+                            "edges": dg.get("edges", []),
+                        }
+                        d_frames = expand_scene_frames(dummy_dg_scene, density="standard")
+                        non_empty_d_frames = [df for df in d_frames if df.get("visible_nodes")]
+                        if not non_empty_d_frames:
+                            non_empty_d_frames = d_frames
+                        prefix_lbl = _canvas_object_note(obj)
+                        for df in non_empty_d_frames:
+                            d_st: dict[str, Any] = {
+                                "visible_nodes": list(df.get("visible_nodes", [])),
+                                "expanded_nodes": list(df.get("expanded_nodes", [])),
+                            }
+                            if df.get("visible_edges", "auto") != "auto":
+                                d_st["visible_edges"] = list(df["visible_edges"])
+                            if df.get("focus_nodes") is not None:
+                                d_st["focus_nodes"] = list(df["focus_nodes"])
+                            d_note = str(df.get("notes") or "")
+                            full_note = (
+                                f"{prefix_lbl}：{d_note}"
+                                if (prefix_lbl and d_note and prefix_lbl not in d_note)
+                                else (d_note or prefix_lbl)
+                            )
+                            sub_stages.append(({oid: d_st}, full_note))
+                        if non_empty_d_frames:
+                            last_df = non_empty_d_frames[-1]
+                            last_st: dict[str, Any] = {
+                                "visible_nodes": list(last_df.get("visible_nodes", [])),
+                                "expanded_nodes": list(last_df.get("expanded_nodes", [])),
+                            }
+                            if last_df.get("visible_edges", "auto") != "auto":
+                                last_st["visible_edges"] = list(last_df["visible_edges"])
+                            committed_states[oid] = last_st
 
         if not sub_stages:
             frame_obj: dict[str, Any] = {
@@ -523,43 +601,37 @@ def _pace_canvas(scene: dict[str, Any], density: DensityMode) -> list[dict[str, 
             }
             if committed_states:
                 frame_obj["object_states"] = copy.deepcopy(committed_states)
-            if density == "standard" and len(step_values) > 1 and len(visible) > len(batch_ids):
-                frame_obj["focus_objects"] = list(batch_ids)
             frames.append(frame_obj)
         else:
-            # Emit progressive sub-stages for chart/table in this batch
             base_states = copy.deepcopy(committed_states)
             for oid in batch_ids:
                 base_states.pop(oid, None)
+            non_prog_notes = [_canvas_object_note(o) for o in batch if str(o["id"]) not in prog_oids]
+            running_batch_states: dict[str, dict[str, Any]] = {}
             for idx, (delta_state, sub_note) in enumerate(sub_stages):
                 merged = copy.deepcopy(base_states)
+                for r_id, r_st in running_batch_states.items():
+                    merged[r_id] = copy.deepcopy(r_st)
                 for k_id, k_st in delta_state.items():
-                    merged[k_id] = k_st
-                # Keep previously finished sub-stages in this batch if multiple progressive objects share a step
-                if idx == len(sub_stages) - 1:
-                    for k_id, k_st in committed_states.items():
-                        if k_id in batch_ids:
-                            merged[k_id] = k_st
+                    merged[k_id] = copy.deepcopy(k_st)
+                    running_batch_states[k_id] = copy.deepcopy(k_st)
+                note_txt = sub_note
+                if idx == 0 and non_prog_notes:
+                    note_txt = "；".join([*non_prog_notes, sub_note]) if sub_note else "；".join(non_prog_notes)
                 frame_obj = {
                     "visible_objects": list(visible),
-                    "notes": sub_note,
+                    "notes": note_txt,
                 }
                 if merged:
                     frame_obj["object_states"] = merged
-                if density == "standard" and len(step_values) > 1 and len(visible) > len(batch_ids):
-                    frame_obj["focus_objects"] = list(batch_ids)
                 frames.append(frame_obj)
 
-    if density == "standard" and len(frames) > 1 and any("focus_objects" in f for f in frames):
-        final_frame: dict[str, Any] = {
-            "visible_objects": list(visible),
-            "notes": str(scene.get("intro_note") or scene.get("claim") or f"全景汇总：{scene['title']}"),
-        }
-        if committed_states:
-            final_frame["object_states"] = copy.deepcopy(committed_states)
-        frames.append(final_frame)
+    if intro_note and frames:
+        first_note = str(frames[0].get("notes") or "")
+        if intro_note not in first_note:
+            frames[0]["notes"] = f"{intro_note}；{first_note}" if first_note else intro_note
 
-    return frames
+    return frames or [{"visible_objects": [], "notes": str(scene.get("title", ""))}]
 
 
 _PACERS = {

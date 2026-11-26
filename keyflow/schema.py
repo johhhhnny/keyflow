@@ -37,6 +37,7 @@ RegionArrange = Literal["stack", "row", "grid"]
 CanvasObjectKind = Literal["chart", "table", "card", "textbox", "shape", "callout", "diagram"]
 ChartType = Literal["column", "bar", "pie", "donut", "line", "area", "stacked_column", "stacked_bar", "scatter"]
 ChartReveal = Literal["whole", "by_series", "by_category"]
+ChartRenderMode = Literal["auto", "vector", "native"]
 TableReveal = Literal["whole", "by_row", "by_column"]
 ShapeType = Literal["rounded_rect", "rect", "ellipse", "pill", "custom"]
 DiagramLayout = Literal["horizontal", "vertical", "dag", "hub_spoke"]
@@ -231,6 +232,7 @@ class ChartSpec:
     axis_min: float | None = None
     axis_max: float | None = None
     reveal: ChartReveal = "whole"
+    render_mode: ChartRenderMode = "auto"
 
 
 @dataclass(slots=True)
@@ -297,7 +299,7 @@ class FrameSpec:
     visible_columns: list[str] | None = None
     visible_objects: list[str] | None = None
     focus_objects: list[str] | None = None
-    object_states: dict[str, dict[str, int]] = field(default_factory=dict)
+    object_states: dict[str, dict[str, Any]] = field(default_factory=dict)
     show_annotations: bool = True
     notes: str = ""
     subtitle: str | None = None
@@ -506,11 +508,20 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
         frames: list[FrameSpec] = []
         for f_raw in s_raw.get("frames") or []:
             raw_obj_states = f_raw.get("object_states") or {}
-            obj_states = {
-                str(k): {str(sk): int(sv) for sk, sv in v.items()}
-                for k, v in raw_obj_states.items()
-                if isinstance(v, dict)
-            }
+            obj_states: dict[str, dict[str, Any]] = {}
+            for k, v in raw_obj_states.items():
+                if not isinstance(v, dict):
+                    continue
+                parsed_state: dict[str, Any] = {}
+                for sk, sv in v.items():
+                    key = str(sk)
+                    if isinstance(sv, list):
+                        parsed_state[key] = [str(x) for x in sv]
+                    elif isinstance(sv, str):
+                        parsed_state[key] = sv
+                    else:
+                        parsed_state[key] = int(sv)
+                obj_states[str(k)] = parsed_state
             frames.append(
                 FrameSpec(
                     visible_nodes=[str(x) for x in f_raw.get("visible_nodes", [])],
@@ -596,6 +607,7 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
                     axis_min=float(ch_raw["axis_min"]) if ch_raw.get("axis_min") is not None else None,
                     axis_max=float(ch_raw["axis_max"]) if ch_raw.get("axis_max") is not None else None,
                     reveal=ch_raw.get("reveal", "whole"),
+                    render_mode=ch_raw.get("render_mode", "auto"),
                 )
 
             table_spec: TableSpec | None = None
@@ -1119,6 +1131,7 @@ def _validate_canvas_scene(
     valid_variants = {"primary", "accent", "muted", "success", "warn"}
     valid_chart_types = {"column", "bar", "pie", "donut", "line", "area", "stacked_column", "stacked_bar", "scatter"}
     valid_chart_reveals = {"whole", "by_series", "by_category"}
+    valid_chart_render_modes = {"auto", "vector", "native"}
     valid_table_reveals = {"whole", "by_row", "by_column"}
     valid_shape_types = {"rounded_rect", "rect", "ellipse", "pill", "custom"}
     valid_diagram_layouts = {"horizontal", "vertical", "dag", "hub_spoke"}
@@ -1202,6 +1215,9 @@ def _validate_canvas_scene(
                 crev = ch.get("reveal", "whole")
                 if crev not in valid_chart_reveals:
                     errors.append(f"{prefix}.objects['{oid}'].chart: invalid reveal '{crev}'.")
+                crm = ch.get("render_mode", "auto")
+                if crm not in valid_chart_render_modes:
+                    errors.append(f"{prefix}.objects['{oid}'].chart: invalid render_mode '{crm}'.")
                 cats = ch.get("categories")
                 series = ch.get("series")
                 if not isinstance(cats, list) or not cats:
@@ -1670,6 +1686,29 @@ def validate_deck(
                             errors.append(f"{prefix}.frames[{f_idx}].object_states['{oid}']: must be an object.")
                         else:
                             _check_allowed_keys(st_val, "object_state", f"{prefix}.frames[{f_idx}].object_states['{oid}']", errors)
+                            for count_key in ("series_count", "category_count", "row_count", "col_count"):
+                                if count_key in st_val:
+                                    cval = st_val[count_key]
+                                    if isinstance(cval, bool) or not isinstance(cval, int) or cval < 1:
+                                        errors.append(
+                                            f"{prefix}.frames[{f_idx}].object_states['{oid}'].{count_key}: must be an integer >= 1."
+                                        )
+                            for list_key in ("visible_nodes", "expanded_nodes", "focus_nodes"):
+                                if list_key in st_val and (
+                                    not isinstance(st_val[list_key], list)
+                                    or not all(isinstance(x, str) for x in st_val[list_key])
+                                ):
+                                    errors.append(
+                                        f"{prefix}.frames[{f_idx}].object_states['{oid}'].{list_key}: must be a list of strings."
+                                    )
+                            if "visible_edges" in st_val:
+                                ve = st_val["visible_edges"]
+                                if ve != "auto" and (
+                                    not isinstance(ve, list) or not all(isinstance(x, str) for x in ve)
+                                ):
+                                    errors.append(
+                                        f"{prefix}.frames[{f_idx}].object_states['{oid}'].visible_edges: must be 'auto' or list of strings."
+                                    )
 
             if not f.get("notes"):
                 warnings.append(

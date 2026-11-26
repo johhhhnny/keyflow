@@ -189,6 +189,8 @@ class PlacedChartSeries:
     name: str
     values: list[float | None]
     color_hex: str | None = None
+    active: bool = True
+    full_values: list[float] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,6 +207,8 @@ class PlacedChart:
     axis_min: float | None = None
     axis_max: float | None = None
     opacity: float = 1.0
+    render_mode: str = "auto"
+    use_vector: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -1366,8 +1370,9 @@ def _resolve_inline_diagram(
     obj: CanvasObjectSpec,
     slot: BoxRect,
     opacity: float,
+    state: dict[str, Any] | None = None,
 ) -> tuple[list[PlacedBox], list[PlacedEdge]]:
-    """Solve an inline diagram object inside its region slot by reusing existing solvers."""
+    """Solve an inline diagram object inside its region slot, locking coordinates across progressive frames."""
     dg = obj.diagram
     if dg is None or not dg.nodes:
         return [], []
@@ -1394,15 +1399,29 @@ def _resolve_inline_diagram(
     solver = _LAYOUT_SOLVERS[sub_layout]
     outcome = solver(dummy_scene, slot.w, 0.0, slot.h)
 
+    st = state or {}
+    all_node_ids = {n.id for n in dg.nodes}
+    vis_nodes = set(st["visible_nodes"]) if "visible_nodes" in st else all_node_ids
+    exp_nodes = (
+        set(st["expanded_nodes"])
+        if "expanded_nodes" in st
+        else {n.id for n in dg.nodes if n.children}
+    )
+    focus_nodes = set(st["focus_nodes"]) if "focus_nodes" in st else None
+    vis_edges_spec = st.get("visible_edges", "auto")
+
     placed_boxes: list[PlacedBox] = []
     anchor_rects: dict[str, BoxRect] = {}
     for node in dg.nodes:
+        if node.id not in vis_nodes:
+            continue
         geo = outcome.geos[node.id]
-        is_exp = bool(node.children)
+        is_exp = bool(node.children) and (node.id in exp_nodes)
         base_rect = geo.expanded_rect if is_exp else geo.collapsed_rect
         shifted = BoxRect(slot.x + base_rect.x, slot.y + base_rect.y, base_rect.w, base_rect.h)
         full_id = f"{obj.id}__{node.id}"
         anchor_rects[node.id] = shifted
+        n_op = opacity * (1.0 if (focus_nodes is None or node.id in focus_nodes) else 0.42)
         cap_rect = (
             BoxRect(
                 slot.x + geo.caption_rect.x,
@@ -1423,7 +1442,7 @@ def _resolve_inline_diagram(
                 rect=shifted,
                 kind="group_dashed" if is_exp else "card",
                 variant=node.variant,
-                opacity=opacity,
+                opacity=n_op,
                 caption=node.label if (is_exp and node.caption_position != "inside") else None,
                 caption_rect=cap_rect,
                 font_scale=outcome.scale,
@@ -1441,7 +1460,7 @@ def _resolve_inline_diagram(
                         rect=BoxRect(slot.x + crect.x, slot.y + crect.y, crect.w, crect.h),
                         kind="subcard",
                         variant=child.variant,
-                        opacity=opacity,
+                        opacity=n_op,
                         font_scale=outcome.scale,
                     )
                 )
@@ -1450,8 +1469,13 @@ def _resolve_inline_diagram(
     for edge in dg.edges:
         if edge.from_id not in anchor_rects or edge.to_id not in anchor_rects:
             continue
+        if isinstance(vis_edges_spec, list) and edge.id not in vis_edges_spec:
+            continue
         rf = anchor_rects[edge.from_id]
         rt = anchor_rects[edge.to_id]
+        e_op = opacity
+        if focus_nodes is not None and (edge.from_id not in focus_nodes or edge.to_id not in focus_nodes):
+            e_op *= 0.42
         lrect: BoxRect | None = None
         if edge.label:
             mx = (rf.cx + rt.cx) / 2.0
@@ -1468,7 +1492,7 @@ def _resolve_inline_diagram(
                 label=edge.label,
                 label_rect=lrect,
                 style=edge.style,
-                opacity=opacity,
+                opacity=e_op,
             )
         )
     return placed_boxes, placed_edges
@@ -1626,20 +1650,22 @@ def _resolve_canvas_scene(
             elif obj.kind == "chart" and obj.chart is not None:
                 ch = obj.chart
                 ax_min, ax_max = chart_bounds[obj.id]
-                sr_limit = state.get("series_count", len(ch.series))
-                cat_limit = state.get("category_count", len(ch.categories))
-                active_series = ch.series[: max(1, sr_limit)]
+                sr_limit = max(1, int(state.get("series_count", len(ch.series))))
+                cat_limit = max(1, int(state.get("category_count", len(ch.categories))))
                 placed_series = [
                     PlacedChartSeries(
                         name=sr.name,
                         values=[
-                            (v if idx < cat_limit else None)
-                            for idx, v in enumerate(sr.values)
+                            (v if (s_idx < sr_limit and c_idx < cat_limit) else None)
+                            for c_idx, v in enumerate(sr.values)
                         ],
                         color_hex=sr.color_hex,
+                        active=(s_idx < sr_limit),
+                        full_values=list(sr.values),
                     )
-                    for sr in active_series
+                    for s_idx, sr in enumerate(ch.series)
                 ]
+                use_vector = (ch.render_mode == "vector") or (ch.render_mode == "auto" and ch.reveal != "whole")
                 show_leg = ch.show_legend if ch.show_legend is not None else (len(ch.series) > 1 or ch.chart_type in ("pie", "donut"))
                 placed_charts.append(
                     PlacedChart(
@@ -1655,6 +1681,8 @@ def _resolve_canvas_scene(
                         axis_min=ax_min,
                         axis_max=ax_max,
                         opacity=opacity,
+                        render_mode=ch.render_mode,
+                        use_vector=use_vector,
                     )
                 )
             elif obj.kind == "table" and obj.table is not None:
@@ -1676,7 +1704,7 @@ def _resolve_canvas_scene(
                     )
                 )
             elif obj.kind == "diagram":
-                d_boxes, d_edges = _resolve_inline_diagram(obj, rect, opacity)
+                d_boxes, d_edges = _resolve_inline_diagram(obj, rect, opacity, state)
                 placed_boxes.extend(d_boxes)
                 placed_edges.extend(d_edges)
 

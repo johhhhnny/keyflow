@@ -248,6 +248,11 @@
                       "type": "string",
                       "enum": ["whole", "by_series", "by_category"],
                       "default": "whole"
+                    },
+                    "render_mode": {
+                      "type": "string",
+                      "enum": ["auto", "vector", "native"],
+                      "default": "auto"
                     }
                   }
                 },
@@ -415,7 +420,16 @@
                       "series_count": { "type": "integer", "minimum": 1 },
                       "category_count": { "type": "integer", "minimum": 1 },
                       "row_count": { "type": "integer", "minimum": 1 },
-                      "col_count": { "type": "integer", "minimum": 1 }
+                      "col_count": { "type": "integer", "minimum": 1 },
+                      "visible_nodes": { "type": "array", "items": { "type": "string" } },
+                      "expanded_nodes": { "type": "array", "items": { "type": "string" } },
+                      "visible_edges": {
+                        "oneOf": [
+                          { "type": "string", "const": "auto" },
+                          { "type": "array", "items": { "type": "string" } }
+                        ]
+                      },
+                      "focus_nodes": { "type": "array", "items": { "type": "string" } }
                     }
                   }
                 },

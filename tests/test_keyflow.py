@@ -1510,12 +1510,19 @@ def test_freeform_canvas_paces_compiles_native_charts_and_tables(tmp_path: Path)
     raw = _freeform_canvas_stage1()
     paced = pace_deck(raw)
     s0_frames = paced["scenes"][0]["frames"]
-    # step1 by_series (2 frames) + step2 by_row (2 frames) + step3 (1 frame) + summary (1 frame) = 6 frames
-    assert len(s0_frames) == 6
+    # step1 by_series (2 frames) + step2 by_row (2 frames) + step3 (1 frame) = 5 frames (no auto-dim/summary frame)
+    assert len(s0_frames) == 5
     assert s0_frames[0]["object_states"]["latency_col"]["series_count"] == 1
     assert s0_frames[1]["object_states"]["latency_col"]["series_count"] == 2
     assert s0_frames[2]["object_states"]["perf_tbl"]["row_count"] == 1
     assert s0_frames[3]["object_states"]["perf_tbl"]["row_count"] == 2
+
+    # Scene 1: step1 donut (1 frame) + step2 3-node diagram decomposed node-by-node (3 frames) = 4 frames
+    s1_frames = paced["scenes"][1]["frames"]
+    assert len(s1_frames) == 4
+    assert s1_frames[1]["object_states"]["mini_flow"]["visible_nodes"] == ["a"]
+    assert s1_frames[2]["object_states"]["mini_flow"]["visible_nodes"] == ["a", "b"]
+    assert s1_frames[3]["object_states"]["mini_flow"]["visible_nodes"] == ["a", "b", "c"]
 
     # Audit passes strictly with zero errors or warnings
     report = audit_deck(paced, strict=True)
@@ -1523,37 +1530,139 @@ def test_freeform_canvas_paces_compiles_native_charts_and_tables(tmp_path: Path)
     assert report.errors == []
     assert report.warnings == []
 
-    # Axis bounds & coordinates must stay locked across progressive frames
+    # Axis bounds, coordinates, and full series slots must stay locked across progressive frames
     parsed = parse_deck(paced)
-    resolved = resolve_scene(parsed.scenes[0], parsed.slide_width, parsed.slide_height)
-    assert resolved[0].charts[0].rect == resolved[1].charts[0].rect
-    assert resolved[0].charts[0].axis_min == resolved[1].charts[0].axis_min
-    assert resolved[0].charts[0].axis_max == resolved[1].charts[0].axis_max
-    assert resolved[2].tables[0].rect == resolved[3].tables[0].rect
+    resolved_s0 = resolve_scene(parsed.scenes[0], parsed.slide_width, parsed.slide_height)
+    assert resolved_s0[0].charts[0].rect == resolved_s0[1].charts[0].rect
+    assert resolved_s0[0].charts[0].axis_min == resolved_s0[1].charts[0].axis_min
+    assert resolved_s0[0].charts[0].axis_max == resolved_s0[1].charts[0].axis_max
+    assert len(resolved_s0[0].charts[0].series) == len(resolved_s0[1].charts[0].series) == 2
+    assert resolved_s0[0].charts[0].use_vector is True
+    assert resolved_s0[2].tables[0].rect == resolved_s0[3].tables[0].rect
 
-    # Compile to .keyx and verify native Chart + Table + Shape roundtrip
+    # Inline diagram nodes keep locked coordinates across progressive frames
+    resolved_s1 = resolve_scene(parsed.scenes[1], parsed.slide_width, parsed.slide_height)
+    assert len(resolved_s1[1].boxes) == 1
+    assert len(resolved_s1[2].boxes) == 2
+    assert resolved_s1[1].boxes[0].rect == resolved_s1[3].boxes[0].rect
+
+    # Compile to .keyx and verify pure Shape vector chart (for progressive) + native Table/DonutChart
     out = tmp_path / "freeform_loop.keyx"
     compile_deck(raw, out)
     assert out.exists()
 
     with KeyxDocument.open(out) as loaded:
         slides = loaded.payload.slides
-        assert len(slides) == 9  # 6 frames + 3 frames (step1, step2, summary)
-        # First slide has native ColumnChart
+        assert len(slides) == 9  # 5 frames (scene 0) + 4 frames (scene 1)
+        # First slide compiles progressive by_series chart as pure Shape vectors (exact locked bar widths)
         first_charts = [obj.object.chart for obj in slides[0].contents if obj.object.chart is not None]
-        assert len(first_charts) == 1
-        assert first_charts[0].column is not None
-        assert len(first_charts[0].column.series) == 1
-        # Fourth slide has 2-series ColumnChart + native Table
-        fourth_charts = [obj.object.chart for obj in slides[3].contents if obj.object.chart is not None]
+        assert first_charts == []
+        s1_bars = {
+            obj.object.shape.identifier.removeprefix("s1_"): obj.object.shape.geometry
+            for obj in slides[0].contents
+            if obj.object.shape is not None and "_latency_col_c_0_" in obj.object.shape.identifier
+        }
+        s2_bars = {
+            obj.object.shape.identifier.removeprefix("s2_"): obj.object.shape.geometry
+            for obj in slides[1].contents
+            if obj.object.shape is not None and "_latency_col_c_0_" in obj.object.shape.identifier
+        }
+        assert len(s1_bars) == 3 and set(s1_bars) == set(s2_bars)
+        for bid in s1_bars:
+            assert s1_bars[bid].size.width == pytest.approx(s2_bars[bid].size.width, abs=0.01)
+            assert s1_bars[bid].size.height == pytest.approx(s2_bars[bid].size.height, abs=0.01)
+            assert s1_bars[bid].position.x == pytest.approx(s2_bars[bid].position.x, abs=0.01)
+            assert s1_bars[bid].position.y == pytest.approx(s2_bars[bid].position.y, abs=0.01)
+        # Fourth slide has native Table
         fourth_tables = [obj.object.table for obj in slides[3].contents if obj.object.table is not None]
-        assert len(fourth_charts) == 1 and len(fourth_charts[0].column.series) == 2
         assert len(fourth_tables) == 1
         assert fourth_tables[0].number_of_columns == 3
         assert fourth_tables[0].number_of_rows == 3
-        # Seventh slide has native DonutChart
-        donut_charts = [obj.object.chart for obj in slides[6].contents if obj.object.chart is not None]
+        # Sixth slide (scene 1 frame 0, reveal=whole) keeps native DonutChart
+        donut_charts = [obj.object.chart for obj in slides[5].contents if obj.object.chart is not None]
         assert len(donut_charts) == 1 and donut_charts[0].donut is not None
+
+
+def test_vector_chart_modes_and_native_override(tmp_path: Path) -> None:
+    from creator_studio_doc_format.core import KeyxDocument
+
+    raw = {
+        "title": "Vector & Native Chart Modes",
+        "scenes": [
+            {
+                "id": "vec_test",
+                "title": "Progressive Vector Charts + Native Override",
+                "grid": {"columns": 12, "rows": 2, "gap": 24},
+                "regions": [
+                    {"id": "tl", "col": 1, "row": 1, "col_span": 6, "row_span": 1},
+                    {"id": "tr", "col": 7, "row": 1, "col_span": 6, "row_span": 1},
+                    {"id": "bl", "col": 1, "row": 2, "col_span": 6, "row_span": 1},
+                    {"id": "br", "col": 7, "row": 2, "col_span": 6, "row_span": 1},
+                ],
+                "objects": [
+                    {
+                        "id": "v_area",
+                        "kind": "chart",
+                        "region": "tl",
+                        "step": 1,
+                        "chart": {
+                            "chart_type": "area",
+                            "categories": ["Q1", "Q2", "Q3"],
+                            "series": [{"name": "Revenue", "values": [10, 25, 42]}],
+                            "reveal": "by_category",
+                        },
+                    },
+                    {
+                        "id": "v_donut",
+                        "kind": "chart",
+                        "region": "tr",
+                        "step": 2,
+                        "chart": {
+                            "chart_type": "donut",
+                            "categories": ["A", "B", "C"],
+                            "series": [{"name": "Share", "values": [50, 30, 20]}],
+                            "reveal": "by_category",
+                        },
+                    },
+                    {
+                        "id": "v_bar_forced",
+                        "kind": "chart",
+                        "region": "bl",
+                        "step": 2,
+                        "chart": {
+                            "chart_type": "bar",
+                            "categories": ["Item 1", "Item 2"],
+                            "series": [{"name": "Score", "values": [80, 95]}],
+                            "render_mode": "vector",
+                        },
+                    },
+                    {
+                        "id": "native_forced",
+                        "kind": "chart",
+                        "region": "br",
+                        "step": 3,
+                        "chart": {
+                            "chart_type": "column",
+                            "categories": ["C1", "C2"],
+                            "series": [{"name": "S1", "values": [10, 20]}, {"name": "S2", "values": [15, 25]}],
+                            "reveal": "by_series",
+                            "render_mode": "native",
+                        },
+                    },
+                ],
+            }
+        ],
+    }
+    assert validate_deck(raw).valid is True
+    assert audit_deck(raw, strict=True).passed is True
+    out = tmp_path / "vector_modes.keyx"
+    compile_deck(raw, out)
+    with KeyxDocument.open(out) as loaded:
+        slides = loaded.payload.slides
+        assert len(slides) >= 6
+        # Last slide contains native_forced rendered as a native ColumnChart
+        last_native_charts = [obj.object.chart for obj in slides[-1].contents if obj.object.chart is not None]
+        assert len(last_native_charts) == 1 and last_native_charts[0].column is not None
 
 
 def test_freeform_all_native_chart_types_and_shapes_compile(tmp_path: Path) -> None:

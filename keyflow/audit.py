@@ -994,15 +994,34 @@ def _audit_scene_anchor_stability(
                         target_id=nit.id,
                         message=f"{kind_label} '{nit.id}' shifted by {delta:.1f}pt between frames {f_idx} and {f_idx + 1}.",
                     )
-                if kind_label == "Chart" and (cit.axis_min != nit.axis_min or cit.axis_max != nit.axis_max):  # type: ignore[attr-defined]
-                    _emit_jitter(
-                        findings,
-                        slide_num=slide_num,
-                        scene_id=cur.scene_id,
-                        frame_index=f_idx + 1,
-                        target_id=nit.id,
-                        message=f"Chart '{nit.id}' value axis bounds changed between frames {f_idx} and {f_idx + 1}.",
-                    )
+                if kind_label == "Chart":
+                    if cit.axis_min != nit.axis_min or cit.axis_max != nit.axis_max:  # type: ignore[attr-defined]
+                        _emit_jitter(
+                            findings,
+                            slide_num=slide_num,
+                            scene_id=cur.scene_id,
+                            frame_index=f_idx + 1,
+                            target_id=nit.id,
+                            message=f"Chart '{nit.id}' value axis bounds changed between frames {f_idx} and {f_idx + 1}.",
+                        )
+                    if len(cit.series) != len(nit.series) or cit.categories != nit.categories:  # type: ignore[attr-defined]
+                        _emit_jitter(
+                            findings,
+                            slide_num=slide_num,
+                            scene_id=cur.scene_id,
+                            frame_index=f_idx + 1,
+                            target_id=nit.id,
+                            message=f"Chart '{nit.id}' slot dimensions changed between frames {f_idx} and {f_idx + 1}.",
+                        )
+                    if cit.use_vector != nit.use_vector:  # type: ignore[attr-defined]
+                        _emit_jitter(
+                            findings,
+                            slide_num=slide_num,
+                            scene_id=cur.scene_id,
+                            frame_index=f_idx + 1,
+                            target_id=nit.id,
+                            message=f"Chart '{nit.id}' render mode changed between frames {f_idx} and {f_idx + 1}.",
+                        )
 
         # Dividers
         if len(cur.dividers) == len(nxt.dividers):
