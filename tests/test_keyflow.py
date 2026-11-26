@@ -2444,3 +2444,64 @@ def test_phase4_snippets_validate_audit_compile_and_cli_mcp(tmp_path: Path) -> N
     assert len(mcp_list["snippets"]) == 5
     mcp_one = dispatch_tool("list_snippets", {"name": "kpi_waterfall_breakdown"})
     assert mcp_one["scene"]["layout"] == "canvas"
+
+
+def test_p0_mcp_security_boundaries_and_input_limits(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import keyflow.snippets as snippets_mod
+    from keyflow.mcp_server import MAX_JSON_DEPTH, dispatch_tool
+    from keyflow.snippets import load_builtin_snippet, load_snippet
+
+    # 1. MCP list_snippets: builtin ID succeeds; absolute path, ../ traversal, .json suffix, and symlinks are rejected
+    assert dispatch_tool("list_snippets", {"name": "chart_with_takeaway"})["scene"]["layout"] == "canvas"
+
+    outside_snip = tmp_path / "secret.json"
+    outside_snip.write_text(json.dumps({"scene": {"id": "x", "title": "x", "layout": "canvas"}}), encoding="utf-8")
+
+    for bad_name in (str(outside_snip), "../secret", "../secret.json", "chart_with_takeaway.json", "sub/item"):
+        with pytest.raises(ValueError, match="Invalid built-in snippet ID"):
+            dispatch_tool("list_snippets", {"name": bad_name})
+
+    # Symlink inside snippets dir pointing outside must be rejected by load_builtin_snippet
+    fake_snip_dir = tmp_path / "snips"
+    fake_snip_dir.mkdir()
+    (fake_snip_dir / "legit.json").write_text(json.dumps({"scene": {"id": "ok", "title": "ok", "layout": "canvas"}}), encoding="utf-8")
+    (fake_snip_dir / "sym.json").symlink_to(outside_snip)
+    monkeypatch.setattr(snippets_mod, "_SNIPPETS_DIR", fake_snip_dir)
+    assert load_builtin_snippet("legit")["id"] == "ok"
+    with pytest.raises(ValueError, match="Refusing symlinked snippet"):
+        load_builtin_snippet("sym")
+
+    # Python API load_snippet retains custom path support and reports invalid JSON clearly
+    assert load_snippet(outside_snip)["id"] == "x"
+    bad_json = tmp_path / "broken.json"
+    bad_json.write_text("{broken", encoding="utf-8")
+    with pytest.raises(ValueError, match="Invalid snippet JSON"):
+        load_snippet(bad_json)
+
+    # 2. Unified KEYFLOW_MCP_WORKSPACE checks across traversal, symlinks, and external theme refs
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    monkeypatch.setenv("KEYFLOW_MCP_WORKSPACE", str(ws))
+
+    outside_theme = tmp_path / "evil_theme.json"
+    outside_theme.write_text("{}", encoding="utf-8")
+    (ws / "link_outside.json").symlink_to(outside_snip)
+
+    with pytest.raises(ValueError, match="outside allowed workspace root"):
+        dispatch_tool("validate_storyboard", {"input_path": "../secret.json"})
+    with pytest.raises(ValueError, match="outside allowed workspace root"):
+        dispatch_tool("validate_storyboard", {"input_path": "link_outside.json"})
+    with pytest.raises(ValueError, match="outside allowed workspace root"):
+        dispatch_tool("validate_storyboard", {"storyboard": {"title": "T", "theme": str(outside_theme), "scenes": []}})
+    with pytest.raises(ValueError, match="outside allowed workspace root"):
+        dispatch_tool("compile_keyx", {"storyboard": _agent_skill_stage1(), "output_path": "ok.keyx", "theme": str(outside_theme)})
+
+    # 3. JSON nesting depth limit rejects pathological payloads without RecursionError
+    nested: dict[str, object] = {}
+    cur = nested
+    for _ in range(MAX_JSON_DEPTH + 5):
+        nxt: dict[str, object] = {}
+        cur["k"] = nxt
+        cur = nxt
+    with pytest.raises(ValueError, match="nesting depth"):
+        dispatch_tool("validate_storyboard", {"storyboard": nested})

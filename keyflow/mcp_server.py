@@ -16,7 +16,7 @@ from keyflow.exporter import export_slide_pngs
 from keyflow.outline import extract_markdown_outline, extract_outline_from_file
 from keyflow.pace import pace_deck
 from keyflow.schema import validate_deck
-from keyflow.snippets import list_snippets, load_snippet
+from keyflow.snippets import list_snippets, load_builtin_snippet
 from keyflow.themes import THEMES
 
 TOOLS: list[dict[str, Any]] = [
@@ -129,6 +129,11 @@ TOOLS: list[dict[str, Any]] = [
 ]
 
 
+MAX_INPUT_BYTES: int = 2 * 1024 * 1024
+MAX_JSON_DEPTH: int = 32
+MAX_JSON_NODES: int = 20_000
+
+
 def _resolve_workspace_root(workspace_root: str | Path | None = None) -> Path | None:
     raw = workspace_root if workspace_root is not None else os.environ.get("KEYFLOW_MCP_WORKSPACE")
     if not raw:
@@ -137,19 +142,78 @@ def _resolve_workspace_root(workspace_root: str | Path | None = None) -> Path | 
 
 
 def _check_path(raw_path: str | Path, workspace_root: Path | None) -> Path:
-    resolved = Path(raw_path).expanduser().resolve()
+    """Resolve a path consistently within workspace_root (rejecting traversal and symlink escapes)."""
+    candidate = Path(raw_path).expanduser()
+    if workspace_root is not None and not candidate.is_absolute():
+        candidate = workspace_root / candidate
+    resolved = candidate.resolve()
     if workspace_root is not None and not resolved.is_relative_to(workspace_root):
         raise ValueError(f"Path '{raw_path}' is outside allowed workspace root '{workspace_root}'.")
     return resolved
 
 
+def _validate_json_limits(
+    obj: Any,
+    *,
+    max_depth: int = MAX_JSON_DEPTH,
+    max_nodes: int = MAX_JSON_NODES,
+) -> Any:
+    """Guard against deeply nested or oversized JSON payloads before validation/compilation."""
+    stack: list[tuple[Any, int]] = [(obj, 1)]
+    seen_nodes = 0
+    while stack:
+        cur, depth = stack.pop()
+        if depth > max_depth:
+            raise ValueError(f"JSON nesting depth exceeds maximum allowed ({max_depth}).")
+        seen_nodes += 1
+        if seen_nodes > max_nodes:
+            raise ValueError(f"JSON node count exceeds maximum allowed ({max_nodes}).")
+        if isinstance(cur, dict):
+            for v in cur.values():
+                stack.append((v, depth + 1))
+        elif isinstance(cur, list):
+            for v in cur:
+                stack.append((v, depth + 1))
+    return obj
+
+
+def _read_text_safe(raw_path: str | Path, workspace_root: Path | None) -> tuple[Path, str]:
+    path = _check_path(raw_path, workspace_root)
+    if not path.is_file():
+        raise FileNotFoundError(f"File not found: {path}")
+    size = path.stat().st_size
+    if size > MAX_INPUT_BYTES:
+        raise ValueError(f"Input file '{path.name}' ({size} bytes) exceeds {MAX_INPUT_BYTES} byte limit.")
+    return path, path.read_text(encoding="utf-8")
+
+
+def _read_json_safe(raw_path: str | Path, workspace_root: Path | None) -> dict[str, Any]:
+    path, text = _read_text_safe(raw_path, workspace_root)
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON in '{path.name}': {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError(f"Expected top-level JSON object in '{path.name}'.")
+    return _validate_json_limits(data)
+
+
+def _check_theme_ref(theme_ref: Any, workspace_root: Path | None) -> None:
+    """Ensure external .json theme references stay inside workspace_root in MCP calls."""
+    if not isinstance(theme_ref, str) or not theme_ref.strip() or theme_ref in THEMES:
+        return
+    _check_path(theme_ref, workspace_root)
+
+
 def _load_storyboard(args: dict[str, Any], workspace_root: Path | None = None) -> dict[str, Any]:
     if "storyboard" in args and isinstance(args["storyboard"], dict):
-        return args["storyboard"]
+        data = _validate_json_limits(args["storyboard"])
+        _check_theme_ref(data.get("theme"), workspace_root)
+        return data
     if "input_path" in args and args["input_path"]:
-        path = _check_path(args["input_path"], workspace_root)
-        with path.open("r", encoding="utf-8") as fh:
-            return json.load(fh)
+        data = _read_json_safe(args["input_path"], workspace_root)
+        _check_theme_ref(data.get("theme"), workspace_root)
+        return data
     raise ValueError("Provide either 'storyboard' or 'input_path'.")
 
 
@@ -172,18 +236,22 @@ def dispatch_tool(
 
     if name == "list_snippets":
         snippet_name = args.get("name")
-        if snippet_name:
-            return {"snippet": str(snippet_name), "scene": load_snippet(str(snippet_name))}
+        if snippet_name is not None and str(snippet_name) != "":
+            return {"snippet": str(snippet_name), "scene": load_builtin_snippet(str(snippet_name))}
         return {"snippets": list_snippets()}
 
     if name == "extract_outline":
         theme = args.get("theme", "slate_dark")
+        _check_theme_ref(theme, root)
         density = args.get("density", "standard")
         if "markdown" in args and isinstance(args["markdown"], str):
-            return extract_markdown_outline(args["markdown"], theme=theme, density=density)
+            md_text = args["markdown"]
+            if len(md_text.encode("utf-8")) > MAX_INPUT_BYTES:
+                raise ValueError(f"Inline markdown exceeds {MAX_INPUT_BYTES} byte limit.")
+            return extract_markdown_outline(md_text, theme=theme, density=density)
         if "input_path" in args and args["input_path"]:
-            in_path = _check_path(args["input_path"], root)
-            return extract_outline_from_file(in_path, theme=theme, density=density)
+            _, md_text = _read_text_safe(args["input_path"], root)
+            return extract_markdown_outline(md_text, theme=theme, density=density)
         raise ValueError("Provide either 'markdown' or 'input_path'.")
 
     if name == "pace_storyboard":
@@ -244,7 +312,9 @@ def dispatch_tool(
             }
         out_dest = _check_path(args["output_path"], root)
         preview_dest = _check_path(args["preview_dir"], root) if args.get("preview_dir") else None
-        out = compile_deck(raw, out_dest, theme_override=args.get("theme"), use_templates=use_templates)
+        theme_override = args.get("theme")
+        _check_theme_ref(theme_override, root)
+        out = compile_deck(raw, out_dest, theme_override=theme_override, use_templates=use_templates)
         pngs: list[Path] | None = None
         if preview_dest is not None:
             pngs = export_slide_pngs(out, preview_dest)
@@ -354,6 +424,15 @@ def main(
     for line in in_stream:
         line = line.strip()
         if not line:
+            continue
+        if len(line.encode("utf-8")) > MAX_INPUT_BYTES:
+            resp = {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {"code": -32600, "message": f"Invalid Request: line exceeds {MAX_INPUT_BYTES} byte limit"},
+            }
+            out_stream.write(json.dumps(resp, ensure_ascii=False) + "\n")
+            out_stream.flush()
             continue
         try:
             req = json.loads(line)

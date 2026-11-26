@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 license = { text = "MIT" }
 dependencies = [
-    "creator-studio-doc-format>=0.1.0",
+    "creator-studio-doc-format>=0.1.0,<0.2.0",
 ]
 
 [project.urls]
