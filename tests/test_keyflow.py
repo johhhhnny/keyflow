@@ -2848,5 +2848,6 @@ def test_progressive_vector_chart_emits_baseline_stubs_and_large_labels(tmp_path
         assert s2_q2.geometry.size.height > 100.0
         assert s1_q2.geometry.position.x == pytest.approx(s2_q2.geometry.position.x)
         assert s1_q2.geometry.size.width == pytest.approx(s2_q2.geometry.size.width)
+        assert str(s1_q2.path) == str(s2_q2.path)
         vl = next(o.object.textbox for o in doc.payload.slides[1].contents if o.object.textbox and o.object.textbox.identifier == "s2_rev_vl_0_1")
         assert vl.model_dump()["paragraph_properties"]["character_properties"]["font_size"] >= 16.0

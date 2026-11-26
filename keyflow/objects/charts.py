@@ -418,7 +418,7 @@ def _make_vector_chart_objects(
                             BoxRect(bx, by, bw, bar_h),
                             fill_rgb=_rgba(s_rgb),
                             stroke=Stroke(empty=True),
-                            corner_px=min(5.0, bar_h / 2.5),
+                            corner_px=0.0,
                             opacity=chart.opacity,
                         )
                     )
@@ -598,7 +598,7 @@ def _make_vector_chart_objects(
                         BoxRect(bx, by, bar_w, bh),
                         fill_rgb=_rgba(s_rgb),
                         stroke=Stroke(empty=True),
-                        corner_px=min(5.0, bar_w / 2.5),
+                        corner_px=0.0,
                         opacity=chart.opacity,
                     )
                 )
@@ -733,7 +733,7 @@ def _make_vector_chart_objects(
                     BoxRect(bx, by, bar_w, bh),
                     fill_rgb=_rgba(bar_rgb),
                     stroke=Stroke(empty=True),
-                    corner_px=min(5.0, bar_w / 2.5),
+                    corner_px=0.0,
                     opacity=chart.opacity,
                 )
             )
