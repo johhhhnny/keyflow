@@ -72,13 +72,14 @@ def _make_table_objects(slide_prefix: str, table: PlacedTable, theme: ThemePrese
     body_fill = Fill(color=Color(rgba=_rgba(theme.card_fill_rgb)))
     highlight_fill = Fill(color=Color(rgba=_rgba(theme.accent_fill_rgb)))
 
+    hdr_text_rgb = _readable_text_rgb(theme.flow_node_fill_rgb, theme.title_rgb)
     header_text_props = ParagraphProperties(
         alignment=AlignmentType.CENTER,
         character_properties=CharacterProperties(
             font_name=theme.font_title,
             font_size=20.0,
             bold=True,
-            character_fill=Fill(color=Color(rgba=_rgba(theme.title_rgb))),
+            character_fill=Fill(color=Color(rgba=_rgba(hdr_text_rgb))),
         ),
     )
     body_text_props = ParagraphProperties(

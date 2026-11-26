@@ -681,7 +681,11 @@ def _render_slide(
     contents: list[SlideObject] = []
     title_max = style_config.title_max_size if (style_config and style_config.title_max_size is not None) else DEFAULT_TITLE_MAX_SIZE
     sub_size = style_config.subtitle_size if (style_config and style_config.subtitle_size is not None) else DEFAULT_SUBTITLE_SIZE
-    corner_px = style_config.card_corner_px if (style_config and style_config.card_corner_px is not None) else DEFAULT_CARD_CORNER_PX
+    corner_px = (
+        style_config.card_corner_px
+        if (style_config and style_config.card_corner_px is not None)
+        else (theme.card_corner_px if theme.card_corner_px is not None else DEFAULT_CARD_CORNER_PX)
+    )
     arrow_w = style_config.arrow_width if (style_config and style_config.arrow_width is not None) else DEFAULT_ARROW_WIDTH
 
     if frame.pinned_flow is not None:

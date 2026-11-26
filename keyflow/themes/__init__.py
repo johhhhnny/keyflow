@@ -59,6 +59,7 @@ class ThemePreset:
     font_body: str = "PingFang SC"
     bg_gradient_end_rgb: tuple[int, int, int] | None = None
     bg_gradient_angle: float = 135.0
+    card_corner_px: float | None = None
 
 
 def _rgb_int_tuple(val: Any, field_name: str) -> tuple[int, int, int]:
@@ -130,6 +131,7 @@ def theme_from_dict(raw: Mapping[str, Any]) -> ThemePreset:
         font_body=str(raw.get("font_body", "PingFang SC")),
         bg_gradient_end_rgb=bg_end,
         bg_gradient_angle=float(raw.get("bg_gradient_angle", 135.0)),
+        card_corner_px=float(raw["card_corner_px"]) if raw.get("card_corner_px") is not None else None,
     )
 
 
