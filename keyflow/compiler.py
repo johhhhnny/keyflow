@@ -430,13 +430,39 @@ def _make_dashed_container(
     return SlideObject(object=CanvasObject(shape=sh))
 
 
+def _readable_text_rgb(
+    bg_rgb: tuple[float, float, float],
+    preferred_rgb: tuple[float, float, float],
+    *,
+    min_ratio: float = 3.5,
+) -> tuple[float, float, float]:
+    """Return *preferred_rgb* if contrast against *bg_rgb* is sufficient, else dark/light fallback."""
+    if contrast_ratio(preferred_rgb, bg_rgb) >= min_ratio:
+        return preferred_rgb
+    dark = (0.06, 0.08, 0.12)
+    light = (0.98, 0.99, 1.0)
+    return dark if contrast_ratio(dark, bg_rgb) >= contrast_ratio(light, bg_rgb) else light
+
+
 def _card_text_payload(
     box: PlacedBox,
     theme: ThemePreset,
     main_size: float,
     font_scale: float,
+    *,
+    bg_rgb: tuple[float, float, float] | None = None,
 ) -> tuple[ParagraphProperties, Text]:
-    text_rgba = _rgba(hex_to_rgb_float(box.color_hex)) if box.color_hex else _rgba(theme.text_rgb)
+    if box.color_hex:
+        main_rgb = hex_to_rgb_float(box.color_hex)
+    elif bg_rgb is not None:
+        main_rgb = _readable_text_rgb(bg_rgb, theme.text_rgb)
+    else:
+        main_rgb = theme.text_rgb
+    text_rgba = _rgba(main_rgb)
+    badge_rgb = _readable_text_rgb(bg_rgb, theme.badge_text_rgb) if (bg_rgb is not None and not box.color_hex) else theme.badge_text_rgb
+    metric_rgb = _readable_text_rgb(bg_rgb, theme.metric_text_rgb) if (bg_rgb is not None and not box.color_hex) else theme.metric_text_rgb
+    sublabel_rgb = _readable_text_rgb(bg_rgb, theme.sublabel_rgb) if (bg_rgb is not None and not box.color_hex) else theme.sublabel_rgb
+
     base_para = ParagraphProperties(
         alignment=AlignmentType.CENTER,
         character_properties=CharacterProperties(
@@ -460,7 +486,7 @@ def _card_text_payload(
                         font_name=theme.font_title,
                         font_size=max(14.0, round(17.5 * font_scale, 1)),
                         bold=True,
-                        character_fill=Fill(color=Color(rgba=_rgba(theme.badge_text_rgb))),
+                        character_fill=Fill(color=Color(rgba=_rgba(badge_rgb))),
                     ),
                 ),
                 contents=[Constituent(run=TextRun(string=box.badge))],
@@ -476,7 +502,7 @@ def _card_text_payload(
                         font_name=theme.font_title,
                         font_size=max(32.0, round(52.0 * font_scale, 1)),
                         bold=True,
-                        character_fill=Fill(color=Color(rgba=_rgba(theme.metric_text_rgb))),
+                        character_fill=Fill(color=Color(rgba=_rgba(metric_rgb))),
                     ),
                 ),
                 contents=[Constituent(run=TextRun(string=box.metric))],
@@ -510,7 +536,7 @@ def _card_text_payload(
                         font_name=theme.font_body,
                         font_size=sub_size,
                         bold=False,
-                        character_fill=Fill(color=Color(rgba=_rgba(theme.sublabel_rgb))),
+                        character_fill=Fill(color=Color(rgba=_rgba(sublabel_rgb))),
                     ),
                 ),
                 contents=[Constituent(run=TextRun(string=box.sublabel))],
@@ -579,8 +605,9 @@ def _make_box_objects(
     if box.label:
         max_fit = max(18.0, (box.rect.w - 24.0) / max(1.0, _text_units(box.label) * 0.56))
         main_size = round(min(main_size, max_fit), 1)
-    para_props, text_obj = _card_text_payload(box, theme, main_size, font_scale)
     fill_rgba = _rgba(hex_to_rgb_float(box.fill_hex)) if box.fill_hex else _fill_for_variant(theme, box.variant, is_sub)
+    bg_rgb = (fill_rgba.red, fill_rgba.green, fill_rgba.blue)
+    para_props, text_obj = _card_text_payload(box, theme, main_size, font_scale, bg_rgb=bg_rgb)
     stroke = (
         Stroke(line=Line(color=Color(rgba=_rgba(hex_to_rgb_float(box.border_hex))), width=2.2, pattern=Pattern.SOLID))
         if box.border_hex
@@ -956,12 +983,26 @@ def _make_edge_objects(
 ) -> list[SlideObject]:
     pattern = Pattern.MEDIUM_DASH if edge.style == "dashed" else Pattern.SOLID
     outset = round(14.0 * max(0.75, scale), 1)
-    p0, p1 = _endpoints_between_boxes(
-        box_rects[edge.from_id],
-        box_rects[edge.to_id],
-        outset=outset,
-        curve_pass_through=edge.curve_control,
-    )
+    if edge.from_id in box_rects and edge.to_id in box_rects:
+        rf = box_rects[edge.from_id]
+        rt = box_rects[edge.to_id]
+        has_named_anchor = (
+            abs(edge.tail_center[0] - rf.cx) > 0.5
+            or abs(edge.tail_center[1] - rf.cy) > 0.5
+            or abs(edge.head_center[0] - rt.cx) > 0.5
+            or abs(edge.head_center[1] - rt.cy) > 0.5
+        )
+        if has_named_anchor:
+            p0, p1 = edge.tail_center, edge.head_center
+        else:
+            p0, p1 = _endpoints_between_boxes(
+                rf,
+                rt,
+                outset=outset,
+                curve_pass_through=edge.curve_control,
+            )
+    else:
+        p0, p1 = edge.tail_center, edge.head_center
     objs: list[SlideObject] = [
         _make_open_line_shape(
             f"{slide_prefix}_edge_{edge.id}",
@@ -1959,13 +2000,14 @@ def _make_table_objects(slide_prefix: str, table: PlacedTable, theme: ThemePrese
             character_fill=Fill(color=Color(rgba=_rgba(theme.text_rgb))),
         ),
     )
+    hl_text_rgb = _readable_text_rgb(theme.accent_fill_rgb, theme.accent_text_rgb)
     highlight_text_props = ParagraphProperties(
         alignment=AlignmentType.CENTER,
         character_properties=CharacterProperties(
             font_name=theme.font_body,
             font_size=18.0,
             bold=True,
-            character_fill=Fill(color=Color(rgba=_rgba(theme.accent_text_rgb))),
+            character_fill=Fill(color=Color(rgba=_rgba(hl_text_rgb))),
         ),
     )
 
@@ -2113,10 +2155,18 @@ def _render_slide(
     if frame.comparison_matrix is not None:
         contents.extend(_make_comparison_matrix_objects(slide_prefix, frame.comparison_matrix, theme))
 
+    overlay_ids = getattr(frame, "overlay_ids", frozenset())
+    overlay_shapes: list[Any] = []
+    overlay_textboxes: list[Any] = []
+    overlay_boxes: list[Any] = []
+
     connector_rects: dict[str, BoxRect] = {}
     for shape in frame.shapes:
-        contents.append(_make_shape_object(slide_prefix, shape, theme))
         connector_rects[shape.id] = shape.rect
+        if shape.id in overlay_ids:
+            overlay_shapes.append(shape)
+        else:
+            contents.append(_make_shape_object(slide_prefix, shape, theme))
 
     for chart in frame.charts:
         contents.extend(_make_chart_objects(slide_prefix, chart, theme))
@@ -2127,6 +2177,10 @@ def _render_slide(
         connector_rects[table.id] = table.rect
 
     for tb in frame.textboxes:
+        connector_rects[tb.id] = tb.rect
+        if tb.id in overlay_ids:
+            overlay_textboxes.append(tb)
+            continue
         t_color = _rgba(hex_to_rgb_float(tb.color_hex)) if tb.color_hex else _rgba(theme.text_rgb)
         t_fill = Fill(color=Color(rgba=_rgba(hex_to_rgb_float(tb.fill_hex)))) if tb.fill_hex else None
         contents.append(
@@ -2143,10 +2197,13 @@ def _render_slide(
                 alignment=_ALIGN_MAP.get(tb.align, AlignmentType.CENTER),
             )
         )
-        connector_rects[tb.id] = tb.rect
 
     caption_color = _rgba(theme.arrow_rgb)
     for box in frame.boxes:
+        connector_rects[box.id] = box.rect
+        if box.id in overlay_ids:
+            overlay_boxes.append(box)
+            continue
         objs, _ = _make_box_objects(
             slide_prefix,
             box,
@@ -2155,11 +2212,39 @@ def _render_slide(
             caption_color=caption_color,
         )
         contents.extend(objs)
-        connector_rects[box.id] = box.rect
 
     for edge in frame.edges:
-        if edge.from_id in connector_rects and edge.to_id in connector_rects:
-            contents.extend(_make_edge_objects(slide_prefix, edge, connector_rects, theme, scale=frame.scale))
+        contents.extend(_make_edge_objects(slide_prefix, edge, connector_rects, theme, scale=frame.scale))
+
+    # Emit overlay-layer objects last so they always render on top of base objects & connectors.
+    for shape in overlay_shapes:
+        contents.append(_make_shape_object(slide_prefix, shape, theme))
+    for tb in overlay_textboxes:
+        t_color = _rgba(hex_to_rgb_float(tb.color_hex)) if tb.color_hex else _rgba(theme.text_rgb)
+        t_fill = Fill(color=Color(rgba=_rgba(hex_to_rgb_float(tb.fill_hex)))) if tb.fill_hex else None
+        contents.append(
+            _make_textbox(
+                f"{slide_prefix}_{tb.id}",
+                tb.rect,
+                tb.text,
+                font_name=theme.font_body,
+                font_size=tb.font_size,
+                color=t_color,
+                bold=tb.bold,
+                opacity=tb.opacity,
+                fill=t_fill,
+                alignment=_ALIGN_MAP.get(tb.align, AlignmentType.CENTER),
+            )
+        )
+    for box in overlay_boxes:
+        objs, _ = _make_box_objects(
+            slide_prefix,
+            box,
+            theme,
+            scale=frame.scale,
+            caption_color=caption_color,
+        )
+        contents.extend(objs)
 
     return Slide(
         background=bg,
