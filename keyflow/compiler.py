@@ -983,26 +983,12 @@ def _make_edge_objects(
 ) -> list[SlideObject]:
     pattern = Pattern.MEDIUM_DASH if edge.style == "dashed" else Pattern.SOLID
     outset = round(14.0 * max(0.75, scale), 1)
-    if edge.from_id in box_rects and edge.to_id in box_rects:
-        rf = box_rects[edge.from_id]
-        rt = box_rects[edge.to_id]
-        has_named_anchor = (
-            abs(edge.tail_center[0] - rf.cx) > 0.5
-            or abs(edge.tail_center[1] - rf.cy) > 0.5
-            or abs(edge.head_center[0] - rt.cx) > 0.5
-            or abs(edge.head_center[1] - rt.cy) > 0.5
-        )
-        if has_named_anchor:
-            p0, p1 = edge.tail_center, edge.head_center
-        else:
-            p0, p1 = _endpoints_between_boxes(
-                rf,
-                rt,
-                outset=outset,
-                curve_pass_through=edge.curve_control,
-            )
-    else:
-        p0, p1 = edge.tail_center, edge.head_center
+    p0, p1 = _endpoints_between_boxes(
+        box_rects[edge.from_id],
+        box_rects[edge.to_id],
+        outset=outset,
+        curve_pass_through=edge.curve_control,
+    )
     objs: list[SlideObject] = [
         _make_open_line_shape(
             f"{slide_prefix}_edge_{edge.id}",
@@ -2155,18 +2141,10 @@ def _render_slide(
     if frame.comparison_matrix is not None:
         contents.extend(_make_comparison_matrix_objects(slide_prefix, frame.comparison_matrix, theme))
 
-    overlay_ids = getattr(frame, "overlay_ids", frozenset())
-    overlay_shapes: list[Any] = []
-    overlay_textboxes: list[Any] = []
-    overlay_boxes: list[Any] = []
-
     connector_rects: dict[str, BoxRect] = {}
     for shape in frame.shapes:
+        contents.append(_make_shape_object(slide_prefix, shape, theme))
         connector_rects[shape.id] = shape.rect
-        if shape.id in overlay_ids:
-            overlay_shapes.append(shape)
-        else:
-            contents.append(_make_shape_object(slide_prefix, shape, theme))
 
     for chart in frame.charts:
         contents.extend(_make_chart_objects(slide_prefix, chart, theme))
@@ -2177,10 +2155,6 @@ def _render_slide(
         connector_rects[table.id] = table.rect
 
     for tb in frame.textboxes:
-        connector_rects[tb.id] = tb.rect
-        if tb.id in overlay_ids:
-            overlay_textboxes.append(tb)
-            continue
         t_color = _rgba(hex_to_rgb_float(tb.color_hex)) if tb.color_hex else _rgba(theme.text_rgb)
         t_fill = Fill(color=Color(rgba=_rgba(hex_to_rgb_float(tb.fill_hex)))) if tb.fill_hex else None
         contents.append(
@@ -2197,13 +2171,10 @@ def _render_slide(
                 alignment=_ALIGN_MAP.get(tb.align, AlignmentType.CENTER),
             )
         )
+        connector_rects[tb.id] = tb.rect
 
     caption_color = _rgba(theme.arrow_rgb)
     for box in frame.boxes:
-        connector_rects[box.id] = box.rect
-        if box.id in overlay_ids:
-            overlay_boxes.append(box)
-            continue
         objs, _ = _make_box_objects(
             slide_prefix,
             box,
@@ -2212,39 +2183,11 @@ def _render_slide(
             caption_color=caption_color,
         )
         contents.extend(objs)
+        connector_rects[box.id] = box.rect
 
     for edge in frame.edges:
-        contents.extend(_make_edge_objects(slide_prefix, edge, connector_rects, theme, scale=frame.scale))
-
-    # Emit overlay-layer objects last so they always render on top of base objects & connectors.
-    for shape in overlay_shapes:
-        contents.append(_make_shape_object(slide_prefix, shape, theme))
-    for tb in overlay_textboxes:
-        t_color = _rgba(hex_to_rgb_float(tb.color_hex)) if tb.color_hex else _rgba(theme.text_rgb)
-        t_fill = Fill(color=Color(rgba=_rgba(hex_to_rgb_float(tb.fill_hex)))) if tb.fill_hex else None
-        contents.append(
-            _make_textbox(
-                f"{slide_prefix}_{tb.id}",
-                tb.rect,
-                tb.text,
-                font_name=theme.font_body,
-                font_size=tb.font_size,
-                color=t_color,
-                bold=tb.bold,
-                opacity=tb.opacity,
-                fill=t_fill,
-                alignment=_ALIGN_MAP.get(tb.align, AlignmentType.CENTER),
-            )
-        )
-    for box in overlay_boxes:
-        objs, _ = _make_box_objects(
-            slide_prefix,
-            box,
-            theme,
-            scale=frame.scale,
-            caption_color=caption_color,
-        )
-        contents.extend(objs)
+        if edge.from_id in connector_rects and edge.to_id in connector_rects:
+            contents.extend(_make_edge_objects(slide_prefix, edge, connector_rects, theme, scale=frame.scale))
 
     return Slide(
         background=bg,

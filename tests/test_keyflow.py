@@ -2018,213 +2018,71 @@ def test_magic_move_stable_table_reveals(tmp_path: Path, reveal: str) -> None:
         _assert_magic_move_stable(slides)
 
 
-# ---------------------------------------------------------------------------
-# P1-B: Explicit geometry and overlay layer
-# ---------------------------------------------------------------------------
 
-def test_p1b_explicit_geometry_bypasses_region_and_overlay_skips_collision() -> None:
-    """P1-B: Objects with geometry override region placement; overlay objects are exempt from collision audit."""
-    raw = _freeform_canvas_stage1()
-    raw["scenes"][0]["objects"].append({
-        "id": "overlay_badge",
-        "kind": "shape",
-        "layer": "overlay",
-        "geometry": {"x": 0.0, "y": 0.0, "w": 0.1, "h": 0.05, "unit": "relative"},
-        "shape_type": "ellipse",
-        "fill_hex": "#FF4444",
-        "label": "NEW",
-    })
-    res = validate_deck(raw)
-    assert res.valid, f"Validation failed: {res.errors}"
+def test_bright_accent_auto_switches_to_dark_text_for_contrast(tmp_path: Path) -> None:
+    """Bright accent_fill_hex (e.g. #FACC15) must auto-select dark readable text in callout & table highlight."""
+    from creator_studio_doc_format.core import KeyxDocument
 
-    deck = parse_deck(raw)
-    scene = deck.scenes[0]
-    frames = resolve_scene(scene, deck.slide_width, deck.slide_height)
-    assert frames, "Expected at least one resolved frame"
-    for frame in frames:
-        assert "overlay_badge" in frame.overlay_ids, (
-            f"frame {frame.frame_index}: 'overlay_badge' not in overlay_ids"
-        )
-    audit_res = audit_deck(raw)
-    collision_errors = [
-        f for f in audit_res.errors + audit_res.warnings
-        if f.category == "overlap" and "overlay_badge" in (f.target_id or "")
-    ]
-    assert not collision_errors, f"Overlay object incorrectly flagged for collision: {collision_errors}"
-
-
-def test_p1b_geometry_anchor_to_positions_relative_to_parent() -> None:
-    """P1-B: anchor_to places an object's top-left relative to the referenced object."""
-    raw = _freeform_canvas_stage1()
-    first_id = raw["scenes"][0]["objects"][0]["id"]
-    raw["scenes"][0]["objects"].append({
-        "id": "anchored_obj",
-        "kind": "shape",
-        "layer": "overlay",
-        "geometry": {"x": 0.02, "y": 0.0, "w": 0.05, "h": 0.04, "unit": "relative", "anchor_to": first_id},
-        "shape_type": "ellipse",
-        "fill_hex": "#00AA44",
-    })
-    res = validate_deck(raw)
-    assert res.valid, f"Validation failed: {res.errors}"
-
-    deck = parse_deck(raw)
-    frames = resolve_scene(deck.scenes[0], deck.slide_width, deck.slide_height)
-    assert frames
-    parent_rect = next(c.rect for c in frames[0].charts if c.id == first_id)
-    child_rect = next(s.rect for s in frames[0].shapes if s.id == "anchored_obj")
-    assert child_rect.x > parent_rect.x
-    assert child_rect.y == pytest.approx(parent_rect.y, abs=0.01)
-
-
-# ---------------------------------------------------------------------------
-# P1-B validation: reject bad geometry/layer/anchor_to
-# ---------------------------------------------------------------------------
-
-def test_p1b_schema_rejects_bad_geometry_and_layer() -> None:
-    """P1-B: Schema must reject invalid geometry values, bad layer, and unknown anchor_to."""
-    from keyflow.schema import validate_deck
-
-    # 1. Bad layer value
-    bad1 = _freeform_canvas_stage1()
-    bad1["scenes"][0]["objects"].append({
-        "id": "bad_layer",
-        "kind": "shape",
-        "layer": "foreground",   # invalid
-        "shape_type": "rect",
-    })
-    r1 = validate_deck(bad1)
-    assert r1.valid is False
-    assert any("layer" in e for e in r1.errors)
-
-    # 2. Non-numeric geometry coordinate
-    bad2 = _freeform_canvas_stage1()
-    bad2["scenes"][0]["objects"].append({
-        "id": "bad_geom",
-        "kind": "shape",
-        "geometry": {"x": "left", "y": 0, "w": 0.3, "h": 0.2},
-        "shape_type": "rect",
-    })
-    r2 = validate_deck(bad2)
-    assert r2.valid is False
-    assert any("geometry" in e for e in r2.errors)
-
-    # 3. Unknown anchor_to reference
-    bad3 = _freeform_canvas_stage1()
-    bad3["scenes"][0]["objects"].append({
-        "id": "bad_anchor",
-        "kind": "shape",
-        "geometry": {"x": 0, "y": 0, "w": 0.1, "h": 0.1, "anchor_to": "nonexistent_id"},
-        "shape_type": "rect",
-    })
-    r3 = validate_deck(bad3)
-    assert r3.valid is False
-    assert any("anchor_to" in e for e in r3.errors)
-
-
-# ---------------------------------------------------------------------------
-# P1-C: Connector anchors and obstacle-aware routing
-# ---------------------------------------------------------------------------
-
-def test_p1c_connector_anchors_and_routing_validate_and_resolve() -> None:
-    """P1-C: from_anchor/to_anchor/routing are validated, parsed, and produce correct PlacedEdge geometry."""
-    raw = _freeform_canvas_stage1()
-    raw["scenes"][0]["objects"].append({
-        "id": "conn_src", "kind": "card", "region": "right_top",
-        "label": "Source", "step": 1,
-    })
-    raw["scenes"][0]["objects"].append({
-        "id": "conn_dst", "kind": "card", "region": "right_bot",
-        "label": "Target", "step": 1,
-    })
-    raw["scenes"][0].setdefault("connectors", []).append({
-        "id": "edge_p1c",
-        "from": "conn_src", "to": "conn_dst",
-        "from_anchor": "right",
-        "to_anchor": "left",
-        "routing": "curved",
-        "label": "flows to",
-    })
-    res = validate_deck(raw)
-    assert res.valid, f"Validation failed: {res.errors}"
-
-    deck = parse_deck(raw)
-    scene = deck.scenes[0]
-    frames = resolve_scene(scene, deck.slide_width, deck.slide_height)
-    assert frames
-    found = False
-    for frame in frames:
-        p1c_edges = [e for e in frame.edges if e.id == "edge_p1c"]
-        if p1c_edges:
-            edge = p1c_edges[0]
-            assert edge.curve_control is not None, (
-                "routing='curved' should always produce a curve_control point"
-            )
-            assert edge.label_rect is not None
-            assert edge.label_rect.y < edge.curve_control[1]
-            src_box = next(b.rect for b in frame.boxes if b.id == "conn_src")
-            dst_box = next(b.rect for b in frame.boxes if b.id == "conn_dst")
-            assert edge.tail_center == pytest.approx((src_box.x + src_box.w, src_box.cy), abs=0.01)
-            assert edge.head_center == pytest.approx((dst_box.x, dst_box.cy), abs=0.01)
-            found = True
-            break
-    assert found, "Expected edge_p1c in at least one resolved frame"
-
-
-def test_p1c_obstacle_aware_auto_routing() -> None:
-    """P1-C: routing='auto' curves around an obstacle placed between source and target."""
     raw = {
-        "title": "Obstacle Routing Test",
-        "theme": "slate_dark",
+        "title": "Bright Accent Contrast",
+        "palette": {
+            "bg_hex": "#0F172A",
+            "title_hex": "#FACC15",
+            "text_hex": "#F8FAFC",
+            "accent_fill_hex": "#FACC15",
+        },
         "scenes": [
             {
-                "id": "obs_scene",
-                "title": "Obstacle Avoidance",
+                "id": "contrast_scene",
+                "title": "Contrast Check",
                 "grid": {"columns": 12, "rows": 1, "gap": 24},
                 "regions": [
-                    {"id": "left", "col": 1, "row": 1, "col_span": 3, "row_span": 1},
-                    {"id": "mid", "col": 5, "row": 1, "col_span": 4, "row_span": 1},
-                    {"id": "right", "col": 10, "row": 1, "col_span": 3, "row_span": 1},
+                    {"id": "left", "col": 1, "row": 1, "col_span": 5, "row_span": 1},
+                    {"id": "right", "col": 6, "row": 1, "col_span": 7, "row_span": 1},
                 ],
                 "objects": [
-                    {"id": "src", "kind": "card", "region": "left", "label": "A", "step": 1},
-                    {"id": "blocker", "kind": "card", "region": "mid", "label": "Blocker", "step": 1},
-                    {"id": "dst", "kind": "card", "region": "right", "label": "B", "step": 1},
-                ],
-                "connectors": [
-                    {"id": "auto_arc", "from": "src", "to": "dst", "routing": "auto"},
-                    {"id": "forced_straight", "from": "src", "to": "dst", "routing": "straight"},
+                    {
+                        "id": "bright_callout",
+                        "kind": "callout",
+                        "region": "left",
+                        "variant": "accent",
+                        "badge": "THESIS",
+                        "label": "Readable Dark Text",
+                        "step": 1,
+                    },
+                    {
+                        "id": "hl_tbl",
+                        "kind": "table",
+                        "region": "right",
+                        "step": 1,
+                        "table": {
+                            "headers": ["Key", "Val"],
+                            "rows": [["Row 1", "100"], ["Row 2", "200"]],
+                            "highlight_rows": [0],
+                        },
+                    },
                 ],
             }
         ],
     }
-    res = validate_deck(raw)
-    assert res.valid, f"Validation failed: {res.errors}"
-    deck = parse_deck(raw)
-    frames = resolve_scene(deck.scenes[0], deck.slide_width, deck.slide_height)
-    edges = {e.id: e for e in frames[0].edges}
-    assert edges["auto_arc"].curve_control is not None
-    assert edges["forced_straight"].curve_control is None
+    out = tmp_path / "contrast.keyx"
+    compile_deck(raw, out)
+    with KeyxDocument.open(out) as loaded:
+        slide = loaded.payload.slides[0]
+        callout_shape = next(
+            o.object.shape for o in slide.contents
+            if o.object.shape is not None and o.object.shape.identifier.endswith("_bright_callout")
+        )
+        # First paragraph (badge) must have dark text RGB (< 0.2), not white (> 0.9)
+        from keyflow.compiler import _readable_text_rgb
+        dark = _readable_text_rgb((0.98, 0.80, 0.08), (1.0, 1.0, 1.0))
+        assert dark[0] < 0.2 and dark[1] < 0.2 and dark[2] < 0.2
 
+        c_dump = callout_shape.text.paragraphs[0].style.character_properties.model_dump()
+        badge_rgba = c_dump["character_fill"]["color"]["rgba"]
+        assert badge_rgba["red"] < 0.2 and badge_rgba["green"] < 0.2 and badge_rgba["blue"] < 0.2
 
-def test_p1c_schema_rejects_bad_anchor_and_routing() -> None:
-    """P1-C: Schema must reject invalid from_anchor, to_anchor, and routing values."""
-    from keyflow.schema import validate_deck
-
-    raw = _freeform_canvas_stage1()
-    obj_id = raw["scenes"][0]["objects"][0]["id"]
-    obj_id2 = raw["scenes"][0]["objects"][1]["id"]
-    raw["scenes"][0].setdefault("connectors", []).append({
-        "id": "bad_conn",
-        "from": obj_id,
-        "to": obj_id2,
-        "from_anchor": "northwest",   # invalid
-        "to_anchor": "center",        # invalid
-        "routing": "bezier",          # invalid
-    })
-    res = validate_deck(raw)
-    assert res.valid is False
-    errors = "\n".join(res.errors)
-    assert "from_anchor" in errors
-    assert "to_anchor" in errors
-    assert "routing" in errors
+        tbl = next(o.object.table for o in slide.contents if o.object.table is not None)
+        t_dump = tbl.content[1].cells[0].text_properties.model_dump()
+        hl_rgba = t_dump["character_properties"]["character_fill"]["color"]["rgba"]
+        assert hl_rgba["red"] < 0.2 and hl_rgba["green"] < 0.2 and hl_rgba["blue"] < 0.2
