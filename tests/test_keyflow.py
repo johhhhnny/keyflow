@@ -2566,3 +2566,22 @@ def test_p1_standardized_benchmark_suite(tmp_path: Path) -> None:
         out = tmp_path / f"{path.stem}.keyx"
         compile_deck(raw, out)
         assert out.exists() and out.stat().st_size > 0
+
+
+def test_theme_contrast_and_semantic_distinction() -> None:
+    import math
+    from keyflow.themes import contrast_ratio, get_theme
+
+    def _dist(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:
+        return math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b)))
+
+    for name in ("midnight_indigo", "paper_light", "slate_dark"):
+        t = get_theme(name)
+        bg_f = (t.bg_rgb[0] / 255.0, t.bg_rgb[1] / 255.0, t.bg_rgb[2] / 255.0)
+        assert contrast_ratio(t.title_rgb, bg_f) >= 4.5, f"{name} title contrast too low"
+        assert contrast_ratio(t.text_rgb, t.card_fill_rgb) >= 4.5, f"{name} body contrast too low"
+        assert contrast_ratio(t.accent_text_rgb, t.accent_fill_rgb) >= 4.5, f"{name} accent text contrast too low"
+        assert _dist(t.card_fill_rgb, bg_f) >= 0.05, f"{name} card fill too close to bg"
+        assert _dist(t.success_border_rgb, t.warn_border_rgb) >= 0.30, f"{name} success/warn borders lack distinction"
+        for i in range(len(t.segment_palette) - 1):
+            assert _dist(t.segment_palette[i], t.segment_palette[i + 1]) >= 0.15, f"{name} adjacent segment colors too close"
