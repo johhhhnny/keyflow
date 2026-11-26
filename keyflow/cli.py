@@ -30,28 +30,29 @@ def _cmd_themes(_: argparse.Namespace) -> int:
 
 def _cmd_validate(args: argparse.Namespace) -> int:
     raw = _load_json(args.input)
-    res = validate_deck(raw)
+    res = validate_deck(raw, use_templates=args.use_templates)
     print(json.dumps(res.to_dict(), ensure_ascii=False, indent=2))
     return 0 if res.valid else 1
 
 
 def _cmd_audit(args: argparse.Namespace) -> int:
     raw = _load_json(args.input)
-    report = audit_deck(raw, strict=args.strict)
+    report = audit_deck(raw, strict=args.strict, use_templates=args.use_templates)
     print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
     return 0 if report.passed else 1
 
 
 def _cmd_compile(args: argparse.Namespace) -> int:
     raw = _load_json(args.input)
-    res = validate_deck(raw)
+    use_templates = getattr(args, "use_templates", None)
+    res = validate_deck(raw, use_templates=use_templates)
     if not res.valid:
         print(json.dumps(res.to_dict(), ensure_ascii=False, indent=2), file=sys.stderr)
         return 1
 
     strict = bool(getattr(args, "strict", False))
     fail_on_audit = bool(getattr(args, "fail_on_audit", False)) or strict
-    report = audit_deck(raw, strict=strict)
+    report = audit_deck(raw, strict=strict, use_templates=use_templates)
     if fail_on_audit and not report.passed:
         print(
             json.dumps(
@@ -67,7 +68,7 @@ def _cmd_compile(args: argparse.Namespace) -> int:
         )
         return 1
 
-    out = compile_deck(raw, args.output, theme_override=args.theme)
+    out = compile_deck(raw, args.output, theme_override=args.theme, use_templates=use_templates)
     pngs: list[Path] | None = None
     if args.preview_dir:
         pngs = export_slide_pngs(out, args.preview_dir)
@@ -117,13 +118,14 @@ def _cmd_outline(args: argparse.Namespace) -> int:
 
 def _cmd_pace(args: argparse.Namespace) -> int:
     raw = _load_json(args.input)
-    val = validate_deck(raw)
+    use_templates = getattr(args, "use_templates", None)
+    val = validate_deck(raw, use_templates=use_templates)
     if not val.valid:
         print(json.dumps(val.to_dict(), ensure_ascii=False, indent=2), file=sys.stderr)
         return 1
 
     paced = pace_deck(raw, density=args.density, overwrite_existing=args.overwrite)
-    paced_val = validate_deck(paced)
+    paced_val = validate_deck(paced, use_templates=use_templates)
     if args.output:
         out_path = Path(args.output)
         out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -157,17 +159,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_val = sub.add_parser("validate", help="Validate a Stage 1 scene graph or Stage 2 storyboard JSON.")
     p_val.add_argument("-i", "--input", required=True, help="Path to storyboard JSON.")
+    p_val.add_argument("--use-templates", action=argparse.BooleanOptionalAction, default=None, help="Enforce preset template-only mode (--use-templates) or freeform canvas mode (--no-templates; default).")
     p_val.set_defaults(func=_cmd_validate)
 
     p_aud = sub.add_parser("audit", help="Run visual geometry, anchor stability, and overflow self-checks.")
     p_aud.add_argument("-i", "--input", required=True, help="Path to Stage 1 or Stage 2 storyboard JSON.")
     p_aud.add_argument("--strict", action="store_true", help="Treat visual warnings as failures.")
+    p_aud.add_argument("--use-templates", action=argparse.BooleanOptionalAction, default=None, help="Override deck use_templates switch.")
     p_aud.set_defaults(func=_cmd_audit)
 
     p_comp = sub.add_parser("compile", help="Compile a scene graph or storyboard JSON into a .keyx presentation.")
     p_comp.add_argument("-i", "--input", required=True, help="Path to storyboard JSON.")
     p_comp.add_argument("-o", "--output", required=True, help="Output .keyx path.")
     p_comp.add_argument("--theme", choices=sorted(THEMES), help="Override theme preset.")
+    p_comp.add_argument("--use-templates", action=argparse.BooleanOptionalAction, default=None, help="Override deck use_templates switch.")
     p_comp.add_argument("--preview-dir", help="Optional directory to export PNG slide previews via Keynote.")
     p_comp.add_argument(
         "--fail-on-audit",
@@ -199,6 +204,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_pace.add_argument("-o", "--output", help="Optional path to write the expanded storyboard JSON.")
     p_pace.add_argument("--density", default="standard", choices=["standard", "compact"], help="Pacing density.")
     p_pace.add_argument("--overwrite", action="store_true", help="Re-pace scenes that already define manual frames.")
+    p_pace.add_argument("--use-templates", action=argparse.BooleanOptionalAction, default=None, help="Override deck use_templates switch.")
     p_pace.set_defaults(func=_cmd_pace)
 
     return parser

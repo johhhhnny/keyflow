@@ -489,7 +489,7 @@ def test_mcp_lifecycle_methods_and_malformed_stdin() -> None:
     pyproject_version = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
     init = handle_request({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
     assert init is not None
-    assert init["result"]["serverInfo"]["version"] == __version__ == pyproject_version == "0.2.0"
+    assert init["result"]["serverInfo"]["version"] == __version__ == pyproject_version == "0.3.0"
 
     assert handle_request({"jsonrpc": "2.0", "id": 2, "method": "ping"}) == {
         "jsonrpc": "2.0",
@@ -1215,6 +1215,7 @@ def test_schema_rejects_unknown_properties_and_matches_deck_schema_json() -> Non
 
     key_sets = _schema_key_sets()
     assert {"deck", "story_model", "story_claim", "scene", "node", "frame"}.issubset(key_sets)
+    assert Path("keyflow/deck.schema.json").read_text(encoding="utf-8") == Path("schemas/deck.schema.json").read_text(encoding="utf-8")
 
     bad_deck = {
         "title": "Typo Check",
@@ -1328,3 +1329,828 @@ def test_story_model_validation_and_fidelity_audit_checks(tmp_path: Path) -> Non
     bad_val = validate_deck(flawed)
     assert bad_val.valid is False
     assert any("missing_claim_id" in e for e in bad_val.errors)
+
+
+def _freeform_canvas_stage1() -> dict:
+    return {
+        "title": "Freeform Canvas & Native Chart/Table Demo",
+        "palette": {
+            "bg_hex": "#1B2230",
+            "bg_gradient_end_hex": "#111622",
+            "title_hex": "#F5D76E",
+            "text_hex": "#FFFFFF",
+            "series_colors": ["#F5D76E", "#4ECDC4", "#FF6B6B"],
+        },
+        "story_model": {
+            "core_question": "How do illustrative examples and real metrics coexist cleanly?",
+            "claims": [
+                {
+                    "id": "fact_latency",
+                    "type": "fact",
+                    "claim": "Compiler latency dropped from 7.0s to 0.7s.",
+                    "source_quote": "Compile latency dropped from 7.0s to 0.7s.",
+                    "metric_scope": "compile_seconds",
+                },
+                {
+                    "id": "ex_alloc",
+                    "type": "example",
+                    "claim": "Illustrative token allocation split across 3 buckets.",
+                    "metric_scope": "illustrative_pct",
+                },
+                {
+                    "id": "ex_latency_note",
+                    "type": "example",
+                    "claim": "Illustrative breakdown of parse vs layout latency.",
+                    "metric_scope": "compile_seconds",
+                },
+            ],
+        },
+        "scenes": [
+            {
+                "id": "chart_and_table",
+                "title": "Latency & Allocation Overview",
+                "source_section": "Section 2: Performance",
+                "grid": {"columns": 12, "rows": 2, "gap": 24},
+                "regions": [
+                    {"id": "left", "col": 1, "row": 1, "col_span": 7, "row_span": 2, "frame": True, "title": "Native Chart"},
+                    {"id": "right_top", "col": 8, "row": 1, "col_span": 5, "row_span": 1, "arrange": "stack"},
+                    {"id": "right_bot", "col": 8, "row": 2, "col_span": 5, "row_span": 1, "arrange": "row"},
+                ],
+                "objects": [
+                    {
+                        "id": "latency_col",
+                        "kind": "chart",
+                        "region": "left",
+                        "step": 1,
+                        "note": "对比优化前后的延迟变化。",
+                        "evidence_refs": ["fact_latency"],
+                        "chart": {
+                            "chart_type": "column",
+                            "title": "Latency (s)",
+                            "unit": "s",
+                            "categories": ["Parse", "Layout", "Save"],
+                            "series": [
+                                {"name": "Before", "values": [2.1, 3.4, 1.5]},
+                                {"name": "After", "values": [0.2, 0.3, 0.2]},
+                            ],
+                            "reveal": "by_series",
+                        },
+                    },
+                    {
+                        "id": "perf_tbl",
+                        "kind": "table",
+                        "region": "right_top",
+                        "step": 2,
+                        "note": "关键指标对照表。",
+                        "table": {
+                            "title": "Benchmarks",
+                            "headers": ["Metric", "Before", "After"],
+                            "rows": [
+                                ["Latency", "7.0s", "0.7s"],
+                                ["Size", "20 MB", "20 KB"],
+                            ],
+                            "highlight_cols": [2],
+                            "reveal": "by_row",
+                        },
+                    },
+                    {
+                        "id": "hero_kpi",
+                        "kind": "callout",
+                        "region": "right_bot",
+                        "step": 3,
+                        "badge": "FACT",
+                        "metric": "10x",
+                        "label": "Faster Compile",
+                        "evidence_refs": ["fact_latency"],
+                        "note": "实证提速 10 倍。",
+                    },
+                    {
+                        "id": "ex_badge_card",
+                        "kind": "card",
+                        "region": "right_bot",
+                        "step": 3,
+                        "badge": "EXAMPLE",
+                        "label": "Sample Breakdown",
+                        "sublabel": "Illustrative",
+                        "evidence_refs": ["ex_latency_note"],
+                        "note": "示意算例说明。",
+                    },
+                ],
+                "connectors": [
+                    {"id": "c1", "from": "latency_col", "to": "perf_tbl", "style": "dashed"}
+                ],
+            },
+            {
+                "id": "pie_and_diagram",
+                "title": "Share & Inline Flow",
+                "grid": {"columns": 12, "rows": 1, "gap": 24},
+                "regions": [
+                    {"id": "pie_zone", "col": 1, "row": 1, "col_span": 5, "row_span": 1},
+                    {"id": "flow_zone", "col": 6, "row": 1, "col_span": 7, "row_span": 1},
+                ],
+                "objects": [
+                    {
+                        "id": "share_pie",
+                        "kind": "chart",
+                        "region": "pie_zone",
+                        "step": 1,
+                        "evidence_refs": ["ex_alloc"],
+                        "note": "示意占比分布。",
+                        "chart": {
+                            "chart_type": "donut",
+                            "title": "Token Split",
+                            "categories": ["Context", "Code", "Tests"],
+                            "series": [{"name": "Share", "values": [50, 30, 20]}],
+                        },
+                    },
+                    {
+                        "id": "mini_flow",
+                        "kind": "diagram",
+                        "region": "flow_zone",
+                        "step": 2,
+                        "note": "局部逻辑流程。",
+                        "diagram": {
+                            "diagram_layout": "horizontal",
+                            "nodes": [
+                                {"id": "a", "label": "Read"},
+                                {"id": "b", "label": "Solve"},
+                                {"id": "c", "label": "Emit", "variant": "success"},
+                            ],
+                            "edges": [
+                                {"id": "de1", "from": "a", "to": "b"},
+                                {"id": "de2", "from": "b", "to": "c"},
+                            ],
+                        },
+                    },
+                ],
+            },
+        ],
+    }
+
+
+def test_use_templates_switch_defaults_false_and_enforces_true() -> None:
+    canvas_deck = _freeform_canvas_stage1()
+    # Default (use_templates omitted -> false) permits freeform canvas + palette
+    val_free = validate_deck(canvas_deck)
+    assert val_free.valid is True, val_free.errors
+
+    # Explicitly enabling template-only mode rejects freeform canvas & palette
+    val_locked = validate_deck(canvas_deck, use_templates=True)
+    assert val_locked.valid is False
+    joined = "\n".join(val_locked.errors)
+    assert "use_templates=true" in joined
+
+    # Legacy preset deck continues to pass in both modes
+    assert validate_deck(_agent_skill_stage1(), use_templates=True).valid is True
+    assert validate_deck(_agent_skill_stage1(), use_templates=False).valid is True
+
+
+def test_freeform_canvas_paces_compiles_native_charts_and_tables(tmp_path: Path) -> None:
+    from creator_studio_doc_format.core import KeyxDocument
+
+    raw = _freeform_canvas_stage1()
+    paced = pace_deck(raw)
+    s0_frames = paced["scenes"][0]["frames"]
+    # step1 by_series (2 frames) + step2 by_row (2 frames) + step3 (1 frame) = 5 frames (no auto-dim/summary frame)
+    assert len(s0_frames) == 5
+    assert s0_frames[0]["object_states"]["latency_col"]["series_count"] == 1
+    assert s0_frames[1]["object_states"]["latency_col"]["series_count"] == 2
+    assert s0_frames[2]["object_states"]["perf_tbl"]["row_count"] == 1
+    assert s0_frames[3]["object_states"]["perf_tbl"]["row_count"] == 2
+
+    # Scene 1: step1 donut (1 frame) + step2 3-node diagram decomposed node-by-node (3 frames) = 4 frames
+    s1_frames = paced["scenes"][1]["frames"]
+    assert len(s1_frames) == 4
+    assert s1_frames[1]["object_states"]["mini_flow"]["visible_nodes"] == ["a"]
+    assert s1_frames[2]["object_states"]["mini_flow"]["visible_nodes"] == ["a", "b"]
+    assert s1_frames[3]["object_states"]["mini_flow"]["visible_nodes"] == ["a", "b", "c"]
+
+    # Audit passes strictly with zero errors or warnings
+    report = audit_deck(paced, strict=True)
+    assert report.passed is True, [e.to_dict() for e in report.errors]
+    assert report.errors == []
+    assert report.warnings == []
+
+    # Axis bounds, coordinates, and full series slots must stay locked across progressive frames
+    parsed = parse_deck(paced)
+    resolved_s0 = resolve_scene(parsed.scenes[0], parsed.slide_width, parsed.slide_height)
+    assert resolved_s0[0].charts[0].rect == resolved_s0[1].charts[0].rect
+    assert resolved_s0[0].charts[0].axis_min == resolved_s0[1].charts[0].axis_min
+    assert resolved_s0[0].charts[0].axis_max == resolved_s0[1].charts[0].axis_max
+    assert len(resolved_s0[0].charts[0].series) == len(resolved_s0[1].charts[0].series) == 2
+    assert resolved_s0[0].charts[0].use_vector is True
+    assert resolved_s0[2].tables[0].rect == resolved_s0[3].tables[0].rect
+
+    # Inline diagram nodes keep locked coordinates across progressive frames
+    resolved_s1 = resolve_scene(parsed.scenes[1], parsed.slide_width, parsed.slide_height)
+    assert len(resolved_s1[1].boxes) == 1
+    assert len(resolved_s1[2].boxes) == 2
+    assert resolved_s1[1].boxes[0].rect == resolved_s1[3].boxes[0].rect
+
+    # Compile to .keyx and verify pure Shape vector chart (for progressive) + native Table/DonutChart
+    out = tmp_path / "freeform_loop.keyx"
+    compile_deck(raw, out)
+    assert out.exists()
+
+    with KeyxDocument.open(out) as loaded:
+        slides = loaded.payload.slides
+        assert len(slides) == 9  # 5 frames (scene 0) + 4 frames (scene 1)
+        # First slide compiles progressive by_series chart as pure Shape vectors (exact locked bar widths)
+        first_charts = [obj.object.chart for obj in slides[0].contents if obj.object.chart is not None]
+        assert first_charts == []
+        s1_bars = {
+            obj.object.shape.identifier.removeprefix("s1_"): obj.object.shape.geometry
+            for obj in slides[0].contents
+            if obj.object.shape is not None and "_latency_col_c_0_" in obj.object.shape.identifier
+        }
+        s2_bars = {
+            obj.object.shape.identifier.removeprefix("s2_"): obj.object.shape.geometry
+            for obj in slides[1].contents
+            if obj.object.shape is not None and "_latency_col_c_0_" in obj.object.shape.identifier
+        }
+        assert len(s1_bars) == 3 and set(s1_bars) == set(s2_bars)
+        for bid in s1_bars:
+            assert s1_bars[bid].size.width == pytest.approx(s2_bars[bid].size.width, abs=0.01)
+            assert s1_bars[bid].size.height == pytest.approx(s2_bars[bid].size.height, abs=0.01)
+            assert s1_bars[bid].position.x == pytest.approx(s2_bars[bid].position.x, abs=0.01)
+            assert s1_bars[bid].position.y == pytest.approx(s2_bars[bid].position.y, abs=0.01)
+        # Fourth slide has native Table
+        fourth_tables = [obj.object.table for obj in slides[3].contents if obj.object.table is not None]
+        assert len(fourth_tables) == 1
+        assert fourth_tables[0].number_of_columns == 3
+        assert fourth_tables[0].number_of_rows == 3
+        # Sixth slide (scene 1 frame 0, reveal=whole) keeps native DonutChart
+        donut_charts = [obj.object.chart for obj in slides[5].contents if obj.object.chart is not None]
+        assert len(donut_charts) == 1 and donut_charts[0].donut is not None
+
+
+def test_vector_chart_modes_and_native_override(tmp_path: Path) -> None:
+    from creator_studio_doc_format.core import KeyxDocument
+
+    raw = {
+        "title": "Vector & Native Chart Modes",
+        "scenes": [
+            {
+                "id": "vec_test",
+                "title": "Progressive Vector Charts + Native Override",
+                "grid": {"columns": 12, "rows": 2, "gap": 24},
+                "regions": [
+                    {"id": "tl", "col": 1, "row": 1, "col_span": 6, "row_span": 1},
+                    {"id": "tr", "col": 7, "row": 1, "col_span": 6, "row_span": 1},
+                    {"id": "bl", "col": 1, "row": 2, "col_span": 6, "row_span": 1},
+                    {"id": "br", "col": 7, "row": 2, "col_span": 6, "row_span": 1},
+                ],
+                "objects": [
+                    {
+                        "id": "v_area",
+                        "kind": "chart",
+                        "region": "tl",
+                        "step": 1,
+                        "chart": {
+                            "chart_type": "area",
+                            "categories": ["Q1", "Q2", "Q3"],
+                            "series": [{"name": "Revenue", "values": [10, 25, 42]}],
+                            "reveal": "by_category",
+                        },
+                    },
+                    {
+                        "id": "v_donut",
+                        "kind": "chart",
+                        "region": "tr",
+                        "step": 2,
+                        "chart": {
+                            "chart_type": "donut",
+                            "categories": ["A", "B", "C"],
+                            "series": [{"name": "Share", "values": [50, 30, 20]}],
+                            "reveal": "by_category",
+                        },
+                    },
+                    {
+                        "id": "v_bar_forced",
+                        "kind": "chart",
+                        "region": "bl",
+                        "step": 2,
+                        "chart": {
+                            "chart_type": "bar",
+                            "categories": ["Item 1", "Item 2"],
+                            "series": [{"name": "Score", "values": [80, 95]}],
+                            "render_mode": "vector",
+                        },
+                    },
+                    {
+                        "id": "native_forced",
+                        "kind": "chart",
+                        "region": "br",
+                        "step": 3,
+                        "chart": {
+                            "chart_type": "column",
+                            "categories": ["C1", "C2"],
+                            "series": [{"name": "S1", "values": [10, 20]}, {"name": "S2", "values": [15, 25]}],
+                            "reveal": "by_series",
+                            "render_mode": "native",
+                        },
+                    },
+                ],
+            }
+        ],
+    }
+    assert validate_deck(raw).valid is True
+    assert audit_deck(raw, strict=True).passed is True
+    out = tmp_path / "vector_modes.keyx"
+    compile_deck(raw, out)
+    with KeyxDocument.open(out) as loaded:
+        slides = loaded.payload.slides
+        assert len(slides) >= 6
+        # Last slide contains native_forced rendered as a native ColumnChart
+        last_native_charts = [obj.object.chart for obj in slides[-1].contents if obj.object.chart is not None]
+        assert len(last_native_charts) == 1 and last_native_charts[0].column is not None
+
+
+def test_freeform_all_native_chart_types_and_shapes_compile(tmp_path: Path) -> None:
+    raw = {
+        "title": "All Native Primitives",
+        "scenes": [
+            {
+                "id": "all_objs",
+                "title": "Shapes, Text, and Charts",
+                "grid": {"columns": 12, "rows": 2, "gap": 24},
+                "regions": [
+                    {"id": "r1", "col": 1, "row": 1, "col_span": 4, "row_span": 1},
+                    {"id": "r2", "col": 5, "row": 1, "col_span": 4, "row_span": 1},
+                    {"id": "r3", "col": 9, "row": 1, "col_span": 4, "row_span": 1},
+                    {"id": "r4", "col": 1, "row": 2, "col_span": 6, "row_span": 1, "arrange": "row"},
+                    {"id": "r5", "col": 7, "row": 2, "col_span": 6, "row_span": 1},
+                ],
+                "objects": [
+                    {
+                        "id": "c_bar",
+                        "kind": "chart",
+                        "region": "r1",
+                        "chart": {
+                            "chart_type": "stacked_bar",
+                            "categories": ["Q1", "Q2"],
+                            "series": [{"name": "A", "values": [30, 45]}, {"name": "B", "values": [70, 55]}],
+                            "reveal": "by_category",
+                        },
+                    },
+                    {
+                        "id": "c_line",
+                        "kind": "chart",
+                        "region": "r2",
+                        "chart": {
+                            "chart_type": "line",
+                            "categories": ["W1", "W2", "W3"],
+                            "series": [{"name": "Trend", "values": [12, 25, 41]}],
+                        },
+                    },
+                    {
+                        "id": "c_pie",
+                        "kind": "chart",
+                        "region": "r3",
+                        "chart": {
+                            "chart_type": "pie",
+                            "categories": ["Alpha", "Beta"],
+                            "series": [{"name": "Mix", "values": [65, 35]}],
+                        },
+                    },
+                    {
+                        "id": "sh_ellipse",
+                        "kind": "shape",
+                        "region": "r4",
+                        "shape_type": "ellipse",
+                        "label": "Core",
+                    },
+                    {
+                        "id": "sh_custom",
+                        "kind": "shape",
+                        "region": "r4",
+                        "shape_type": "custom",
+                        "svg_path": "M 0,0.5 L 0.5,0 L 1,0.5 L 0.5,1 Z",
+                        "label": "Gate",
+                    },
+                    {
+                        "id": "tb_note",
+                        "kind": "textbox",
+                        "region": "r5",
+                        "text": "Freeform summary block",
+                        "align": "left",
+                        "font_size": 26,
+                    },
+                ],
+            }
+        ],
+    }
+    assert validate_deck(raw).valid is True
+    assert audit_deck(raw, strict=True).passed is True
+    out = tmp_path / "all_primitives.keyx"
+    compile_deck(raw, out)
+    assert out.exists()
+
+
+def test_freeform_audit_catches_contrast_bad_pie_and_example_as_fact() -> None:
+    bad = _freeform_canvas_stage1()
+    # 1) Contrast violation: dark text on dark fill
+    bad["scenes"][0]["objects"][3]["fill_hex"] = "#1A1A1A"
+    bad["scenes"][0]["objects"][3]["color_hex"] = "#222222"
+    # 2) Epistemic mismatch: FACT badge referencing example claim
+    bad["scenes"][0]["objects"][3]["badge"] = "FACT"
+    # 3) Negative slice in donut chart
+    bad["scenes"][1]["objects"][0]["chart"]["series"][0]["values"] = [50, -10, 60]
+
+    report = audit_deck(bad)
+    err_cats = {e.category for e in report.errors}
+    assert {"low_contrast", "epistemic_mismatch", "invalid_chart_data"}.issubset(err_cats)
+
+    # 4) Overlapping grid regions caught by schema validation
+    overlap_deck = _freeform_canvas_stage1()
+    overlap_deck["scenes"][0]["regions"][1]["col"] = 6
+    val = validate_deck(overlap_deck)
+    assert val.valid is False
+    assert any("overlaps grid cell" in err for err in val.errors)
+
+
+def test_cli_and_mcp_use_templates_switch_and_freeform_compile(tmp_path: Path) -> None:
+    raw = _freeform_canvas_stage1()
+    stage1_path = tmp_path / "freeform.json"
+    out_keyx = tmp_path / "freeform.keyx"
+    stage1_path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+
+    # Default CLI validate allows freeform
+    assert cli_main(["validate", "-i", str(stage1_path)]) == 0
+    # Strict --use-templates rejects freeform
+    assert cli_main(["validate", "-i", str(stage1_path), "--use-templates"]) == 1
+    # Default CLI compile succeeds with audit gate
+    assert cli_main(["compile", "-i", str(stage1_path), "-o", str(out_keyx), "--fail-on-audit"]) == 0
+    assert out_keyx.exists()
+
+    # MCP dispatch supports use_templates switch
+    mcp_locked = dispatch_tool("validate_storyboard", {"storyboard": raw, "use_templates": True})
+    assert mcp_locked["valid"] is False
+    mcp_out = tmp_path / "mcp_freeform.keyx"
+    mcp_ok = dispatch_tool("compile_keyx", {"storyboard": raw, "output_path": str(mcp_out), "fail_on_audit": True})
+    assert mcp_ok["compiled"] is True
+    assert mcp_ok["audit"]["passed"] is True
+    assert mcp_out.exists()
+
+
+def test_canvas_schema_rejects_malformed_types_bounds_and_refs() -> None:
+    import math
+
+    # 1. Float step, bad weight, out-of-range font_size, float grid/region coords
+    bad1 = _freeform_canvas_stage1()
+    bad1["scenes"][0]["grid"]["columns"] = 12.5
+    bad1["scenes"][0]["regions"][0]["col"] = 1.5
+    bad1["scenes"][0]["objects"][0]["step"] = 1.5
+    bad1["scenes"][0]["objects"][0]["weight"] = "heavy"
+    bad1["scenes"][0]["objects"][3]["font_size"] = 220
+    res1 = validate_deck(bad1)
+    assert res1.valid is False
+    joined1 = "\n".join(res1.errors)
+    assert "grid.columns" in joined1
+    assert "col, row, col_span, and row_span must be integers" in joined1
+    assert "'step' must be a non-negative integer" in joined1
+    assert ".weight: must be a finite number >= 0.1" in joined1
+    assert ".font_size: must be a finite number in [10, 140]" in joined1
+
+    # 2. Chart NaN/Inf values, axis_min >= axis_max, and out-of-range table highlight indices
+    bad2 = _freeform_canvas_stage1()
+    bad2["scenes"][0]["objects"][0]["chart"]["series"][0]["values"] = [10, math.nan, 30]
+    bad2["scenes"][0]["objects"][0]["chart"]["axis_min"] = 50
+    bad2["scenes"][0]["objects"][0]["chart"]["axis_max"] = 10
+    bad2["scenes"][0]["objects"][1]["table"]["highlight_cols"] = [9]
+    bad2["scenes"][0]["objects"][1]["table"]["highlight_rows"] = [-1]
+    res2 = validate_deck(bad2)
+    assert res2.valid is False
+    joined2 = "\n".join(res2.errors)
+    assert "all values must be numeric" in joined2
+    assert "axis_min (50.0) must be < axis_max (10.0)" in joined2
+    assert "highlight_cols" in joined2
+    assert "highlight_rows" in joined2
+
+    # 3. Unknown diagram node/edge ids inside frames[].object_states
+    bad3 = _freeform_canvas_stage1()
+    bad3["scenes"][1]["frames"] = [
+        {
+            "visible_objects": ["mix_donut", "mini_flow"],
+            "object_states": {
+                "mini_flow": {
+                    "visible_nodes": ["a", "ghost_node"],
+                    "visible_edges": ["ghost_edge"],
+                }
+            },
+            "notes": "Bad inline diagram state",
+        }
+    ]
+    res3 = validate_deck(bad3)
+    assert res3.valid is False
+    joined3 = "\n".join(res3.errors)
+    assert "unknown diagram node 'ghost_node'" in joined3
+    assert "unknown diagram edge 'ghost_edge'" in joined3
+
+
+def test_freeform_builtin_example_compiles_with_locked_bars_and_native_chart(tmp_path: Path) -> None:
+    from creator_studio_doc_format.core import KeyxDocument
+
+    raw = json.loads(Path("examples/freeform_canvas_stage1.json").read_text(encoding="utf-8"))
+    assert validate_deck(raw).valid is True
+    paced = pace_deck(raw)
+    rep = audit_deck(paced, strict=True)
+    assert rep.passed is True, [e.to_dict() for e in rep.errors]
+
+    out = tmp_path / "builtin_freeform.keyx"
+    compile_deck(paced, out)
+    with KeyxDocument.open(out) as loaded:
+        slides = loaded.payload.slides
+        assert len(slides) == 9  # 5 frames scene 0 + 4 frames scene 1
+        # Progressive vector bars on slides 1 & 2 keep exact locked width
+        s1_bars = {
+            obj.object.shape.identifier.removeprefix("s1_"): obj.object.shape.geometry
+            for obj in slides[0].contents
+            if obj.object.shape is not None and "_compile_col_c_0_" in obj.object.shape.identifier
+        }
+        s2_bars = {
+            obj.object.shape.identifier.removeprefix("s2_"): obj.object.shape.geometry
+            for obj in slides[1].contents
+            if obj.object.shape is not None and "_compile_col_c_0_" in obj.object.shape.identifier
+        }
+        assert len(s1_bars) == 3 and set(s1_bars) == set(s2_bars)
+        for bid in s1_bars:
+            assert s1_bars[bid].size.width == pytest.approx(s2_bars[bid].size.width, abs=0.01)
+            assert s1_bars[bid].position.x == pytest.approx(s2_bars[bid].position.x, abs=0.01)
+        # Native DonutChart preserved on slide 6 (scene 1 frame 0)
+        donut_charts = [obj.object.chart for obj in slides[5].contents if obj.object.chart is not None]
+        assert len(donut_charts) == 1 and donut_charts[0].donut is not None
+
+
+@pytest.mark.parametrize("bad_val", [["accent"], {"bad": 1}, None, True, 123])
+def test_schema_rejects_unhashable_or_non_string_enum_and_ref_values(bad_val: object) -> None:
+    # Canvas enum + ref fields
+    deck1 = _freeform_canvas_stage1()
+    deck1["scenes"][0]["regions"][0]["arrange"] = bad_val
+    deck1["scenes"][0]["objects"][0]["variant"] = bad_val
+    deck1["scenes"][0]["objects"][0]["chart"]["chart_type"] = bad_val
+    deck1["scenes"][0]["objects"][0]["chart"]["reveal"] = bad_val
+    deck1["scenes"][0]["objects"][0]["chart"]["render_mode"] = bad_val
+    deck1["scenes"][0]["objects"][1]["table"]["reveal"] = bad_val
+    deck1["scenes"][0]["objects"][3]["align"] = bad_val
+    res1 = validate_deck(deck1)
+    assert res1.valid is False
+    assert len(res1.errors) >= 6
+
+    # Inline diagram + shape + node/edge ref fields
+    deck2 = _freeform_canvas_stage1()
+    deck2["scenes"][1]["objects"][1]["diagram"]["diagram_layout"] = bad_val
+    deck2["scenes"][1]["objects"][1]["diagram"]["nodes"][0]["variant"] = bad_val
+    deck2["scenes"][1]["objects"][1]["diagram"]["nodes"][0]["child_layout"] = bad_val
+    deck2["scenes"][1]["objects"][1]["diagram"]["edges"][0]["from"] = bad_val
+    deck2["scenes"][0]["objects"].append(
+        {"id": "sh_bad", "kind": "shape", "region": "main_right", "shape_type": bad_val}
+    )
+    res2 = validate_deck(deck2)
+    assert res2.valid is False
+    assert len(res2.errors) >= 4
+
+
+# ---------------------------------------------------------------------------
+# P1-A: Magic Move cross-frame geometry regression harness
+# ---------------------------------------------------------------------------
+
+def _assert_magic_move_stable(slides: list, *, tol: float = 0.01, skip_last: int = 1) -> None:
+    """Assert all persistent Shape objects have identical geometry on consecutive slides.
+
+    For every pair of consecutive slides (i, i+1), collect all Shape objects by their
+    canonical identifier (stripping the ``s{n}_`` slide prefix).  For identifiers
+    present on *both* slides assert that position x/y, size width/height, fill RGBA,
+    and path string are equal within *tol*.  This verifies that Magic Move can smoothly
+    animate between frames rather than dissolving or jumping.
+    """
+    def _shape_map(slide, slide_idx: int) -> dict[str, tuple]:
+        prefix = f"s{slide_idx + 1}_"
+        result: dict[str, tuple] = {}
+        for obj in slide.contents:
+            sh = obj.object.shape
+            if sh is None or not sh.identifier:
+                continue
+            ident = sh.identifier.removeprefix(prefix)
+            fill_sig = str(sh.fill) if sh.fill is not None else None
+            path_sig = str(sh.path) if sh.path is not None else None
+            result[ident] = (sh.geometry.position, sh.geometry.size, fill_sig, path_sig)
+        return result
+
+    limit = len(slides) - 1 if skip_last <= 1 else max(0, len(slides) - skip_last)
+    for slide_i in range(limit):
+        map_a = _shape_map(slides[slide_i], slide_i)
+        map_b = _shape_map(slides[slide_i + 1], slide_i + 1)
+        shared = set(map_a) & set(map_b)
+        for ident in shared:
+            pos_a, sz_a, fill_a, path_a = map_a[ident]
+            pos_b, sz_b, fill_b, path_b = map_b[ident]
+            assert pos_a.x == pytest.approx(pos_b.x, abs=tol), (
+                f"Magic Move jitter: '{ident}' x changed {pos_a.x:.2f} -> {pos_b.x:.2f} between slides {slide_i + 1}->{slide_i + 2}"
+            )
+            assert pos_a.y == pytest.approx(pos_b.y, abs=tol), (
+                f"Magic Move jitter: '{ident}' y changed {pos_a.y:.2f} -> {pos_b.y:.2f} between slides {slide_i + 1}->{slide_i + 2}"
+            )
+            assert sz_a.width == pytest.approx(sz_b.width, abs=tol), (
+                f"Magic Move jitter: '{ident}' width changed {sz_a.width:.2f} -> {sz_b.width:.2f} between slides {slide_i + 1}->{slide_i + 2}"
+            )
+            assert sz_a.height == pytest.approx(sz_b.height, abs=tol), (
+                f"Magic Move jitter: '{ident}' height changed {sz_a.height:.2f} -> {sz_b.height:.2f} between slides {slide_i + 1}->{slide_i + 2}"
+            )
+            assert fill_a == fill_b, (
+                f"Magic Move fill changed for '{ident}' between slides {slide_i + 1}->{slide_i + 2}"
+            )
+            assert path_a == path_b, (
+                f"Magic Move path changed for '{ident}' between slides {slide_i + 1}->{slide_i + 2}"
+            )
+
+
+def test_magic_move_stable_on_freeform_canvas(tmp_path: Path) -> None:
+    """P1-A: Persistent canvas objects must not jitter in position/size between consecutive frames."""
+    from creator_studio_doc_format.core import KeyxDocument
+
+    raw = _freeform_canvas_stage1()
+    out = tmp_path / "p1a_mm.keyx"
+    compile_deck(raw, out)
+    assert out.exists()
+
+    with KeyxDocument.open(out) as loaded:
+        slides = list(loaded.payload.slides)
+    assert len(slides) >= 2, "Need at least 2 slides to test Magic Move stability"
+    _assert_magic_move_stable(slides)
+
+
+@pytest.mark.parametrize("reveal", ["whole", "by_series", "by_category"])
+def test_magic_move_stable_chart_reveals(tmp_path: Path, reveal: str) -> None:
+    """P1-A: Parametric chart reveal modes must keep the chart container rect stable across slides."""
+    from creator_studio_doc_format.core import KeyxDocument
+
+    raw = _freeform_canvas_stage1()
+    for sc in raw.get("scenes", []):
+        for obj in sc.get("objects", []):
+            if obj.get("chart"):
+                obj["chart"]["reveal"] = reveal
+    out = tmp_path / f"p1a_chart_{reveal}.keyx"
+    compile_deck(raw, out)
+    assert out.exists()
+    with KeyxDocument.open(out) as loaded:
+        slides = list(loaded.payload.slides)
+    if len(slides) >= 2:
+        _assert_magic_move_stable(slides)
+
+
+@pytest.mark.parametrize("reveal", ["whole", "by_row"])
+def test_magic_move_stable_table_reveals(tmp_path: Path, reveal: str) -> None:
+    """P1-A: Table reveal modes must keep the table container rect stable across slides."""
+    from creator_studio_doc_format.core import KeyxDocument
+
+    raw = _freeform_canvas_stage1()
+    for sc in raw.get("scenes", []):
+        for obj in sc.get("objects", []):
+            if obj.get("table"):
+                obj["table"]["reveal"] = reveal
+    out = tmp_path / f"p1a_table_{reveal}.keyx"
+    compile_deck(raw, out)
+    assert out.exists()
+    with KeyxDocument.open(out) as loaded:
+        slides = list(loaded.payload.slides)
+    if len(slides) >= 2:
+        _assert_magic_move_stable(slides)
+
+
+
+def test_bright_accent_auto_switches_to_dark_text_for_contrast(tmp_path: Path) -> None:
+    """Bright accent_fill_hex (e.g. #FACC15) must auto-select dark readable text in callout & table highlight."""
+    from creator_studio_doc_format.core import KeyxDocument
+
+    raw = {
+        "title": "Bright Accent Contrast",
+        "palette": {
+            "bg_hex": "#0F172A",
+            "title_hex": "#FACC15",
+            "text_hex": "#F8FAFC",
+            "accent_fill_hex": "#FACC15",
+        },
+        "scenes": [
+            {
+                "id": "contrast_scene",
+                "title": "Contrast Check",
+                "grid": {"columns": 12, "rows": 1, "gap": 24},
+                "regions": [
+                    {"id": "left", "col": 1, "row": 1, "col_span": 5, "row_span": 1},
+                    {"id": "right", "col": 6, "row": 1, "col_span": 7, "row_span": 1},
+                ],
+                "objects": [
+                    {
+                        "id": "bright_callout",
+                        "kind": "callout",
+                        "region": "left",
+                        "variant": "accent",
+                        "badge": "THESIS",
+                        "label": "Readable Dark Text",
+                        "step": 1,
+                    },
+                    {
+                        "id": "hl_tbl",
+                        "kind": "table",
+                        "region": "right",
+                        "step": 1,
+                        "table": {
+                            "headers": ["Key", "Val"],
+                            "rows": [["Row 1", "100"], ["Row 2", "200"]],
+                            "highlight_rows": [0],
+                        },
+                    },
+                ],
+            }
+        ],
+    }
+    out = tmp_path / "contrast.keyx"
+    compile_deck(raw, out)
+    with KeyxDocument.open(out) as loaded:
+        slide = loaded.payload.slides[0]
+        callout_shape = next(
+            o.object.shape for o in slide.contents
+            if o.object.shape is not None and o.object.shape.identifier.endswith("_bright_callout")
+        )
+        # First paragraph (badge) must have dark text RGB (< 0.2), not white (> 0.9)
+        from keyflow.compiler import _readable_text_rgb
+        dark = _readable_text_rgb((0.98, 0.80, 0.08), (1.0, 1.0, 1.0))
+        assert dark[0] < 0.2 and dark[1] < 0.2 and dark[2] < 0.2
+
+        c_dump = callout_shape.text.paragraphs[0].style.character_properties.model_dump()
+        badge_rgba = c_dump["character_fill"]["color"]["rgba"]
+        assert badge_rgba["red"] < 0.2 and badge_rgba["green"] < 0.2 and badge_rgba["blue"] < 0.2
+
+        tbl = next(o.object.table for o in slide.contents if o.object.table is not None)
+        t_dump = tbl.content[1].cells[0].text_properties.model_dump()
+        hl_rgba = t_dump["character_properties"]["character_fill"]["color"]["rgba"]
+        assert hl_rgba["red"] < 0.2 and hl_rgba["green"] < 0.2 and hl_rgba["blue"] < 0.2
+
+
+def test_waterfall_chart_progressive_compile_and_magic_move_stable(tmp_path: Path) -> None:
+    """P1-D: Waterfall chart computes cumulative bounds, renders bridge connectors, and keeps Magic Move stable."""
+    from creator_studio_doc_format.core import KeyxDocument
+
+    raw = {
+        "title": "Waterfall P1-D Test",
+        "theme": "slate_dark",
+        "scenes": [
+            {
+                "id": "wf_scene",
+                "title": "Profit Bridge",
+                "grid": {"columns": 12, "rows": 1, "gap": 24},
+                "regions": [{"id": "main", "col": 1, "row": 1, "col_span": 12, "row_span": 1, "frame": True}],
+                "objects": [
+                    {
+                        "id": "profit_wf",
+                        "kind": "chart",
+                        "region": "main",
+                        "step": 1,
+                        "chart": {
+                            "chart_type": "waterfall",
+                            "title": "Operating Profit Bridge ($B)",
+                            "unit": "$B",
+                            "categories": ["Start", "GPU Growth", "R&D Cost", "Tax", "Ending"],
+                            "series": [{"name": "Bridge", "values": [100, 45, -25, -10, 110]}],
+                            "reveal": "by_category",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    res = validate_deck(raw)
+    assert res.valid, res.errors
+    paced = pace_deck(raw)
+    assert len(paced["scenes"][0]["frames"]) == 5
+    report = audit_deck(paced, strict=True)
+    assert report.passed is True, [e.to_dict() for e in report.errors]
+
+    parsed = parse_deck(paced)
+    resolved = resolve_scene(parsed.scenes[0], parsed.slide_width, parsed.slide_height)
+    assert resolved[0].charts[0].use_vector is True
+    assert resolved[0].charts[0].axis_min == pytest.approx(0.0)
+    assert resolved[0].charts[0].axis_max > 145.0  # peak cumulative 145 + headroom
+
+    out = tmp_path / "waterfall.keyx"
+    compile_deck(raw, out)
+    assert out.exists()
+    with KeyxDocument.open(out) as loaded:
+        slides = list(loaded.payload.slides)
+        assert len(slides) == 5
+        _assert_magic_move_stable(slides)
+        # Final slide should have 5 waterfall bars + 4 dashed bridge connectors
+        wf_bars = [
+            o.object.shape for o in slides[-1].contents
+            if o.object.shape is not None
+            and "_profit_wf_wf_" in o.object.shape.identifier
+            and "_vl_" not in o.object.shape.identifier
+            and "_link_" not in o.object.shape.identifier
+        ]
+        wf_links = [
+            o.object.shape for o in slides[-1].contents
+            if o.object.shape is not None and "_profit_wf_wf_link_" in o.object.shape.identifier
+        ]
+        assert len(wf_bars) == 5
+        assert len(wf_links) == 4

@@ -113,8 +113,8 @@ KeyFlow 自带 **Agent Skill**（[skills/keyflow/SKILL.md](skills/keyflow/SKILL.
 3. **校验、视觉自检并编译为 `.keyx`**
    ```bash
    uv run keyflow validate -i storyboard.json
-   uv run keyflow audit -i storyboard.json
-   uv run keyflow compile -i storyboard.json -o out/Presentation.keyx --theme slate_dark
+   uv run keyflow audit -i storyboard.json --strict
+   uv run keyflow compile -i storyboard.json -o out/Presentation.keyx --theme slate_dark --fail-on-audit
    ```
    *(若无需人工干预拆帧结果，也可以把第 1 步修改好的 `stage1.json` 直接传给 `compile`，编译前会自动完成拆帧)*
 
@@ -129,7 +129,7 @@ KeyFlow 自带 **Agent Skill**（[skills/keyflow/SKILL.md](skills/keyflow/SKILL.
 
 ### 运行内置示例
 
-仓库内置了 5 份不同复杂度的示例剧本，可直接编译查看成片效果：
+仓库内置了 6 份不同复杂度的示例剧本，可直接编译查看成片效果：
 
 ```bash
 # 示例 1：极简 6 页概念讲解（Stage 1 全量图直编）
@@ -138,8 +138,8 @@ uv run keyflow compile -i examples/agent_skill_stage1.json -o out/AgentSkill.key
 # 示例 2：大模型采样原理（顶部常驻导航 + 参数对照表 + 分段比例数轴）
 uv run keyflow compile -i examples/llm_sampling_stage1.json -o out/LLM_Sampling.keyx
 
-# 示例 3：多体裁展示（架构演进对比 + 状态流转弧线 + 指标卡片）
-uv run keyflow compile -i examples/genres_showcase_stage1.json -o out/Showcase.keyx
+# 示例 3：自由组合画布（渐进矢量柱状图 + 原生表格 + 逐节点内嵌流程图）
+uv run keyflow compile -i examples/freeform_canvas_stage1.json -o out/FreeformCanvas.keyx
 ```
 
 加上 `--preview-dir`，可在编译的同时调用 Keynote 自动导出逐页 PNG 预览图：
@@ -149,13 +149,14 @@ uv run keyflow compile -i examples/llm_sampling_stage1.json -o out/LLM_Sampling.
 ```
 
 <details>
-<summary>查看全部 5 份内置示例说明</summary>
+<summary>查看全部 6 份内置示例说明</summary>
 
 - [examples/agent_skill_stage1.json](examples/agent_skill_stage1.json) — 约 40 行的 Stage 1 精简结构，无需手写分页即可生成 6 页渐进演讲稿
 - [examples/agent_skill_demo.json](examples/agent_skill_demo.json) — 包含完整逐帧定义的 6 帧标准分镜示例
 - [examples/keyflow_readme_deck.json](examples/keyflow_readme_deck.json) — 从文章提炼的双场景分镜示例（结构总览与双侧对比）
 - [examples/genres_showcase_stage1.json](examples/genres_showcase_stage1.json) — 展示架构演进、状态弧线流转与关键指标卡片三种版式
 - [examples/llm_sampling_stage1.json](examples/llm_sampling_stage1.json) — 较复杂的技术原理讲解示例，包含 `pinned_flow`、`comparison_matrix` 与 `proportion_bar`
+- [examples/freeform_canvas_stage1.json](examples/freeform_canvas_stage1.json) — 自由画布综合示例，包含自定义 `palette`、纯矢量渐进柱状图、原生表格与环图，以及逐节点展开的内嵌流程图
 
 </details>
 
@@ -179,6 +180,14 @@ KeyFlow 的版式与分页规则围绕以下几个实际体验问题而定：
 ---
 
 ## 视觉体裁与定制
+
+### 自由组合画布（`layout: "canvas"`，默认 `use_templates: false`）
+
+当单一预设版式难以同时承载结论卡片、多维图表、表格与流程拆解时，可为场景声明 `layout: "canvas"`，基于 12 栏 `grid` 划分互不重叠的 `regions`（支持 `stack`、`row`、`grid` 排列），自由组合原生 `.keyx` 视觉对象：
+
+- **7 类自由对象**：`card`（信息卡片）、`callout`（强调结论）、`textbox`（自由文本）、`shape`（几何与自定义 `svg_path`）、`chart`（10 种数据图表，含 `waterfall` 瀑布图）、`table`（原生 `.keyx` 表格），以及支持逐节点展开的内嵌 `diagram`。
+- **图表双路径编译（`render_mode`: `auto` | `vector` | `native`）**：默认 `auto` 下，静态全量常规图（`reveal: "whole"`）编译为可编辑原生 Keynote `Chart`；逐步呈现（`by_series` / `by_category`）的图表与 `waterfall` 瀑布图编译为纯 `Shape` + `Textbox` 矢量组合并预先锁死各系列槽位宽度，确保 Keynote「神奇移动」跨页精准追踪，已有柱体绝不变窄或跳变。
+- **模板开关（`use_templates`）与证据链审计**：默认关闭（`false`）以开放自由画布、自定义 `palette`（含亮色背景自动对比度适配）及可选 `story_model` 证据/口径一致性审计；若需严格限定只用以下 10 种内置版式，可在 JSON 中设置 `use_templates: true` 或在命令行传入 `--use-templates`。
 
 ### 10 种内置版式（`layout`）
 
@@ -237,6 +246,7 @@ KeyFlow 的版式与分页规则围绕以下几个实际体验问题而定：
 ## 协议与测试
 
 - 项目仓库：[https://github.com/johhhhnny/keyflow](https://github.com/johhhhnny/keyflow)
+- 更新日志：[CHANGELOG.md](CHANGELOG.md)
 - 开源协议：[MIT License](LICENSE)
 - 完整 JSON 分镜格式定义：[schemas/deck.schema.json](schemas/deck.schema.json)
 - 运行自动化测试套件：

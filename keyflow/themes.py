@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import base64
 import random
+import re
 import struct
 import zlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
+from typing import Mapping, Sequence
+
+_HEX_COLOR_RE = re.compile(r"^#(?:[0-9a-fA-F]{6})$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -194,6 +198,95 @@ def get_theme(name: str) -> ThemePreset:
         available = ", ".join(sorted(THEMES))
         raise ValueError(f"Unknown theme '{name}'. Available themes: {available}")
     return THEMES[name]
+
+
+def is_valid_hex_color(value: str) -> bool:
+    """Return True when value is a #RRGGBB hex color string."""
+    return isinstance(value, str) and bool(_HEX_COLOR_RE.match(value.strip()))
+
+
+def hex_to_rgb_float(value: str) -> tuple[float, float, float]:
+    """Convert a #RRGGBB hex string into normalized (r, g, b) floats in [0.0, 1.0]."""
+    cleaned = value.strip().lstrip("#")
+    if len(cleaned) != 6:
+        raise ValueError(f"Invalid hex color '{value}'; expected #RRGGBB.")
+    r = int(cleaned[0:2], 16) / 255.0
+    g = int(cleaned[2:4], 16) / 255.0
+    b = int(cleaned[4:6], 16) / 255.0
+    return (round(r, 4), round(g, 4), round(b, 4))
+
+
+def hex_to_rgb_int(value: str) -> tuple[int, int, int]:
+    """Convert a #RRGGBB hex string into integer (r, g, b) channels in [0, 255]."""
+    cleaned = value.strip().lstrip("#")
+    if len(cleaned) != 6:
+        raise ValueError(f"Invalid hex color '{value}'; expected #RRGGBB.")
+    return (int(cleaned[0:2], 16), int(cleaned[2:4], 16), int(cleaned[4:6], 16))
+
+
+def relative_luminance(rgb: tuple[float, float, float]) -> float:
+    """Compute WCAG 2.x relative luminance for an sRGB (0..1) tuple."""
+    def _lin(ch: float) -> float:
+        return ch / 12.92 if ch <= 0.03928 else ((ch + 0.055) / 1.055) ** 2.4
+
+    r, g, b = (_lin(max(0.0, min(1.0, c))) for c in rgb)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def contrast_ratio(fg: tuple[float, float, float], bg: tuple[float, float, float]) -> float:
+    """Compute WCAG contrast ratio (>= 1.0) between foreground and background sRGB colors."""
+    l1 = relative_luminance(fg)
+    l2 = relative_luminance(bg)
+    hi, lo = max(l1, l2), min(l1, l2)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def apply_palette_overrides(
+    base: ThemePreset,
+    palette: Mapping[str, object] | None,
+) -> ThemePreset:
+    """Return a ThemePreset with optional freeform palette hex token overrides applied."""
+    if not palette:
+        return base
+
+    updates: dict[str, object] = {}
+    if isinstance(palette.get("bg_hex"), str):
+        updates["bg_rgb"] = hex_to_rgb_int(palette["bg_hex"])
+        if not isinstance(palette.get("bg_gradient_end_hex"), str):
+            updates["bg_gradient_end_rgb"] = None
+    if isinstance(palette.get("bg_gradient_end_hex"), str):
+        updates["bg_gradient_end_rgb"] = hex_to_rgb_int(palette["bg_gradient_end_hex"])
+
+    float_map = {
+        "title_hex": "title_rgb",
+        "subtitle_hex": "subtitle_rgb",
+        "text_hex": "text_rgb",
+        "card_fill_hex": "card_fill_rgb",
+        "card_border_hex": "card_border_rgb",
+        "accent_fill_hex": "accent_fill_rgb",
+        "accent_border_hex": "accent_border_rgb",
+        "success_fill_hex": "success_fill_rgb",
+        "warn_fill_hex": "warn_fill_rgb",
+        "arrow_hex": "arrow_rgb",
+    }
+    for src_key, dst_field in float_map.items():
+        val = palette.get(src_key)
+        if isinstance(val, str):
+            updates[dst_field] = hex_to_rgb_float(val)
+
+    if "card_fill_rgb" in updates and isinstance(updates["card_fill_rgb"], tuple):
+        updates["subcard_fill_rgb"] = updates["card_fill_rgb"]
+    if "title_rgb" in updates and isinstance(updates["title_rgb"], tuple):
+        updates["accent_text_rgb"] = updates["title_rgb"]
+        updates["metric_text_rgb"] = updates["title_rgb"]
+
+    series = palette.get("series_colors")
+    if isinstance(series, Sequence) and not isinstance(series, (str, bytes)):
+        parsed_series = tuple(hex_to_rgb_float(c) for c in series if isinstance(c, str) and is_valid_hex_color(c))
+        if parsed_series:
+            updates["segment_palette"] = parsed_series
+
+    return replace(base, **updates) if updates else base
 
 
 @lru_cache(maxsize=8)
