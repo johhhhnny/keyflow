@@ -132,7 +132,8 @@ def _make_chart_header_and_legend(
     """Emit shared chart title Textbox and KeyFlow legend swatches/labels; return header height."""
     objs: list[SlideObject] = []
     top_offset = 0.0
-    if chart.title:
+    is_bar_like = chart.chart_type in ("column", "bar", "stacked_column", "stacked_bar", "waterfall")
+    if chart.title and not is_bar_like:
         title_h = 40.0
         objs.append(
             _make_textbox(
@@ -385,7 +386,7 @@ def _make_vector_chart_objects(
             n_series = max(1, len(chart.series))
             inner_gap = min(6.0, group_h * 0.08) if n_series > 1 else 0.0
             bar_h = max(8.0, (group_h - inner_gap * (n_series - 1)) / n_series)
-            val_font = round(min(22.0, max(15.5, bar_h * 0.55)), 1)
+            val_font = round(min(30.0, max(19.0, bar_h * 0.62)), 1)
             for c_idx in range(cat_count):
                 cy = inner_y + c_idx * cat_slot_h
                 for s_idx, sr in enumerate(chart.series):
@@ -490,10 +491,13 @@ def _make_vector_chart_objects(
     max_tick_w = max(_text_units(_format_chart_num(tv)) * 9.5 for tv in tick_vals)
     y_label_w = max(CHART_Y_LABEL_MIN_W_PT, min(CHART_Y_LABEL_MAX_W_PT, max_tick_w + 14.0))
     inner_x = chart.rect.x + y_label_w + 8.0
-    inner_y = chart.rect.y + header_h + (28.0 if chart.unit else 16.0)
-    inner_w = max(100.0, (chart.rect.x + chart.rect.w) - inner_x - 16.0)
+    base_y = chart.rect.y + header_h + (28.0 if chart.unit else 16.0)
+    raw_inner_w = max(100.0, (chart.rect.x + chart.rect.w) - inner_x - 16.0)
+    inner_w = min(raw_inner_w, 820.0)
     cat_label_h = 38.0
-    inner_h = max(80.0, (chart.rect.y + chart.rect.h) - inner_y - cat_label_h - 6.0)
+    raw_inner_h = max(80.0, (chart.rect.y + chart.rect.h) - base_y - cat_label_h - 6.0)
+    inner_h = min(raw_inner_h, 430.0)
+    inner_y = base_y + max(0.0, (raw_inner_h - inner_h) / 2.0)
 
     for i, tv in enumerate(tick_vals):
         gy = inner_y + inner_h - inner_h * (i / 4.0)
@@ -562,7 +566,7 @@ def _make_vector_chart_objects(
         n_series = max(1, len(chart.series))
         inner_gap = min(8.0, group_w * 0.08) if n_series > 1 else 0.0
         bar_w = max(8.0, (group_w - inner_gap * (n_series - 1)) / n_series)
-        val_font = round(min(22.0, max(16.0, bar_w * 0.42)), 1)
+        val_font = round(min(34.0, max(20.0, bar_w * 0.48)), 1)
         for c_idx in range(cat_count):
             cx = inner_x + c_idx * cat_slot_w
             for s_idx, sr in enumerate(chart.series):
@@ -599,11 +603,11 @@ def _make_vector_chart_objects(
                     )
                 )
                 if chart.show_value_labels:
-                    ly = max(inner_y - 30.0, by - 32.0) if val >= 0 else (by + bh + 2.0)
+                    ly = max(inner_y - 44.0, by - 46.0) if val >= 0 else (by + bh + 4.0)
                     objs.append(
                         _make_textbox(
                             f"{slide_prefix}_{chart.id}_vl_{s_idx}_{c_idx}",
-                            BoxRect(bx - 18.0, ly, bar_w + 36.0, 30.0),
+                            BoxRect(bx - 22.0, ly, bar_w + 44.0, 42.0),
                             _format_chart_num(float(val)),
                             font_name=theme.font_body,
                             font_size=val_font,
@@ -660,7 +664,7 @@ def _make_vector_chart_objects(
                     )
     elif chart.chart_type == "waterfall":
         bar_w = min(74.0, cat_slot_w * 0.56)
-        val_font = round(min(21.0, max(15.5, bar_w * 0.36)), 1)
+        val_font = round(min(30.0, max(19.0, bar_w * 0.42)), 1)
         sr0 = chart.series[0] if chart.series else None
         full_vals = sr0.full_values if (sr0 and sr0.full_values) else ([v for v in sr0.values if v is not None] if sr0 else [])
         running = 0.0

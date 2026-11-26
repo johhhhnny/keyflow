@@ -84,7 +84,15 @@ def _compute_chart_axis_bounds(chart: ChartSpec) -> tuple[float | None, float | 
     if chart.axis_max is not None:
         ax_max = chart.axis_max
     else:
-        ax_max = raw_max + span * 0.12
+        raw_top = raw_max + span * 0.12
+        # Snap to a clean multiple of 4*step so 4-interval tick labels stay neat integers
+        if ax_min == 0.0 and raw_top >= 8.0:
+            mag = 10.0 ** max(0, int(math.floor(math.log10(raw_top))) - 1)
+            step = mag * (2.0 if raw_top / mag > 40 else 1.0)
+            unit_4 = 4.0 * step
+            ax_max = math.ceil(raw_top / unit_4) * unit_4
+        else:
+            ax_max = raw_top
     return ax_min, ax_max
 
 
