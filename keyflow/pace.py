@@ -429,6 +429,10 @@ def _pace_comparison_matrix(scene: dict[str, Any], density: DensityMode) -> list
     return frames
 
 
+from keyflow.objects import OBJECT_PACERS
+from keyflow.objects.pacers import step_counts as _step_counts
+
+
 def _canvas_object_note(obj: dict[str, Any]) -> str:
     if obj.get("note"):
         return str(obj["note"])
@@ -513,86 +517,26 @@ def _pace_canvas(scene: dict[str, Any], density: DensityMode) -> list[dict[str, 
         batch_ids = [str(o["id"]) for o in batch]
         visible.extend(batch_ids)
 
-        # Expand progressive sub-stages for chart / table / diagram objects in this step
+        # Expand progressive sub-stages via registered object pacers
         sub_stages: list[tuple[dict[str, dict[str, Any]], str]] = []
         prog_oids: set[str] = set()
         if density == "standard":
             for obj in batch:
                 oid = str(obj["id"])
-                kind = obj.get("kind")
-                if kind == "chart":
-                    ch = obj.get("chart") or {}
-                    rev = ch.get("reveal", "whole")
-                    if rev == "by_series" and len(ch.get("series", [])) > 1:
-                        prog_oids.add(oid)
-                        for k in range(1, len(ch["series"]) + 1):
-                            sr_name = ch["series"][k - 1].get("name", f"Series {k}")
-                            sub_stages.append(({oid: {"series_count": k}}, f"{_canvas_object_note(obj)}（{sr_name}）"))
-                        committed_states[oid] = {"series_count": len(ch["series"])}
-                    elif rev == "by_category" and len(ch.get("categories", [])) > 1:
-                        prog_oids.add(oid)
-                        for k in _step_counts(len(ch["categories"]), max_steps=6):
-                            cat_name = ch["categories"][k - 1]
-                            sub_stages.append(({oid: {"category_count": k}}, f"{_canvas_object_note(obj)}（{cat_name}）"))
-                        committed_states[oid] = {"category_count": len(ch["categories"])}
-                elif kind == "table":
-                    tb = obj.get("table") or {}
-                    rev = tb.get("reveal", "whole")
-                    if rev == "by_row" and len(tb.get("rows", [])) > 1:
-                        prog_oids.add(oid)
-                        for k in _step_counts(len(tb["rows"]), max_steps=4):
-                            sub_stages.append(({oid: {"row_count": k}}, f"{_canvas_object_note(obj)}（前 {k} 行）"))
-                        committed_states[oid] = {"row_count": len(tb["rows"])}
-                    elif rev == "by_column" and len(tb.get("headers", [])) > 1:
-                        prog_oids.add(oid)
-                        for k in _step_counts(len(tb["headers"]), max_steps=4):
-                            hdr = tb["headers"][k - 1]
-                            sub_stages.append(({oid: {"col_count": k}}, f"{_canvas_object_note(obj)}（{hdr}）"))
-                        committed_states[oid] = {"col_count": len(tb["headers"])}
-                elif kind == "diagram":
-                    dg = obj.get("diagram") or {}
-                    dg_nodes = dg.get("nodes", [])
-                    has_children = any(bool(n.get("children")) for n in dg_nodes)
-                    if len(dg_nodes) > 1 or has_children:
-                        prog_oids.add(oid)
-                        sub_layout = diagram_layout_map.get(dg.get("diagram_layout", "horizontal"), "horizontal_flow")
-                        dummy_dg_scene = {
-                            "id": oid,
-                            "title": str(obj.get("label") or oid),
-                            "layout": sub_layout,
-                            "nodes": dg_nodes,
-                            "edges": dg.get("edges", []),
-                        }
-                        d_frames = expand_scene_frames(dummy_dg_scene, density="standard")
-                        non_empty_d_frames = [df for df in d_frames if df.get("visible_nodes")]
-                        if not non_empty_d_frames:
-                            non_empty_d_frames = d_frames
-                        prefix_lbl = _canvas_object_note(obj)
-                        for df in non_empty_d_frames:
-                            d_st: dict[str, Any] = {
-                                "visible_nodes": list(df.get("visible_nodes", [])),
-                                "expanded_nodes": list(df.get("expanded_nodes", [])),
-                            }
-                            if df.get("visible_edges", "auto") != "auto":
-                                d_st["visible_edges"] = list(df["visible_edges"])
-                            if df.get("focus_nodes") is not None:
-                                d_st["focus_nodes"] = list(df["focus_nodes"])
-                            d_note = str(df.get("notes") or "")
-                            full_note = (
-                                f"{prefix_lbl}：{d_note}"
-                                if (prefix_lbl and d_note and prefix_lbl not in d_note)
-                                else (d_note or prefix_lbl)
-                            )
-                            sub_stages.append(({oid: d_st}, full_note))
-                        if non_empty_d_frames:
-                            last_df = non_empty_d_frames[-1]
-                            last_st: dict[str, Any] = {
-                                "visible_nodes": list(last_df.get("visible_nodes", [])),
-                                "expanded_nodes": list(last_df.get("expanded_nodes", [])),
-                            }
-                            if last_df.get("visible_edges", "auto") != "auto":
-                                last_st["visible_edges"] = list(last_df["visible_edges"])
-                            committed_states[oid] = last_st
+                kind = str(obj.get("kind") or "")
+                pacer_fn = OBJECT_PACERS.get(kind)
+                if pacer_fn is None:
+                    continue
+                obj_stages, final_state = pacer_fn(
+                    obj,
+                    _canvas_object_note(obj),
+                    expand_frames_fn=expand_scene_frames,
+                )
+                if obj_stages:
+                    prog_oids.add(oid)
+                    sub_stages.extend(obj_stages)
+                if final_state is not None:
+                    committed_states[oid] = final_state
 
         if not sub_stages:
             frame_obj: dict[str, Any] = {

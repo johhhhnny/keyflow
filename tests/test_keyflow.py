@@ -2386,3 +2386,29 @@ def test_phase2_tokens_and_exporter_compat() -> None:
     assert tokens.MUTED_CARD_ALPHA == pytest.approx(0.72)
     assert tokens.MIN_CONTRAST_RATIO == pytest.approx(3.0)
     assert tokens.ANCHOR_JITTER_TOLERANCE_PT == pytest.approx(0.5)
+
+
+def test_phase3_layout_and_object_registries() -> None:
+    import keyflow.compiler as compiler_mod
+    import keyflow.layout as layout_facade
+    from keyflow.layouts import LAYOUT_REGISTRY, get_layout_solver
+    from keyflow.objects import OBJECT_PACERS, OBJECT_RENDERERS
+
+    for name in (
+        "horizontal_flow",
+        "vertical_flow",
+        "comparison",
+        "architecture_evolution",
+        "sequence_timeline",
+        "metrics_cards",
+        "hub_spoke",
+        "flow_dag",
+    ):
+        assert name in LAYOUT_REGISTRY
+        assert callable(get_layout_solver(name))
+
+    assert layout_facade._LAYOUT_SOLVERS is LAYOUT_REGISTRY
+    assert "chart" in OBJECT_RENDERERS and "table" in OBJECT_RENDERERS
+    assert {"chart", "table", "diagram"}.issubset(OBJECT_PACERS)
+    assert compiler_mod._make_chart_objects is OBJECT_RENDERERS["chart"]
+    assert compiler_mod._make_table_objects is OBJECT_RENDERERS["table"]
