@@ -113,8 +113,8 @@ KeyFlow 自带 **Agent Skill**（[skills/keyflow/SKILL.md](skills/keyflow/SKILL.
 3. **校验、视觉自检并编译为 `.keyx`**
    ```bash
    uv run keyflow validate -i storyboard.json
-   uv run keyflow audit -i storyboard.json
-   uv run keyflow compile -i storyboard.json -o out/Presentation.keyx --theme slate_dark
+   uv run keyflow audit -i storyboard.json --strict
+   uv run keyflow compile -i storyboard.json -o out/Presentation.keyx --theme slate_dark --fail-on-audit
    ```
    *(若无需人工干预拆帧结果，也可以把第 1 步修改好的 `stage1.json` 直接传给 `compile`，编译前会自动完成拆帧)*
 
@@ -185,9 +185,9 @@ KeyFlow 的版式与分页规则围绕以下几个实际体验问题而定：
 
 当单一预设版式难以同时承载结论卡片、多维图表、表格与流程拆解时，可为场景声明 `layout: "canvas"`，基于 12 栏 `grid` 划分互不重叠的 `regions`（支持 `stack`、`row`、`grid` 排列），自由组合原生 `.keyx` 视觉对象：
 
-- **7 类自由对象**：`card`（信息卡片）、`callout`（强调结论）、`textbox`（自由文本）、`shape`（几何与自定义 `svg_path`）、`chart`（9 种数据图表）、`table`（原生 `.keyx` 表格），以及支持逐节点展开的内嵌 `diagram`。
-- **图表双路径编译（`render_mode`: `auto` | `vector` | `native`）**：默认 `auto` 下，静态全量图（`reveal: "whole"`）编译为可编辑原生 Keynote `Chart`；需要逐步呈现（`by_series` / `by_category`）的图表编译为纯 `Shape` + `Textbox` 矢量组合并预先锁死各系列槽位宽度，确保 Keynote「神奇移动」跨页精准追踪，已有柱体绝不变窄或跳变。
-- **模板开关（`use_templates`）**：默认关闭（`false`）以开放自由画布与自定义 `palette`；若需严格限定只用以下 10 种内置版式，可在 JSON 中设置 `use_templates: true` 或在命令行传入 `--use-templates`。
+- **7 类自由对象**：`card`（信息卡片）、`callout`（强调结论）、`textbox`（自由文本）、`shape`（几何与自定义 `svg_path`）、`chart`（10 种数据图表，含 `waterfall` 瀑布图）、`table`（原生 `.keyx` 表格），以及支持逐节点展开的内嵌 `diagram`。
+- **图表双路径编译（`render_mode`: `auto` | `vector` | `native`）**：默认 `auto` 下，静态全量常规图（`reveal: "whole"`）编译为可编辑原生 Keynote `Chart`；逐步呈现（`by_series` / `by_category`）的图表与 `waterfall` 瀑布图编译为纯 `Shape` + `Textbox` 矢量组合并预先锁死各系列槽位宽度，确保 Keynote「神奇移动」跨页精准追踪，已有柱体绝不变窄或跳变。
+- **模板开关（`use_templates`）与证据链审计**：默认关闭（`false`）以开放自由画布、自定义 `palette`（含亮色背景自动对比度适配）及可选 `story_model` 证据/口径一致性审计；若需严格限定只用以下 10 种内置版式，可在 JSON 中设置 `use_templates: true` 或在命令行传入 `--use-templates`。
 
 ### 10 种内置版式（`layout`）
 
@@ -246,6 +246,7 @@ KeyFlow 的版式与分页规则围绕以下几个实际体验问题而定：
 ## 协议与测试
 
 - 项目仓库：[https://github.com/johhhhnny/keyflow](https://github.com/johhhhnny/keyflow)
+- 更新日志：[CHANGELOG.md](CHANGELOG.md)
 - 开源协议：[MIT License](LICENSE)
 - 完整 JSON 分镜格式定义：[schemas/deck.schema.json](schemas/deck.schema.json)
 - 运行自动化测试套件：

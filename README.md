@@ -113,8 +113,8 @@ If you prefer full control over every scene—without manually maintaining dozen
 3. **Validate, Audit & Compile to `.keyx`**
    ```bash
    uv run keyflow validate -i storyboard.json
-   uv run keyflow audit -i storyboard.json
-   uv run keyflow compile -i storyboard.json -o out/Presentation.keyx --theme slate_dark
+   uv run keyflow audit -i storyboard.json --strict
+   uv run keyflow compile -i storyboard.json -o out/Presentation.keyx --theme slate_dark --fail-on-audit
    ```
    *(If you do not need custom frame edits, you can also pass `stage1.json` directly into `compile`, which auto-paces any scene without `frames`.)*
 
@@ -164,7 +164,7 @@ uv run keyflow compile -i examples/llm_sampling_stage1.json -o out/LLM_Sampling.
 
 ## Presentation Design Principles
 
-KeyFlow's layouts and pacing rules are built around four practical presentation habits:
+KeyFlow's layouts and pacing rules are built around five practical presentation habits:
 
 1. **Keep the Canvas Sparse; Put Details in Notes**
    Audiences struggle to read dense paragraphs while listening to a speaker. KeyFlow keeps card text to 1–4 words—structural anchors and key figures only—while pushing background context, constraints, and full prose into Keynote Presenter Notes.
@@ -185,9 +185,9 @@ KeyFlow's layouts and pacing rules are built around four practical presentation 
 
 When a single preset layout is too rigid for multi-part analytical storytelling, declare `layout: "canvas"` to partition the slide on a 12-column `grid` into non-overlapping `regions` (`stack`, `row`, or `grid`) and compose heterogeneous `.keyx` primitives:
 
-- **7 Object Types**: `card`, `callout`, `textbox`, `shape` (`rounded_rect`, `rect`, `ellipse`, `pill`, or normalized `svg_path`), `chart` (9 chart types), `table` (native `.keyx` `Table`), and inline `diagram` (reusing flow/DAG/hub solvers with node-by-node progressive pacing).
-- **Dual-Path Charts (`render_mode`: `auto` | `vector` | `native`)**: Under `auto` (default), static `reveal: "whole"` charts compile as editable native Keynote `Chart` objects, while progressive `by_series` / `by_category` charts compile as pure `Shape` + `Textbox` vectors with pre-reserved series slots—keeping earlier bar widths and coordinates 100% locked for Apple Keynote **Magic Move**.
-- **Template Switch (`use_templates`)**: Defaults to `false` (enabling `canvas` and custom `palette` tokens); pass `--use-templates` on the CLI or `use_templates: true` in JSON to enforce the 10 preset layouts only.
+- **7 Object Types**: `card`, `callout`, `textbox`, `shape` (`rounded_rect`, `rect`, `ellipse`, `pill`, or normalized `svg_path`), `chart` (10 chart types, including `waterfall`), `table` (native `.keyx` `Table`), and inline `diagram` (reusing flow/DAG/hub solvers with node-by-node progressive pacing).
+- **Dual-Path Charts (`render_mode`: `auto` | `vector` | `native`)**: Under `auto` (default), static `reveal: "whole"` standard charts compile as editable native Keynote `Chart` objects, while progressive `by_series` / `by_category` charts and `waterfall` charts compile as pure `Shape` + `Textbox` vectors with pre-reserved series slots—keeping earlier bar widths and coordinates 100% locked for Apple Keynote **Magic Move**.
+- **Template Switch (`use_templates`) & Story Model**: Defaults to `false` (enabling `canvas`, custom `palette` tokens with automatic light/dark text contrast, and optional `story_model` evidence/scope-purity auditing); pass `--use-templates` on the CLI or `use_templates: true` in JSON to enforce the 10 preset layouts only.
 
 ### 10 Built-in Layouts (`layout`)
 
