@@ -221,7 +221,7 @@
                   "properties": {
                     "chart_type": {
                       "type": "string",
-                      "enum": ["column", "bar", "pie", "donut", "line", "area", "stacked_column", "stacked_bar", "scatter"]
+                      "enum": ["column", "bar", "pie", "donut", "line", "area", "stacked_column", "stacked_bar", "scatter", "waterfall"]
                     },
                     "title": { "type": "string" },
                     "categories": { "type": "array", "minItems": 1, "items": { "type": "string" } },

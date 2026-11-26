@@ -1566,13 +1566,13 @@ def _make_vector_chart_objects(
 
     for i, tv in enumerate(tick_vals):
         gy = inner_y + inner_h - inner_h * (i / 4.0)
-        is_zero_axis = i == 0
+        is_zero_axis = abs(tv) < 1e-6 or (i == 0 and ax_min >= 0.0)
         objs.append(
             _make_open_line_shape(
                 f"{slide_prefix}_{chart.id}_grid_{i}",
                 (inner_x, gy),
                 (inner_x + inner_w, gy),
-                color=_rgba(theme.subtitle_rgb if is_zero_axis else theme.card_border_rgb, 0.85 if is_zero_axis else 0.35),
+                color=_rgba(theme.subtitle_rgb if is_zero_axis else theme.card_border_rgb, 0.85 if is_zero_axis else 0.30),
                 width=1.8 if is_zero_axis else 1.0,
                 pattern=Pattern.SOLID,
                 head=LineEnd.NONE,
@@ -1612,6 +1612,19 @@ def _make_vector_chart_objects(
         )
 
     zero_y = max(inner_y, min(inner_y + inner_h, inner_y + inner_h - ((0.0 - ax_min) / ax_span) * inner_h))
+    if ax_min < 0.0 < ax_max and all(abs(tv) >= 1e-6 for tv in tick_vals):
+        objs.append(
+            _make_open_line_shape(
+                f"{slide_prefix}_{chart.id}_zero_line",
+                (inner_x, zero_y),
+                (inner_x + inner_w, zero_y),
+                color=_rgba(theme.subtitle_rgb, 0.85),
+                width=1.8,
+                pattern=Pattern.SOLID,
+                head=LineEnd.NONE,
+                opacity=chart.opacity,
+            )
+        )
 
     if chart.chart_type == "column":
         group_w = cat_slot_w * 0.68
@@ -1704,6 +1717,92 @@ def _make_vector_chart_objects(
                             opacity=chart.opacity,
                         )
                     )
+    elif chart.chart_type == "waterfall":
+        bar_w = min(74.0, cat_slot_w * 0.56)
+        val_font = round(min(15.0, max(11.5, bar_w * 0.28)), 1)
+        sr0 = chart.series[0] if chart.series else None
+        full_vals = sr0.full_values if (sr0 and sr0.full_values) else ([v for v in sr0.values if v is not None] if sr0 else [])
+        running = 0.0
+        total_kw = ("总计", "合计", "期末", "total", "net", "ending")
+        prev_end_xy: tuple[float, float] | None = None
+        for c_idx in range(cat_count):
+            if sr0 is None or c_idx >= len(sr0.values):
+                continue
+            vis_v = sr0.values[c_idx]
+            raw_v = float(full_vals[c_idx]) if c_idx < len(full_vals) else (float(vis_v) if vis_v is not None else 0.0)
+            cat_l = chart.categories[c_idx].lower()
+            is_end_total = (c_idx == cat_count - 1) and abs(raw_v - running) <= max(1e-3, abs(running) * 1e-3)
+            is_total = (c_idx == 0) or is_end_total or any(k in cat_l for k in total_kw)
+            if is_total:
+                start_v = 0.0
+                end_v = raw_v
+                running = end_v
+                bar_rgb = series_colors[0] if c_idx == 0 else theme.accent_fill_rgb
+                lbl_str = _format_chart_num(raw_v)
+            else:
+                start_v = running
+                end_v = running + raw_v
+                running = end_v
+                pos_rgb = (0.22, 0.78, 0.56) if contrast_ratio(theme.text_rgb, (0.0, 0.0, 0.0)) > 7.0 else (0.14, 0.56, 0.36)
+                neg_rgb = (0.90, 0.36, 0.34)
+                bar_rgb = pos_rgb if raw_v >= 0 else neg_rgb
+                lbl_str = f"+{_format_chart_num(raw_v)}" if raw_v > 0 else _format_chart_num(raw_v)
+
+            if vis_v is None:
+                prev_end_xy = None
+                continue
+
+            bx = inner_x + c_idx * cat_slot_w + (cat_slot_w - bar_w) / 2.0
+            y_start = inner_y + inner_h - ((start_v - ax_min) / ax_span) * inner_h
+            y_end = inner_y + inner_h - ((end_v - ax_min) / ax_span) * inner_h
+            by = min(y_start, y_end)
+            bh = max(4.0, abs(y_end - y_start))
+
+            if prev_end_xy is not None:
+                bridge_y = y_end if is_total else y_start
+                objs.append(
+                    _make_open_line_shape(
+                        f"{slide_prefix}_{chart.id}_wf_link_{c_idx}",
+                        prev_end_xy,
+                        (bx, bridge_y),
+                        color=_rgba(theme.subtitle_rgb, 0.55),
+                        width=1.2,
+                        pattern=Pattern.MEDIUM_DASH,
+                        head=LineEnd.NONE,
+                        opacity=chart.opacity,
+                    )
+                )
+
+            objs.append(
+                _make_solid_card(
+                    f"{slide_prefix}_{chart.id}_wf_{c_idx}",
+                    BoxRect(bx, by, bar_w, bh),
+                    fill_rgb=_rgba(bar_rgb),
+                    stroke=Stroke(empty=True),
+                    corner_px=min(5.0, bar_w / 2.5),
+                    opacity=chart.opacity,
+                )
+            )
+            if chart.show_value_labels:
+                upward = end_v >= start_v
+                fits_below = (by + bh + 26.0) <= (inner_y + inner_h)
+                if upward or not fits_below:
+                    ly = max(inner_y - 22.0, by - 26.0)
+                else:
+                    ly = by + bh + 2.0
+                objs.append(
+                    _make_textbox(
+                        f"{slide_prefix}_{chart.id}_wf_vl_{c_idx}",
+                        BoxRect(bx - 16.0, ly, bar_w + 32.0, 24.0),
+                        lbl_str,
+                        font_name=theme.font_body,
+                        font_size=val_font,
+                        color=_rgba(theme.text_rgb),
+                        bold=True,
+                        opacity=chart.opacity,
+                    )
+                )
+            prev_end_xy = (bx + bar_w, y_end)
     else:
         # line, area, scatter
         for s_idx, sr in enumerate(chart.series):

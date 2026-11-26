@@ -1279,7 +1279,22 @@ def _compute_chart_axis_bounds(chart: ChartSpec) -> tuple[float | None, float | 
     if chart.chart_type in ("pie", "donut"):
         return chart.axis_min, chart.axis_max
 
-    if chart.chart_type in ("stacked_column", "stacked_bar"):
+    if chart.chart_type == "waterfall":
+        vals = list(chart.series[0].values) if chart.series else []
+        running = 0.0
+        levels: list[float] = [0.0]
+        total_kw = ("总计", "合计", "期末", "total", "net", "ending")
+        for idx, v in enumerate(vals):
+            cat_l = chart.categories[idx].lower() if idx < len(chart.categories) else ""
+            is_end_total = idx == len(vals) - 1 and abs(v - running) <= max(1e-3, abs(running) * 1e-3)
+            if idx == 0 or is_end_total or any(k in cat_l for k in total_kw):
+                running = float(v)
+            else:
+                running += float(v)
+            levels.append(running)
+        raw_min = min([0.0, *levels])
+        raw_max = max([1.0, *levels])
+    elif chart.chart_type in ("stacked_column", "stacked_bar"):
         cat_count = len(chart.categories)
         pos_sums = [0.0] * cat_count
         neg_sums = [0.0] * cat_count
@@ -1296,11 +1311,14 @@ def _compute_chart_axis_bounds(chart: ChartSpec) -> tuple[float | None, float | 
         raw_min = min([0.0, *vals]) if vals else 0.0
         raw_max = max([1.0, *vals]) if vals else 1.0
 
-    ax_min = chart.axis_min if chart.axis_min is not None else raw_min
+    span = max(1e-6, raw_max - raw_min)
+    if chart.axis_min is not None:
+        ax_min = chart.axis_min
+    else:
+        ax_min = (raw_min - span * 0.14) if raw_min < 0 else raw_min
     if chart.axis_max is not None:
         ax_max = chart.axis_max
     else:
-        span = max(1e-6, raw_max - raw_min)
         ax_max = raw_max + span * 0.12
     return ax_min, ax_max
 
@@ -1665,8 +1683,16 @@ def _resolve_canvas_scene(
                     )
                     for s_idx, sr in enumerate(ch.series)
                 ]
-                use_vector = (ch.render_mode == "vector") or (ch.render_mode == "auto" and ch.reveal != "whole")
-                show_leg = ch.show_legend if ch.show_legend is not None else (len(ch.series) > 1 or ch.chart_type in ("pie", "donut"))
+                use_vector = (
+                    (ch.chart_type == "waterfall")
+                    or (ch.render_mode == "vector")
+                    or (ch.render_mode == "auto" and ch.reveal != "whole")
+                )
+                show_leg = (
+                    ch.show_legend
+                    if ch.show_legend is not None
+                    else (ch.chart_type != "waterfall" and (len(ch.series) > 1 or ch.chart_type in ("pie", "donut")))
+                )
                 placed_charts.append(
                     PlacedChart(
                         id=obj.id,

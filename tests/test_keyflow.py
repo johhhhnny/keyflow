@@ -2086,3 +2086,71 @@ def test_bright_accent_auto_switches_to_dark_text_for_contrast(tmp_path: Path) -
         t_dump = tbl.content[1].cells[0].text_properties.model_dump()
         hl_rgba = t_dump["character_properties"]["character_fill"]["color"]["rgba"]
         assert hl_rgba["red"] < 0.2 and hl_rgba["green"] < 0.2 and hl_rgba["blue"] < 0.2
+
+
+def test_waterfall_chart_progressive_compile_and_magic_move_stable(tmp_path: Path) -> None:
+    """P1-D: Waterfall chart computes cumulative bounds, renders bridge connectors, and keeps Magic Move stable."""
+    from creator_studio_doc_format.core import KeyxDocument
+
+    raw = {
+        "title": "Waterfall P1-D Test",
+        "theme": "slate_dark",
+        "scenes": [
+            {
+                "id": "wf_scene",
+                "title": "Profit Bridge",
+                "grid": {"columns": 12, "rows": 1, "gap": 24},
+                "regions": [{"id": "main", "col": 1, "row": 1, "col_span": 12, "row_span": 1, "frame": True}],
+                "objects": [
+                    {
+                        "id": "profit_wf",
+                        "kind": "chart",
+                        "region": "main",
+                        "step": 1,
+                        "chart": {
+                            "chart_type": "waterfall",
+                            "title": "Operating Profit Bridge ($B)",
+                            "unit": "$B",
+                            "categories": ["Start", "GPU Growth", "R&D Cost", "Tax", "Ending"],
+                            "series": [{"name": "Bridge", "values": [100, 45, -25, -10, 110]}],
+                            "reveal": "by_category",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    res = validate_deck(raw)
+    assert res.valid, res.errors
+    paced = pace_deck(raw)
+    assert len(paced["scenes"][0]["frames"]) == 5
+    report = audit_deck(paced, strict=True)
+    assert report.passed is True, [e.to_dict() for e in report.errors]
+
+    parsed = parse_deck(paced)
+    resolved = resolve_scene(parsed.scenes[0], parsed.slide_width, parsed.slide_height)
+    assert resolved[0].charts[0].use_vector is True
+    assert resolved[0].charts[0].axis_min == pytest.approx(0.0)
+    assert resolved[0].charts[0].axis_max > 145.0  # peak cumulative 145 + headroom
+
+    out = tmp_path / "waterfall.keyx"
+    compile_deck(raw, out)
+    assert out.exists()
+    with KeyxDocument.open(out) as loaded:
+        slides = list(loaded.payload.slides)
+        assert len(slides) == 5
+        _assert_magic_move_stable(slides)
+        # Final slide should have 5 waterfall bars + 4 dashed bridge connectors
+        wf_bars = [
+            o.object.shape for o in slides[-1].contents
+            if o.object.shape is not None
+            and "_profit_wf_wf_" in o.object.shape.identifier
+            and "_vl_" not in o.object.shape.identifier
+            and "_link_" not in o.object.shape.identifier
+        ]
+        wf_links = [
+            o.object.shape for o in slides[-1].contents
+            if o.object.shape is not None and "_profit_wf_wf_link_" in o.object.shape.identifier
+        ]
+        assert len(wf_bars) == 5
+        assert len(wf_links) == 4

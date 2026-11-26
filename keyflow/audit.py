@@ -596,7 +596,7 @@ def _audit_frame(
                         suggested_action="fix_chart_values",
                     )
                 )
-        if ch.chart_type in ("column", "stacked_column", "line", "area") and len(ch.categories) * 56.0 > ch.rect.w:
+        if ch.chart_type in ("column", "stacked_column", "line", "area", "waterfall") and len(ch.categories) * 56.0 > ch.rect.w:
             findings.append(
                 AuditFinding(
                     severity="warning",
