@@ -2420,7 +2420,7 @@ def test_phase4_snippets_validate_audit_compile_and_cli_mcp(tmp_path: Path) -> N
     from keyflow.snippets import instantiate_snippet, list_snippets
 
     items = list_snippets()
-    assert len(items) == 5
+    assert len(items) == 6
 
     scenes = [
         instantiate_snippet(item["id"], scene_id=f"sc_{item['id']}", title=item["name"])
@@ -2434,6 +2434,13 @@ def test_phase4_snippets_validate_audit_compile_and_cli_mcp(tmp_path: Path) -> N
     report = audit_deck(deck, strict=True)
     assert report.passed, [f.to_dict() for f in report.errors + report.warnings]
 
+    paced = pace_deck(deck)
+    unpack_scene = next(s for s in paced["scenes"] if s["id"] == "sc_unpack_breakdown")
+    assert any(
+        "group_mod" in (f.get("object_states", {}).get("unpack_flow", {}).get("expanded_nodes", []))
+        for f in unpack_scene["frames"]
+    )
+
     out = tmp_path / "snippets.keyx"
     compile_deck(deck, out)
     assert out.exists() and out.stat().st_size > 0
@@ -2441,7 +2448,7 @@ def test_phase4_snippets_validate_audit_compile_and_cli_mcp(tmp_path: Path) -> N
     assert cli_main(["snippets"]) == 0
     assert cli_main(["snippets", "--show", "chart_with_takeaway"]) == 0
     mcp_list = dispatch_tool("list_snippets", {})
-    assert len(mcp_list["snippets"]) == 5
+    assert len(mcp_list["snippets"]) == 6
     mcp_one = dispatch_tool("list_snippets", {"name": "kpi_waterfall_breakdown"})
     assert mcp_one["scene"]["layout"] == "canvas"
 
