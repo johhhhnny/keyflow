@@ -813,10 +813,16 @@ def _as_int(val: Any) -> int | None:
     return int(val)
 
 
+def _is_in(val: Any, pool: set[str] | frozenset[str] | dict[str, Any]) -> bool:
+    return isinstance(val, str) and val in pool
+
+
 @lru_cache(maxsize=1)
 def _schema_key_sets() -> dict[str, frozenset[str]]:
-    """Extract allowed property sets directly from schemas/deck.schema.json to prevent validator drift."""
-    schema_path = Path(__file__).resolve().parent.parent / "schemas" / "deck.schema.json"
+    """Extract allowed property sets directly from deck.schema.json to prevent validator drift."""
+    pkg_schema = Path(__file__).resolve().parent / "deck.schema.json"
+    repo_schema = Path(__file__).resolve().parent.parent / "schemas" / "deck.schema.json"
+    schema_path = pkg_schema if pkg_schema.exists() else repo_schema
     if not schema_path.exists():
         return {}
     raw = json.loads(schema_path.read_text(encoding="utf-8"))
@@ -955,7 +961,7 @@ def _validate_nodes_and_edges(
         _check_evidence_refs(n, claim_ids, f"{prefix}.nodes['{nid}']", errors)
 
         variant = n.get("variant", "primary")
-        if variant not in valid_variants:
+        if not _is_in(variant, valid_variants):
             errors.append(f"{prefix}.nodes['{nid}']: invalid variant '{variant}'.")
 
         raw_label = n.get("label")
@@ -972,7 +978,7 @@ def _validate_nodes_and_edges(
             )
 
         child_layout = n.get("child_layout", "row")
-        if child_layout not in valid_child_layouts:
+        if not _is_in(child_layout, valid_child_layouts):
             errors.append(f"{prefix}.nodes['{nid}']: invalid child_layout '{child_layout}'.")
 
         children = n.get("children", [])
@@ -1002,7 +1008,7 @@ def _validate_nodes_and_edges(
             _check_evidence_refs(c, claim_ids, f"{prefix}.nodes['{nid}'].children['{cid}']", errors)
 
             cvar = c.get("variant", "primary")
-            if cvar not in valid_variants:
+            if not _is_in(cvar, valid_variants):
                 errors.append(f"{prefix}.nodes['{nid}'].children['{cid}']: invalid variant '{cvar}'.")
 
             clabel = c.get("label")
@@ -1037,9 +1043,9 @@ def _validate_nodes_and_edges(
                 edge_ids.add(eid)
             src = e.get("from")
             dst = e.get("to")
-            if src not in node_map:
+            if not _is_in(src, node_map):
                 errors.append(f"{prefix}.edges['{eid}']: unknown 'from' node '{src}'.")
-            if dst not in node_map:
+            if not _is_in(dst, node_map):
                 errors.append(f"{prefix}.edges['{eid}']: unknown 'to' node '{dst}'.")
             if isinstance(src, str) and isinstance(dst, str) and src in node_map and dst in node_map:
                 if src == dst and layout_kind in ("flow_dag", "dag"):
@@ -1111,7 +1117,7 @@ def _validate_canvas_scene(
                 else:
                     region_ids.add(rid)
                 arrange = reg.get("arrange", "stack")
-                if arrange not in valid_arranges:
+                if not _is_in(arrange, valid_arranges):
                     errors.append(f"{prefix}.regions['{rid}']: invalid arrange '{arrange}'.")
                 if reg.get("gap") is not None:
                     rgap = _as_float(reg["gap"])
@@ -1191,11 +1197,11 @@ def _validate_canvas_scene(
             continue
 
         reg_ref = obj.get("region")
-        if reg_ref is not None and region_ids and reg_ref not in region_ids:
+        if reg_ref is not None and (not isinstance(reg_ref, str) or (region_ids and reg_ref not in region_ids)):
             errors.append(f"{prefix}.objects['{oid}']: unknown region '{reg_ref}'.")
 
         variant = obj.get("variant", "primary")
-        if variant not in valid_variants:
+        if not _is_in(variant, valid_variants):
             errors.append(f"{prefix}.objects['{oid}']: invalid variant '{variant}'.")
 
         step_val = _as_int(obj.get("step", 1))
@@ -1216,7 +1222,7 @@ def _validate_canvas_scene(
             errors.append(f"{prefix}.objects['{oid}'].bold: must be a boolean.")
         if obj.get("dashed") is not None and not isinstance(obj["dashed"], bool):
             errors.append(f"{prefix}.objects['{oid}'].dashed: must be a boolean.")
-        if obj.get("align") is not None and obj["align"] not in {"left", "center", "right"}:
+        if obj.get("align") is not None and not _is_in(obj["align"], {"left", "center", "right"}):
             errors.append(f"{prefix}.objects['{oid}'].align: invalid align '{obj['align']}'.")
 
         for hex_field in ("fill_hex", "border_hex", "color_hex"):
@@ -1241,7 +1247,7 @@ def _validate_canvas_scene(
                 errors.append(f"{prefix}.objects['{oid}']: kind='textbox' requires non-empty 'text'.")
         elif kind == "shape":
             st = obj.get("shape_type", "rounded_rect")
-            if st not in valid_shape_types:
+            if not _is_in(st, valid_shape_types):
                 errors.append(f"{prefix}.objects['{oid}']: invalid shape_type '{st}'.")
             if st == "custom" and (not isinstance(obj.get("svg_path"), str) or not obj.get("svg_path")):
                 errors.append(f"{prefix}.objects['{oid}']: shape_type='custom' requires 'svg_path'.")
@@ -1252,13 +1258,13 @@ def _validate_canvas_scene(
             else:
                 _check_allowed_keys(ch, "chart", f"{prefix}.objects['{oid}'].chart", errors)
                 ctype = ch.get("chart_type")
-                if ctype not in valid_chart_types:
+                if not _is_in(ctype, valid_chart_types):
                     errors.append(f"{prefix}.objects['{oid}'].chart: invalid chart_type '{ctype}'.")
                 crev = ch.get("reveal", "whole")
-                if crev not in valid_chart_reveals:
+                if not _is_in(crev, valid_chart_reveals):
                     errors.append(f"{prefix}.objects['{oid}'].chart: invalid reveal '{crev}'.")
                 crm = ch.get("render_mode", "auto")
-                if crm not in valid_chart_render_modes:
+                if not _is_in(crm, valid_chart_render_modes):
                     errors.append(f"{prefix}.objects['{oid}'].chart: invalid render_mode '{crm}'.")
                 cats = ch.get("categories")
                 series = ch.get("series")
@@ -1311,7 +1317,7 @@ def _validate_canvas_scene(
             else:
                 _check_allowed_keys(tb, "table", f"{prefix}.objects['{oid}'].table", errors)
                 trev = tb.get("reveal", "whole")
-                if trev not in valid_table_reveals:
+                if not _is_in(trev, valid_table_reveals):
                     errors.append(f"{prefix}.objects['{oid}'].table: invalid reveal '{trev}'.")
                 hdrs = tb.get("headers")
                 trows = tb.get("rows")
@@ -1346,7 +1352,7 @@ def _validate_canvas_scene(
             else:
                 _check_allowed_keys(dg, "diagram", f"{prefix}.objects['{oid}'].diagram", errors)
                 dl = dg.get("diagram_layout", "horizontal")
-                if dl not in valid_diagram_layouts:
+                if not _is_in(dl, valid_diagram_layouts):
                     errors.append(f"{prefix}.objects['{oid}'].diagram: invalid diagram_layout '{dl}'.")
                 _validate_nodes_and_edges(
                     dg.get("nodes", []),
@@ -1375,9 +1381,9 @@ def _validate_canvas_scene(
                 errors.append(f"{prefix}: duplicate connector id '{eid}'.")
             else:
                 conn_ids.add(eid)
-            if e.get("from") not in object_map:
+            if not _is_in(e.get("from"), object_map):
                 errors.append(f"{prefix}.connectors['{eid}']: unknown 'from' object '{e.get('from')}'.")
-            if e.get("to") not in object_map:
+            if not _is_in(e.get("to"), object_map):
                 errors.append(f"{prefix}.connectors['{eid}']: unknown 'to' object '{e.get('to')}'.")
 
     return set(object_map), object_map

@@ -1215,6 +1215,7 @@ def test_schema_rejects_unknown_properties_and_matches_deck_schema_json() -> Non
 
     key_sets = _schema_key_sets()
     assert {"deck", "story_model", "story_claim", "scene", "node", "frame"}.issubset(key_sets)
+    assert Path("keyflow/deck.schema.json").read_text(encoding="utf-8") == Path("schemas/deck.schema.json").read_text(encoding="utf-8")
 
     bad_deck = {
         "title": "Typo Check",
@@ -1879,3 +1880,32 @@ def test_freeform_builtin_example_compiles_with_locked_bars_and_native_chart(tmp
         # Native DonutChart preserved on slide 6 (scene 1 frame 0)
         donut_charts = [obj.object.chart for obj in slides[5].contents if obj.object.chart is not None]
         assert len(donut_charts) == 1 and donut_charts[0].donut is not None
+
+
+@pytest.mark.parametrize("bad_val", [["accent"], {"bad": 1}, None, True, 123])
+def test_schema_rejects_unhashable_or_non_string_enum_and_ref_values(bad_val: object) -> None:
+    # Canvas enum + ref fields
+    deck1 = _freeform_canvas_stage1()
+    deck1["scenes"][0]["regions"][0]["arrange"] = bad_val
+    deck1["scenes"][0]["objects"][0]["variant"] = bad_val
+    deck1["scenes"][0]["objects"][0]["chart"]["chart_type"] = bad_val
+    deck1["scenes"][0]["objects"][0]["chart"]["reveal"] = bad_val
+    deck1["scenes"][0]["objects"][0]["chart"]["render_mode"] = bad_val
+    deck1["scenes"][0]["objects"][1]["table"]["reveal"] = bad_val
+    deck1["scenes"][0]["objects"][3]["align"] = bad_val
+    res1 = validate_deck(deck1)
+    assert res1.valid is False
+    assert len(res1.errors) >= 6
+
+    # Inline diagram + shape + node/edge ref fields
+    deck2 = _freeform_canvas_stage1()
+    deck2["scenes"][1]["objects"][1]["diagram"]["diagram_layout"] = bad_val
+    deck2["scenes"][1]["objects"][1]["diagram"]["nodes"][0]["variant"] = bad_val
+    deck2["scenes"][1]["objects"][1]["diagram"]["nodes"][0]["child_layout"] = bad_val
+    deck2["scenes"][1]["objects"][1]["diagram"]["edges"][0]["from"] = bad_val
+    deck2["scenes"][0]["objects"].append(
+        {"id": "sh_bad", "kind": "shape", "region": "main_right", "shape_type": bad_val}
+    )
+    res2 = validate_deck(deck2)
+    assert res2.valid is False
+    assert len(res2.errors) >= 4
