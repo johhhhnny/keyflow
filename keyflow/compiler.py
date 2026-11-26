@@ -692,7 +692,8 @@ def _render_slide(
         contents.extend(_make_pinned_flow_objects(slide_prefix, frame.pinned_flow, theme))
 
     if frame.title_rect is not None:
-        title_size = round(min(title_max, max(min(DEFAULT_TITLE_MIN_SIZE, title_max), (frame.title_rect.w - 80.0) / max(1.0, _text_units(frame.title) * 0.56))), 1)
+        box_title_cap = min(title_max, frame.title_rect.h * 0.75)
+        title_size = round(min(box_title_cap, max(min(DEFAULT_TITLE_MIN_SIZE, box_title_cap), (frame.title_rect.w - 80.0) / max(1.0, _text_units(frame.title) * 0.56))), 1)
         contents.append(
             _make_textbox(
                 f"{slide_prefix}_title",

@@ -103,10 +103,10 @@ def resolve_scene(
         docked_cy = 160.0
     else:
         # Title & optional subtitle sit ABOVE the docked ribbon so the slide headline stays the top anchor.
-        ribbon_title_rect = BoxRect(TITLE_MARGIN_X, 44.0, canvas_w - 2 * TITLE_MARGIN_X, 56.0)
-        ribbon_subtitle_rect = BoxRect(SUBTITLE_MARGIN_X, 102.0, canvas_w - 2 * SUBTITLE_MARGIN_X, 38.0) if has_any_subtitle else None
+        ribbon_title_rect = BoxRect(TITLE_MARGIN_X, 36.0, canvas_w - 2 * TITLE_MARGIN_X, 74.0)
+        ribbon_subtitle_rect = BoxRect(SUBTITLE_MARGIN_X, 112.0, canvas_w - 2 * SUBTITLE_MARGIN_X, 42.0) if has_any_subtitle else None
         has_groups = bool(effective_pf and effective_pf.groups)
-        docked_cy = (198.0 if has_any_subtitle else 156.0) + (42.0 if has_groups else 0.0)
+        docked_cy = (206.0 if has_any_subtitle else 164.0) + (42.0 if has_groups else 0.0)
 
     placed_ribbon = (
         _resolve_pinned_flow(
