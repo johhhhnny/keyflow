@@ -68,7 +68,13 @@ def _cmd_compile(args: argparse.Namespace) -> int:
         )
         return 1
 
-    out = compile_deck(raw, args.output, theme_override=args.theme, use_templates=use_templates)
+    out = compile_deck(
+        raw,
+        args.output,
+        theme_override=args.theme,
+        use_templates=use_templates,
+        overrides=args.overrides,
+    )
     pngs: list[Path] | None = None
     if args.preview_dir:
         pngs = export_slide_pngs(out, args.preview_dir)
@@ -171,9 +177,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_comp = sub.add_parser("compile", help="Compile a scene graph or storyboard JSON into a .keyx presentation.")
     p_comp.add_argument("-i", "--input", required=True, help="Path to storyboard JSON.")
     p_comp.add_argument("-o", "--output", required=True, help="Output .keyx path.")
-    p_comp.add_argument("--theme", choices=sorted(THEMES), help="Override theme preset.")
+    p_comp.add_argument("--theme", help=f"Override theme preset ({', '.join(sorted(THEMES))}) or .json theme file.")
     p_comp.add_argument("--use-templates", action=argparse.BooleanOptionalAction, default=None, help="Override deck use_templates switch.")
     p_comp.add_argument("--preview-dir", help="Optional directory to export PNG slide previews via Keynote.")
+    p_comp.add_argument("--overrides", help="Optional JSON patch file keyed by slide object identifier.")
     p_comp.add_argument(
         "--fail-on-audit",
         action="store_true",
@@ -194,7 +201,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_out = sub.add_parser("outline", help="Extract structure and starter scene graph / storyboard from a Markdown article.")
     p_out.add_argument("-i", "--input", required=True, help="Path to Markdown README or article.")
     p_out.add_argument("-o", "--output", help="Optional path to write the extracted JSON.")
-    p_out.add_argument("--theme", default="slate_dark", choices=sorted(THEMES), help="Theme preset.")
+    p_out.add_argument("--theme", default="slate_dark", help=f"Theme preset ({', '.join(sorted(THEMES))}) or .json theme file.")
     p_out.add_argument("--density", default="standard", choices=["standard", "compact"], help="Pacing density.")
     p_out.add_argument("--stage1", action="store_true", help="Write compact Stage 1 full-state scene_graph without frames.")
     p_out.set_defaults(func=_cmd_outline)

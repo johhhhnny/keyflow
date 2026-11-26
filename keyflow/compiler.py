@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import math
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from creator_studio_doc_format.core import (
     RGBA,
@@ -101,7 +102,7 @@ from keyflow.layout import (
     resolve_scene,
 )
 from keyflow.pace import pace_deck
-from keyflow.schema import DeckSpec, NodeVariant, parse_deck, validate_deck
+from keyflow.schema import DeckSpec, NodeVariant, StyleConfigSpec, parse_deck, validate_deck
 from keyflow.themes import ThemePreset, apply_palette_overrides, contrast_ratio, get_theme, hex_to_rgb_float
 
 _BG_PRESET_ID = "keyflow_bg_fill"
@@ -553,6 +554,7 @@ def _make_box_objects(
     *,
     scale: float,
     caption_color: RGBA,
+    corner_base_px: float = 15.0,
 ) -> tuple[list[SlideObject], str]:
     """Create Shape (and optional external caption/badge Textbox) for a PlacedBox."""
     obj_id = f"{slide_prefix}_{box.id}"
@@ -622,7 +624,7 @@ def _make_box_objects(
         ),
         path=ShapePath(
             bezier=BezierPath(
-                path=_rounded_rect_path(box.rect.w, box.rect.h, corner_px=15.0 * font_scale),
+                path=_rounded_rect_path(box.rect.w, box.rect.h, corner_px=corner_base_px * font_scale),
                 space=_UNIT_SPACE,
             )
         ),
@@ -980,6 +982,7 @@ def _make_edge_objects(
     theme: ThemePreset,
     *,
     scale: float,
+    arrow_base_width: float = 4.5,
 ) -> list[SlideObject]:
     pattern = Pattern.MEDIUM_DASH if edge.style == "dashed" else Pattern.SOLID
     outset = round(14.0 * max(0.75, scale), 1)
@@ -995,7 +998,7 @@ def _make_edge_objects(
             p0,
             p1,
             color=_rgba(theme.arrow_rgb),
-            width=round(4.5 * max(0.78, scale), 1),
+            width=round(arrow_base_width * max(0.78, scale), 1),
             pattern=pattern,
             opacity=edge.opacity,
             curve_pass_through=edge.curve_control,
@@ -2194,15 +2197,21 @@ def _render_slide(
     frame: ResolvedFrame,
     theme: ThemePreset,
     bg: SlideBackground,
+    *,
+    style_config: StyleConfigSpec | None = None,
 ) -> Slide:
     slide_prefix = f"s{slide_num}"
     contents: list[SlideObject] = []
+    title_max = style_config.title_max_size if (style_config and style_config.title_max_size is not None) else 58.0
+    sub_size = style_config.subtitle_size if (style_config and style_config.subtitle_size is not None) else 28.0
+    corner_px = style_config.card_corner_px if (style_config and style_config.card_corner_px is not None) else 15.0
+    arrow_w = style_config.arrow_width if (style_config and style_config.arrow_width is not None) else 4.5
 
     if frame.pinned_flow is not None:
         contents.extend(_make_pinned_flow_objects(slide_prefix, frame.pinned_flow, theme))
 
     if frame.title_rect is not None:
-        title_size = round(min(58.0, max(40.0, (frame.title_rect.w - 80.0) / max(1.0, _text_units(frame.title) * 0.56))), 1)
+        title_size = round(min(title_max, max(min(40.0, title_max), (frame.title_rect.w - 80.0) / max(1.0, _text_units(frame.title) * 0.56))), 1)
         contents.append(
             _make_textbox(
                 f"{slide_prefix}_title",
@@ -2222,7 +2231,7 @@ def _render_slide(
                 frame.subtitle_rect,
                 frame.subtitle,
                 font_name=theme.font_body,
-                font_size=28.0,
+                font_size=sub_size,
                 color=_rgba(theme.subtitle_rgb),
                 bold=False,
             )
@@ -2280,13 +2289,23 @@ def _render_slide(
             theme,
             scale=frame.scale,
             caption_color=caption_color,
+            corner_base_px=corner_px,
         )
         contents.extend(objs)
         connector_rects[box.id] = box.rect
 
     for edge in frame.edges:
         if edge.from_id in connector_rects and edge.to_id in connector_rects:
-            contents.extend(_make_edge_objects(slide_prefix, edge, connector_rects, theme, scale=frame.scale))
+            contents.extend(
+                _make_edge_objects(
+                    slide_prefix,
+                    edge,
+                    connector_rects,
+                    theme,
+                    scale=frame.scale,
+                    arrow_base_width=arrow_w,
+                )
+            )
 
     return Slide(
         background=bg,
@@ -2296,12 +2315,80 @@ def _render_slide(
     )
 
 
+def _merge_style_config(
+    deck_sc: StyleConfigSpec | None,
+    scene_sc: StyleConfigSpec | None,
+) -> StyleConfigSpec | None:
+    if deck_sc is None and scene_sc is None:
+        return None
+    return StyleConfigSpec(
+        title_max_size=(
+            scene_sc.title_max_size if (scene_sc and scene_sc.title_max_size is not None)
+            else (deck_sc.title_max_size if deck_sc else None)
+        ),
+        subtitle_size=(
+            scene_sc.subtitle_size if (scene_sc and scene_sc.subtitle_size is not None)
+            else (deck_sc.subtitle_size if deck_sc else None)
+        ),
+        card_corner_px=(
+            scene_sc.card_corner_px if (scene_sc and scene_sc.card_corner_px is not None)
+            else (deck_sc.card_corner_px if deck_sc else None)
+        ),
+        arrow_width=(
+            scene_sc.arrow_width if (scene_sc and scene_sc.arrow_width is not None)
+            else (deck_sc.arrow_width if deck_sc else None)
+        ),
+    )
+
+
+def _apply_slide_overrides(slides: list[Slide], overrides: Mapping[str, Any]) -> None:
+    """Apply per-object patch overrides (keyed by object identifier) without modifying compiler code."""
+    for slide in slides:
+        for item in slide.contents:
+            target = item.object.shape or item.object.textbox or item.object.table or item.object.chart
+            if target is None or not getattr(target, "identifier", None):
+                continue
+            patch = overrides.get(target.identifier)
+            if not isinstance(patch, Mapping):
+                continue
+            geom = getattr(target, "geometry", None)
+            if geom is not None:
+                if "x" in patch:
+                    geom.position.x = float(patch["x"])
+                if "y" in patch:
+                    geom.position.y = float(patch["y"])
+                if "w" in patch:
+                    geom.size.width = max(10.0, float(patch["w"]))
+                if "h" in patch:
+                    geom.size.height = max(10.0, float(patch["h"]))
+                if "dx" in patch:
+                    geom.position.x += float(patch["dx"])
+                if "dy" in patch:
+                    geom.position.y += float(patch["dy"])
+                if "dw" in patch:
+                    geom.size.width = max(10.0, geom.size.width + float(patch["dw"]))
+                if "dh" in patch:
+                    geom.size.height = max(10.0, geom.size.height + float(patch["dh"]))
+            if "opacity" in patch and hasattr(target, "opacity"):
+                target.opacity = max(0.0, min(1.0, float(patch["opacity"])))
+            if "font_size" in patch and (item.object.shape is not None or item.object.textbox is not None):
+                fs = float(patch["font_size"])
+                sh = item.object.shape or item.object.textbox
+                if getattr(sh, "paragraph_properties", None) and sh.paragraph_properties.character_properties:
+                    sh.paragraph_properties.character_properties.font_size = fs
+                if getattr(sh, "text", None) and getattr(sh.text, "paragraphs", None):
+                    for para in sh.text.paragraphs:
+                        if para.style and para.style.character_properties:
+                            para.style.character_properties.font_size = fs
+
+
 def compile_deck(
     deck_or_raw: DeckSpec | dict[str, Any],
     output_path: str | Path,
     *,
     theme_override: str | None = None,
     use_templates: bool | None = None,
+    overrides: Mapping[str, Any] | str | Path | None = None,
 ) -> Path:
     """Validate, pace if needed, lay out, and compile a KeyFlow deck specification into a .keyx file."""
     if isinstance(deck_or_raw, dict):
@@ -2337,9 +2424,19 @@ def compile_deck(
             deck.slide_height,
             pinned_flow=deck.pinned_flow,
         )
+        eff_style = _merge_style_config(deck.style_config, scene.style_config)
         for frame in resolved_frames:
-            slides.append(_render_slide(slide_counter, frame, scene_theme, scene_bg))
+            slides.append(_render_slide(slide_counter, frame, scene_theme, scene_bg, style_config=eff_style))
             slide_counter += 1
+
+    if overrides is not None:
+        if isinstance(overrides, (str, Path)):
+            ov_path = Path(overrides)
+            ov_map = json.loads(ov_path.read_text(encoding="utf-8"))
+        else:
+            ov_map = overrides
+        if isinstance(ov_map, Mapping):
+            _apply_slide_overrides(slides, ov_map)
 
     doc = KeyxDocument(
         payload=Presentation(

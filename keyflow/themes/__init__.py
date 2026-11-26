@@ -1,17 +1,20 @@
-"""Visual theme presets and fast 1920x1080 fine-grain textured background synthesis."""
+"""Visual theme presets (loaded from JSON data files) and background synthesis."""
 
 from __future__ import annotations
 
 import base64
+import json
 import random
 import re
 import struct
 import zlib
 from dataclasses import dataclass, replace
 from functools import lru_cache
-from typing import Mapping, Sequence
+from pathlib import Path
+from typing import Any, Mapping, Sequence
 
 _HEX_COLOR_RE = re.compile(r"^#(?:[0-9a-fA-F]{6})$")
+_THEMES_DIR = Path(__file__).resolve().parent
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,146 +61,107 @@ class ThemePreset:
     bg_gradient_angle: float = 135.0
 
 
-_DARK_SEGMENTS: tuple[tuple[float, float, float], ...] = (
-    (0.92, 0.84, 0.40),  # warm yellow
-    (0.58, 0.85, 0.38),  # lime green
-    (0.86, 0.49, 0.46),  # coral salmon
-    (0.42, 0.82, 0.80),  # aqua cyan
-    (0.66, 0.56, 0.86),  # soft violet
-    (0.44, 0.72, 0.96),  # sky blue
-)
-
-_LIGHT_SEGMENTS: tuple[tuple[float, float, float], ...] = (
-    (0.85, 0.62, 0.12),
-    (0.24, 0.64, 0.30),
-    (0.82, 0.34, 0.32),
-    (0.14, 0.58, 0.66),
-    (0.46, 0.36, 0.76),
-    (0.20, 0.48, 0.82),
-)
+def _rgb_int_tuple(val: Any, field_name: str) -> tuple[int, int, int]:
+    if not isinstance(val, Sequence) or isinstance(val, (str, bytes)) or len(val) != 3:
+        raise ValueError(f"Theme field '{field_name}' must be a 3-element integer RGB list.")
+    return (int(val[0]), int(val[1]), int(val[2]))
 
 
-THEMES: dict[str, ThemePreset] = {
-    "slate_dark": ThemePreset(
-        name="slate_dark",
-        description="Charcoal slate gradient background, warm yellow title, deep navy cards, dashed blue group containers, crisp white arrows.",
-        bg_rgb=(74, 74, 74),
-        bg_noise_amp=5,
-        bg_gradient_end_rgb=(54, 56, 60),
-        title_rgb=(0.95, 0.86, 0.36),
-        subtitle_rgb=(0.82, 0.85, 0.90),
-        card_fill_rgb=(0.125, 0.259, 0.427),
-        card_border_rgb=(0.44, 0.56, 0.72),
-        subcard_fill_rgb=(0.125, 0.259, 0.427),
-        accent_fill_rgb=(0.175, 0.365, 0.575),
-        accent_border_rgb=(0.95, 0.86, 0.36),
-        success_fill_rgb=(0.095, 0.295, 0.285),
-        success_border_rgb=(0.28, 0.80, 0.66),
-        warn_fill_rgb=(0.345, 0.215, 0.145),
-        warn_border_rgb=(0.94, 0.62, 0.24),
-        group_fill_rgba=(0.14, 0.20, 0.28, 0.16),
-        group_border_rgb=(0.56, 0.67, 0.80),
-        arrow_rgb=(1.0, 1.0, 1.0),
-        text_rgb=(1.0, 1.0, 1.0),
-        sublabel_rgb=(0.78, 0.85, 0.94),
-        badge_text_rgb=(0.62, 0.85, 1.0),
-        metric_text_rgb=(0.95, 0.86, 0.36),
-        accent_text_rgb=(0.95, 0.86, 0.36),
-        divider_rgb=(0.52, 0.60, 0.70),
-        flow_node_fill_rgb=(0.17, 0.40, 0.68),
-        flow_node_border_rgb=(0.44, 0.64, 0.86),
-        active_flow_fill_rgb=(0.89, 0.49, 0.13),
-        active_flow_border_rgb=(0.98, 0.76, 0.44),
-        chip_fill_rgb=(0.43, 0.44, 0.46),
-        action_banner_rgb=(0.30, 0.62, 0.16),
-        takeaway_pill_rgb=(0.74, 0.24, 0.17),
-        trend_up_rgb=(0.90, 0.36, 0.32),
-        trend_down_rgb=(0.48, 0.84, 0.36),
-        segment_palette=_DARK_SEGMENTS,
-    ),
-    "midnight_indigo": ThemePreset(
-        name="midnight_indigo",
-        description="Deep midnight navy gradient, amber title, slate-indigo cards, cyan-tinted dashed containers.",
-        bg_rgb=(26, 33, 50),
-        bg_noise_amp=4,
-        bg_gradient_end_rgb=(16, 20, 32),
-        title_rgb=(0.98, 0.75, 0.24),
-        subtitle_rgb=(0.68, 0.75, 0.86),
-        card_fill_rgb=(0.118, 0.184, 0.310),
-        card_border_rgb=(0.35, 0.52, 0.78),
-        subcard_fill_rgb=(0.145, 0.224, 0.369),
-        accent_fill_rgb=(0.17, 0.34, 0.56),
-        accent_border_rgb=(0.98, 0.75, 0.24),
-        success_fill_rgb=(0.08, 0.27, 0.27),
-        success_border_rgb=(0.24, 0.82, 0.68),
-        warn_fill_rgb=(0.32, 0.18, 0.14),
-        warn_border_rgb=(0.96, 0.60, 0.22),
-        group_fill_rgba=(0.12, 0.22, 0.36, 0.20),
-        group_border_rgb=(0.42, 0.68, 0.90),
-        arrow_rgb=(0.94, 0.96, 1.0),
-        text_rgb=(0.98, 0.99, 1.0),
-        sublabel_rgb=(0.72, 0.82, 0.95),
-        badge_text_rgb=(0.48, 0.84, 0.98),
-        metric_text_rgb=(0.98, 0.75, 0.24),
-        accent_text_rgb=(0.98, 0.75, 0.24),
-        divider_rgb=(0.38, 0.52, 0.72),
-        flow_node_fill_rgb=(0.16, 0.36, 0.66),
-        flow_node_border_rgb=(0.40, 0.62, 0.90),
-        active_flow_fill_rgb=(0.92, 0.50, 0.14),
-        active_flow_border_rgb=(0.99, 0.78, 0.42),
-        chip_fill_rgb=(0.28, 0.34, 0.46),
-        action_banner_rgb=(0.24, 0.62, 0.22),
-        takeaway_pill_rgb=(0.78, 0.24, 0.20),
-        trend_up_rgb=(0.95, 0.38, 0.34),
-        trend_down_rgb=(0.42, 0.88, 0.44),
-        segment_palette=_DARK_SEGMENTS,
-    ),
-    "paper_light": ThemePreset(
-        name="paper_light",
-        description="Warm off-white gradient canvas, deep slate title, crisp blue-tinted cards, dark slate arrows.",
-        bg_rgb=(246, 244, 238),
-        bg_noise_amp=3,
-        bg_gradient_end_rgb=(234, 231, 224),
-        title_rgb=(0.12, 0.20, 0.35),
-        subtitle_rgb=(0.36, 0.42, 0.50),
-        card_fill_rgb=(0.14, 0.29, 0.49),
-        card_border_rgb=(0.10, 0.22, 0.38),
-        subcard_fill_rgb=(0.20, 0.37, 0.59),
-        accent_fill_rgb=(0.82, 0.38, 0.14),
-        accent_border_rgb=(0.56, 0.22, 0.06),
-        success_fill_rgb=(0.09, 0.42, 0.36),
-        success_border_rgb=(0.06, 0.30, 0.25),
-        warn_fill_rgb=(0.68, 0.32, 0.12),
-        warn_border_rgb=(0.48, 0.20, 0.06),
-        group_fill_rgba=(0.14, 0.29, 0.49, 0.08),
-        group_border_rgb=(0.25, 0.40, 0.60),
-        arrow_rgb=(0.18, 0.24, 0.34),
-        text_rgb=(1.0, 1.0, 1.0),
-        sublabel_rgb=(0.84, 0.90, 0.97),
-        badge_text_rgb=(0.98, 0.88, 0.54),
-        metric_text_rgb=(0.99, 0.88, 0.44),
-        accent_text_rgb=(0.14, 0.29, 0.49),
-        divider_rgb=(0.45, 0.52, 0.62),
-        flow_node_fill_rgb=(0.16, 0.35, 0.62),
-        flow_node_border_rgb=(0.12, 0.26, 0.48),
-        active_flow_fill_rgb=(0.86, 0.42, 0.10),
-        active_flow_border_rgb=(0.62, 0.26, 0.04),
-        chip_fill_rgb=(0.34, 0.38, 0.44),
-        action_banner_rgb=(0.20, 0.54, 0.16),
-        takeaway_pill_rgb=(0.72, 0.20, 0.16),
-        trend_up_rgb=(0.78, 0.18, 0.16),
-        trend_down_rgb=(0.14, 0.54, 0.20),
-        segment_palette=_LIGHT_SEGMENTS,
-    ),
-}
+def _rgb_float_tuple(val: Any, field_name: str) -> tuple[float, float, float]:
+    if not isinstance(val, Sequence) or isinstance(val, (str, bytes)) or len(val) != 3:
+        raise ValueError(f"Theme field '{field_name}' must be a 3-element float RGB list.")
+    return (float(val[0]), float(val[1]), float(val[2]))
 
 
-def get_theme(name: str) -> ThemePreset:
-    """Resolve a built-in theme preset by name."""
-    if name not in THEMES:
-        available = ", ".join(sorted(THEMES))
-        raise ValueError(f"Unknown theme '{name}'. Available themes: {available}")
-    return THEMES[name]
+def _rgba_float_tuple(val: Any, field_name: str) -> tuple[float, float, float, float]:
+    if not isinstance(val, Sequence) or isinstance(val, (str, bytes)) or len(val) != 4:
+        raise ValueError(f"Theme field '{field_name}' must be a 4-element float RGBA list.")
+    return (float(val[0]), float(val[1]), float(val[2]), float(val[3]))
+
+
+def theme_from_dict(raw: Mapping[str, Any]) -> ThemePreset:
+    """Construct a ThemePreset from a parsed JSON dictionary."""
+    if not isinstance(raw, Mapping):
+        raise ValueError("Theme JSON must be an object.")
+    seg_raw = raw.get("segment_palette")
+    if not isinstance(seg_raw, Sequence) or isinstance(seg_raw, (str, bytes)) or not seg_raw:
+        raise ValueError("Theme field 'segment_palette' must be a non-empty list of RGB tuples.")
+    segments = tuple(_rgb_float_tuple(c, "segment_palette[]") for c in seg_raw)
+
+    end_raw = raw.get("bg_gradient_end_rgb")
+    bg_end = _rgb_int_tuple(end_raw, "bg_gradient_end_rgb") if end_raw is not None else None
+
+    return ThemePreset(
+        name=str(raw["name"]),
+        description=str(raw.get("description", "")),
+        bg_rgb=_rgb_int_tuple(raw["bg_rgb"], "bg_rgb"),
+        bg_noise_amp=int(raw.get("bg_noise_amp", 0)),
+        title_rgb=_rgb_float_tuple(raw["title_rgb"], "title_rgb"),
+        subtitle_rgb=_rgb_float_tuple(raw["subtitle_rgb"], "subtitle_rgb"),
+        card_fill_rgb=_rgb_float_tuple(raw["card_fill_rgb"], "card_fill_rgb"),
+        card_border_rgb=_rgb_float_tuple(raw["card_border_rgb"], "card_border_rgb"),
+        subcard_fill_rgb=_rgb_float_tuple(raw["subcard_fill_rgb"], "subcard_fill_rgb"),
+        accent_fill_rgb=_rgb_float_tuple(raw["accent_fill_rgb"], "accent_fill_rgb"),
+        accent_border_rgb=_rgb_float_tuple(raw["accent_border_rgb"], "accent_border_rgb"),
+        success_fill_rgb=_rgb_float_tuple(raw["success_fill_rgb"], "success_fill_rgb"),
+        success_border_rgb=_rgb_float_tuple(raw["success_border_rgb"], "success_border_rgb"),
+        warn_fill_rgb=_rgb_float_tuple(raw["warn_fill_rgb"], "warn_fill_rgb"),
+        warn_border_rgb=_rgb_float_tuple(raw["warn_border_rgb"], "warn_border_rgb"),
+        group_fill_rgba=_rgba_float_tuple(raw["group_fill_rgba"], "group_fill_rgba"),
+        group_border_rgb=_rgb_float_tuple(raw["group_border_rgb"], "group_border_rgb"),
+        arrow_rgb=_rgb_float_tuple(raw["arrow_rgb"], "arrow_rgb"),
+        text_rgb=_rgb_float_tuple(raw["text_rgb"], "text_rgb"),
+        sublabel_rgb=_rgb_float_tuple(raw["sublabel_rgb"], "sublabel_rgb"),
+        badge_text_rgb=_rgb_float_tuple(raw["badge_text_rgb"], "badge_text_rgb"),
+        metric_text_rgb=_rgb_float_tuple(raw["metric_text_rgb"], "metric_text_rgb"),
+        accent_text_rgb=_rgb_float_tuple(raw["accent_text_rgb"], "accent_text_rgb"),
+        divider_rgb=_rgb_float_tuple(raw["divider_rgb"], "divider_rgb"),
+        flow_node_fill_rgb=_rgb_float_tuple(raw["flow_node_fill_rgb"], "flow_node_fill_rgb"),
+        flow_node_border_rgb=_rgb_float_tuple(raw["flow_node_border_rgb"], "flow_node_border_rgb"),
+        active_flow_fill_rgb=_rgb_float_tuple(raw["active_flow_fill_rgb"], "active_flow_fill_rgb"),
+        active_flow_border_rgb=_rgb_float_tuple(raw["active_flow_border_rgb"], "active_flow_border_rgb"),
+        chip_fill_rgb=_rgb_float_tuple(raw["chip_fill_rgb"], "chip_fill_rgb"),
+        action_banner_rgb=_rgb_float_tuple(raw["action_banner_rgb"], "action_banner_rgb"),
+        takeaway_pill_rgb=_rgb_float_tuple(raw["takeaway_pill_rgb"], "takeaway_pill_rgb"),
+        trend_up_rgb=_rgb_float_tuple(raw["trend_up_rgb"], "trend_up_rgb"),
+        trend_down_rgb=_rgb_float_tuple(raw["trend_down_rgb"], "trend_down_rgb"),
+        segment_palette=segments,
+        font_title=str(raw.get("font_title", "Helvetica Neue")),
+        font_body=str(raw.get("font_body", "PingFang SC")),
+        bg_gradient_end_rgb=bg_end,
+        bg_gradient_angle=float(raw.get("bg_gradient_angle", 135.0)),
+    )
+
+
+def load_theme_file(path: str | Path) -> ThemePreset:
+    """Load and validate a ThemePreset from an external JSON file."""
+    p = Path(path)
+    if not p.exists():
+        raise ValueError(f"Theme file not found: '{p}'.")
+    raw = json.loads(p.read_text(encoding="utf-8"))
+    return theme_from_dict(raw)
+
+
+def _load_builtin_themes() -> dict[str, ThemePreset]:
+    themes: dict[str, ThemePreset] = {}
+    for p in sorted(_THEMES_DIR.glob("*.json")):
+        preset = load_theme_file(p)
+        themes[preset.name] = preset
+    return themes
+
+
+THEMES: dict[str, ThemePreset] = _load_builtin_themes()
+
+
+def get_theme(name_or_path: str) -> ThemePreset:
+    """Resolve a built-in theme preset by name or load an external theme JSON file."""
+    if name_or_path in THEMES:
+        return THEMES[name_or_path]
+    p = Path(name_or_path)
+    if p.suffix.lower() == ".json" or p.exists():
+        return load_theme_file(p)
+    available = ", ".join(sorted(THEMES))
+    raise ValueError(f"Unknown theme '{name_or_path}'. Available themes: {available} (or path to a .json file)")
 
 
 def is_valid_hex_color(value: str) -> bool:

@@ -10,7 +10,7 @@ import math
 from pathlib import Path
 from typing import Any, Literal, Sequence
 
-from keyflow.themes import THEMES, is_valid_hex_color
+from keyflow.themes import THEMES, is_valid_hex_color, load_theme_file
 
 LayoutMode = Literal[
     "canvas",
@@ -308,6 +308,16 @@ class FrameSpec:
 
 
 @dataclass(slots=True)
+class StyleConfigSpec:
+    """Optional per-deck or per-scene visual tuning overrides without modifying compiler code."""
+
+    title_max_size: float | None = None
+    subtitle_size: float | None = None
+    card_corner_px: float | None = None
+    arrow_width: float | None = None
+
+
+@dataclass(slots=True)
 class SceneSpec:
     """One conceptual diagram or freeform canvas sequence (rendered as 1..N progressive slides)."""
 
@@ -325,6 +335,7 @@ class SceneSpec:
     show_pinned_flow: bool = True
     pinned_flow: PinnedFlowSpec | None = None
     palette: dict[str, Any] | None = None
+    style_config: StyleConfigSpec | None = None
     grid: GridSpec | None = None
     regions: list[RegionSpec] = field(default_factory=list)
     objects: list[CanvasObjectSpec] = field(default_factory=list)
@@ -348,6 +359,7 @@ class DeckSpec:
     slide_height: int = 1080
     pinned_flow: PinnedFlowSpec | None = None
     story_model: StoryModelSpec | None = None
+    style_config: StyleConfigSpec | None = None
     scenes: list[SceneSpec] = field(default_factory=list)
 
 
@@ -411,6 +423,17 @@ def _parse_nodes_and_edges(raw_nodes: list[dict[str, Any]], raw_edges: list[dict
         for e in raw_edges
     ]
     return nodes, edges
+
+
+def _parse_style_config(raw: Any) -> StyleConfigSpec | None:
+    if not isinstance(raw, dict):
+        return None
+    return StyleConfigSpec(
+        title_max_size=float(raw["title_max_size"]) if raw.get("title_max_size") is not None else None,
+        subtitle_size=float(raw["subtitle_size"]) if raw.get("subtitle_size") is not None else None,
+        card_corner_px=float(raw["card_corner_px"]) if raw.get("card_corner_px") is not None else None,
+        arrow_width=float(raw["arrow_width"]) if raw.get("arrow_width") is not None else None,
+    )
 
 
 def _parse_pinned_flow(pf_raw: dict[str, Any]) -> PinnedFlowSpec:
@@ -705,6 +728,7 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
                 show_pinned_flow=bool(s_raw.get("show_pinned_flow", True)),
                 pinned_flow=_parse_pinned_flow(s_raw["pinned_flow"]) if isinstance(s_raw.get("pinned_flow"), dict) else None,
                 palette=dict(s_raw["palette"]) if isinstance(s_raw.get("palette"), dict) else None,
+                style_config=_parse_style_config(s_raw.get("style_config")),
                 grid=grid,
                 regions=regions,
                 objects=objects,
@@ -727,6 +751,7 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
         slide_height=int(slide_size.get("height", 1080)),
         pinned_flow=pinned_flow,
         story_model=story_model,
+        style_config=_parse_style_config(raw.get("style_config")),
         scenes=scenes,
     )
 
@@ -858,6 +883,7 @@ def _schema_key_sets() -> dict[str, frozenset[str]]:
     return {
         "deck": frozenset(props),
         "palette": frozenset(defs.get("palette", {}).get("properties", {})),
+        "style_config": frozenset(defs.get("style_config", {}).get("properties", {})),
         "slide_size": frozenset(props.get("slide_size", {}).get("properties", {})),
         "pinned_flow": frozenset(pf_props),
         "pf_node": frozenset(pf_props.get("nodes", {}).get("items", {}).get("properties", {})),
@@ -917,6 +943,24 @@ def _check_evidence_refs(
     for cid in refs:
         if not isinstance(cid, str) or cid not in claim_ids:
             errors.append(f"{path}: unknown evidence_ref '{cid}'.")
+
+
+def _validate_style_config(sc: Any, path: str, errors: list[str]) -> None:
+    if not isinstance(sc, dict):
+        errors.append(f"{path} must be an object.")
+        return
+    _check_allowed_keys(sc, "style_config", path, errors)
+    bounds = {
+        "title_max_size": (24.0, 96.0),
+        "subtitle_size": (14.0, 48.0),
+        "card_corner_px": (0.0, 40.0),
+        "arrow_width": (1.0, 12.0),
+    }
+    for k, (lo, hi) in bounds.items():
+        if k in sc and sc[k] is not None:
+            v = _as_float(sc[k])
+            if v is None or v < lo or v > hi:
+                errors.append(f"{path}.{k}: must be a finite number in [{lo}, {hi}].")
 
 
 def _validate_palette(pal: Any, path: str, errors: list[str]) -> None:
@@ -1482,14 +1526,24 @@ def validate_deck(
         errors.append("Missing or invalid top-level 'title'.")
 
     theme = raw.get("theme", "slate_dark")
-    if not isinstance(theme, str) or theme not in THEMES:
-        errors.append(f"Unknown theme '{theme}'. Valid options: {', '.join(sorted(THEMES))}.")
+    if not isinstance(theme, str):
+        errors.append(f"Unknown theme '{theme}'. Valid options: {', '.join(sorted(THEMES))} (or .json file path).")
+    elif theme not in THEMES:
+        if theme.lower().endswith(".json") or Path(theme).exists():
+            try:
+                load_theme_file(theme)
+            except Exception as exc:
+                errors.append(f"Invalid theme file '{theme}': {exc}")
+        else:
+            errors.append(f"Unknown theme '{theme}'. Valid options: {', '.join(sorted(THEMES))} (or .json file path).")
 
     if raw.get("palette") is not None:
         if eff_use_templates:
             errors.append("Custom top-level 'palette' is forbidden when use_templates=true; set use_templates=false.")
         else:
             _validate_palette(raw["palette"], "deck.palette", errors)
+    if raw.get("style_config") is not None:
+        _validate_style_config(raw["style_config"], "deck.style_config", errors)
 
     if raw.get("slide_size") is not None:
         ss = raw["slide_size"]
@@ -1598,6 +1652,8 @@ def validate_deck(
 
         if s.get("palette") is not None and not eff_use_templates:
             _validate_palette(s["palette"], f"{prefix}.palette", errors)
+        if s.get("style_config") is not None:
+            _validate_style_config(s["style_config"], f"{prefix}.style_config", errors)
 
         scene_pf_node_ids = pf_node_ids
         if s.get("pinned_flow") is not None:

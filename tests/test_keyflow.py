@@ -2313,3 +2313,61 @@ def test_pinned_flow_preserves_title_and_supports_per_frame_toggle(tmp_path: Pat
     out = tmp_path / "per_frame_ribbon.keyx"
     compile_deck(raw, out)
     assert out.exists()
+
+
+def test_phase1_external_theme_json_style_config_and_overrides(tmp_path: Path) -> None:
+    """Phase 1: External theme JSON files, per-deck/scene style_config, and --overrides patch work cleanly."""
+    from creator_studio_doc_format.core import KeyxDocument
+    from keyflow.themes import get_theme
+
+    # 1. Built-in themes load from JSON files; external theme JSON works via get_theme & validate_deck
+    slate = json.loads((Path(__file__).resolve().parent.parent / "keyflow" / "themes" / "slate_dark.json").read_text(encoding="utf-8"))
+    slate["name"] = "custom_brand"
+    slate["bg_rgb"] = [18, 28, 42]
+    brand_path = tmp_path / "brand_theme.json"
+    brand_path.write_text(json.dumps(slate), encoding="utf-8")
+
+    loaded_theme = get_theme(str(brand_path))
+    assert loaded_theme.name == "custom_brand"
+    assert loaded_theme.bg_rgb == (18, 28, 42)
+
+    raw = {
+        "title": "Phase 1 Tuning Test",
+        "theme": str(brand_path),
+        "style_config": {"title_max_size": 46.0, "subtitle_size": 22.0, "card_corner_px": 6.0},
+        "scenes": [
+            {
+                "id": "sc1",
+                "title": "Custom Style Scene",
+                "subtitle": "Compact subtitle",
+                "style_config": {"title_max_size": 42.0},
+                "nodes": [{"id": "a", "label": "Node A", "note": "test"}],
+                "frames": [{"visible_nodes": ["a"], "notes": "only frame"}],
+            }
+        ],
+    }
+    res = validate_deck(raw)
+    assert res.valid, res.errors
+
+    # 2. --overrides patch adjusts specific object geometry/opacity without touching compiler code
+    ov_path = tmp_path / "overrides.json"
+    ov_path.write_text(json.dumps({"s1_a": {"dx": 25.0, "dy": -10.0, "opacity": 0.75}}), encoding="utf-8")
+
+    out_base = tmp_path / "base.keyx"
+    out_ov = tmp_path / "patched.keyx"
+    deck_path = tmp_path / "deck.json"
+    deck_path.write_text(json.dumps(raw), encoding="utf-8")
+    compile_deck(raw, out_base)
+    assert cli_main(["compile", "-i", str(deck_path), "-o", str(out_ov), "--overrides", str(ov_path)]) == 0
+
+    with KeyxDocument.open(out_base) as d_base, KeyxDocument.open(out_ov) as d_ov:
+        s_base = d_base.payload.slides[0]
+        s_ov = d_ov.payload.slides[0]
+        title_tb = next(o.object.textbox for o in s_base.contents if o.object.textbox and o.object.textbox.identifier == "s1_title")
+        assert title_tb.model_dump()["paragraph_properties"]["character_properties"]["font_size"] == pytest.approx(42.0)
+
+        a_base = next(o.object.shape for o in s_base.contents if o.object.shape and o.object.shape.identifier == "s1_a")
+        a_ov = next(o.object.shape for o in s_ov.contents if o.object.shape and o.object.shape.identifier == "s1_a")
+        assert a_ov.geometry.position.x == pytest.approx(a_base.geometry.position.x + 25.0)
+        assert a_ov.geometry.position.y == pytest.approx(a_base.geometry.position.y - 10.0)
+        assert a_ov.opacity == pytest.approx(0.75)
