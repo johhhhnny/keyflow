@@ -245,6 +245,7 @@ def resolve_scene(
                         opacity=opacity,
                         caption=node.label if node.caption_position != "inside" else None,
                         caption_rect=geo.caption_rect,
+                        surface=node.surface,
                     )
                 )
                 for child, crect in geo.child_rects:
@@ -259,6 +260,7 @@ def resolve_scene(
                             kind="subcard",
                             variant=child.variant,
                             opacity=opacity,
+                            surface=child.surface,
                         )
                     )
             else:
@@ -274,6 +276,7 @@ def resolve_scene(
                         kind="card",
                         variant=node.variant,
                         opacity=opacity,
+                        surface=node.surface,
                     )
                 )
 

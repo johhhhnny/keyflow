@@ -34,6 +34,7 @@ def _validate_nodes_and_edges(
 ) -> tuple[dict[str, dict[str, Any]], set[str]]:
     valid_child_layouts = {"row", "column", "grid"}
     valid_variants = {"primary", "accent", "muted", "success", "warn"}
+    valid_surfaces = {"filled", "ghost", "borderless"}
     node_map: dict[str, dict[str, Any]] = {}
     node_order: list[str] = []
 
@@ -60,6 +61,9 @@ def _validate_nodes_and_edges(
         variant = n.get("variant", "primary")
         if not _is_in(variant, valid_variants):
             errors.append(f"{prefix}.nodes['{nid}']: invalid variant '{variant}'.")
+        surface = n.get("surface", "filled")
+        if not _is_in(surface, valid_surfaces):
+            errors.append(f"{prefix}.nodes['{nid}']: invalid surface '{surface}'.")
 
         raw_label = n.get("label")
         if not isinstance(raw_label, str) or not raw_label:
@@ -107,6 +111,9 @@ def _validate_nodes_and_edges(
             cvar = c.get("variant", "primary")
             if not _is_in(cvar, valid_variants):
                 errors.append(f"{prefix}.nodes['{nid}'].children['{cid}']: invalid variant '{cvar}'.")
+            csurf = c.get("surface", "filled")
+            if not _is_in(csurf, valid_surfaces):
+                errors.append(f"{prefix}.nodes['{nid}'].children['{cid}']: invalid surface '{csurf}'.")
 
             clabel = c.get("label")
             if not isinstance(clabel, str) or not clabel:

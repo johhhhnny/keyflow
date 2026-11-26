@@ -228,6 +228,7 @@ def _resolve_inline_diagram(
                 caption=node.label if (is_exp and node.caption_position != "inside") else None,
                 caption_rect=cap_rect,
                 font_scale=outcome.scale,
+                surface=node.surface,
             )
         )
         if is_exp:
@@ -244,6 +245,7 @@ def _resolve_inline_diagram(
                         variant=child.variant,
                         opacity=n_op,
                         font_scale=outcome.scale,
+                        surface=child.surface,
                     )
                 )
 
@@ -402,6 +404,7 @@ def _resolve_canvas_scene(
                         fill_hex=obj.fill_hex,
                         border_hex=obj.border_hex,
                         color_hex=obj.color_hex,
+                        surface=obj.surface,
                     )
                 )
             elif obj.kind == "textbox":

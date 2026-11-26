@@ -21,6 +21,7 @@ from keyflow.schema import (
     ProportionBarSpec,
     RegionSpec,
     SceneSpec,
+    SurfaceStyle,
     TableSpec,
     TrendDirection,
     compute_dag_layers,
@@ -72,6 +73,7 @@ class PlacedBox:
     border_hex: str | None = None
     color_hex: str | None = None
     font_scale: float | None = None
+    surface: SurfaceStyle = "filled"
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,6 +259,7 @@ class PlacedShape:
     border_hex: str | None = None
     color_hex: str | None = None
     font_scale: float | None = None
+    surface: SurfaceStyle = "filled"
     dashed: bool = False
     variant: NodeVariant = "primary"
     opacity: float = 1.0

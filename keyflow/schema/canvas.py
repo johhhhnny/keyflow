@@ -117,6 +117,7 @@ def _validate_canvas_scene(
 
     valid_kinds = {"chart", "table", "card", "textbox", "shape", "callout", "diagram"}
     valid_variants = {"primary", "accent", "muted", "success", "warn"}
+    valid_surfaces = {"filled", "ghost", "borderless"}
     valid_chart_types = {"column", "bar", "pie", "donut", "line", "area", "stacked_column", "stacked_bar", "scatter", "waterfall"}
     valid_chart_reveals = {"whole", "by_series", "by_category"}
     valid_chart_render_modes = {"auto", "vector", "native"}
@@ -160,6 +161,9 @@ def _validate_canvas_scene(
         variant = obj.get("variant", "primary")
         if not _is_in(variant, valid_variants):
             errors.append(f"{prefix}.objects['{oid}']: invalid variant '{variant}'.")
+        surface = obj.get("surface", "filled")
+        if not _is_in(surface, valid_surfaces):
+            errors.append(f"{prefix}.objects['{oid}']: invalid surface '{surface}'.")
 
         step_val = _as_int(obj.get("step", 1))
         if step_val is None or step_val < 0:

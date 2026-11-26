@@ -152,6 +152,11 @@
                   "enum": ["primary", "accent", "muted", "success", "warn"],
                   "default": "primary"
                 },
+                "surface": {
+                  "type": "string",
+                  "enum": ["filled", "ghost", "borderless"],
+                  "default": "filled"
+                },
                 "note": { "type": "string", "default": "" },
                 "evidence_refs": { "type": "array", "items": { "type": "string" } },
                 "weight": { "type": "number", "minimum": 0.1, "default": 1.0 },
@@ -491,6 +496,7 @@
         "note": { "type": "string", "default": "" },
         "kind": { "type": "string", "enum": ["card", "group_dashed"], "default": "card" },
         "variant": { "type": "string", "enum": ["primary", "accent", "muted", "success", "warn"], "default": "primary" },
+        "surface": { "type": "string", "enum": ["filled", "ghost", "borderless"], "default": "filled" },
         "child_layout": { "type": "string", "enum": ["row", "column", "grid"], "default": "row" },
         "caption_position": { "type": "string", "enum": ["bottom", "top", "inside"], "default": "bottom" },
         "evidence_refs": { "type": "array", "items": { "type": "string" } },
@@ -508,6 +514,7 @@
               "metric": { "type": "string" },
               "note": { "type": "string", "default": "" },
               "variant": { "type": "string", "enum": ["primary", "accent", "muted", "success", "warn"], "default": "primary" },
+              "surface": { "type": "string", "enum": ["filled", "ghost", "borderless"], "default": "filled" },
               "evidence_refs": { "type": "array", "items": { "type": "string" } }
             }
           }

@@ -65,6 +65,7 @@ Translate the Stage 0 brief into clean Stage 1 diagrams. Do **not** hand-write `
    - `metric`: hero number/stat for KPI or single-thesis centerpiece cards (e.g., `"75%"`, `"10×"`, `"0 依赖"`)
    - `sublabel`: brief secondary line (e.g., `"商业常识"`, `"7s → 0.7s"`)
    - `variant`: `"primary"` | `"accent"` (yellow highlight) | `"success"` (teal-green) | `"warn"` (amber) | `"muted"`
+   - `surface`: `"filled"` (default solid card) | `"ghost"` (border-only lightweight frame) | `"borderless"` (no fill/border; prefer `"borderless"` for hero stats, core thesis statements, and open editorial typography instead of wrapping every element in a filled card)
    Put all prose explanations, caveats, citations, and presenter context into each node/child's **`note`** field (and scene `intro_note`).
 2. **Structured Story Model & Evidence Grounding (Recommended for Analytical Decks)**:
    Include optional `story_model` at the deck root (`core_question`, `claims`: `id`, `type`, `claim`, `source_quote`, `metric_scope`, `confidence`), set per-scene `claim` & `metric_scope`, and link elements via `evidence_refs: [...]`. `keyflow audit` automatically enforces epistemic alignment (e.g., rejects `badge: "FACT"` pointing to an `inference` claim), flags `scope_mixing` across incompatible denominators, warns on `unsourced_fact`, and catches dropped `thesis` / `counter_evidence` claims.

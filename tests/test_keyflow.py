@@ -2585,3 +2585,61 @@ def test_theme_contrast_and_semantic_distinction() -> None:
         assert _dist(t.success_border_rgb, t.warn_border_rgb) >= 0.30, f"{name} success/warn borders lack distinction"
         for i in range(len(t.segment_palette) - 1):
             assert _dist(t.segment_palette[i], t.segment_palette[i + 1]) >= 0.15, f"{name} adjacent segment colors too close"
+
+
+def test_surface_filled_ghost_borderless_preserves_geometry_and_contrast(tmp_path: Path) -> None:
+    from creator_studio_doc_format.core import KeyxDocument
+
+    def _make_deck(surface: str, *, color_hex: str | None = None, theme: str = "paper_light") -> dict[str, object]:
+        obj: dict[str, object] = {
+            "id": "hero",
+            "kind": "callout",
+            "region": "main",
+            "surface": surface,
+            "badge": "HERO",
+            "metric": "75%",
+            "label": "Profit Share",
+            "sublabel": "Borderless keeps geometry & typography",
+        }
+        if color_hex is not None:
+            obj["color_hex"] = color_hex
+        return {
+            "title": "Surface Test",
+            "theme": theme,
+            "scenes": [
+                {
+                    "id": "sc1",
+                    "title": "Surface Comparison",
+                    "layout": "canvas",
+                    "grid": {"columns": 12, "rows": 1},
+                    "regions": [{"id": "main", "col": 1, "row": 1, "col_span": 12, "row_span": 1}],
+                    "objects": [obj],
+                }
+            ],
+        }
+
+    # 1. Geometry must remain identical across filled / ghost / borderless
+    rects: list[tuple[float, float, float, float]] = []
+    for idx, surf in enumerate(("filled", "ghost", "borderless")):
+        deck = _make_deck(surf)
+        assert validate_deck(deck).valid is True
+        assert audit_deck(deck, strict=True).passed is True
+        out = tmp_path / f"surf_{surf}.keyx"
+        compile_deck(deck, out)
+        with KeyxDocument.open(out) as doc:
+            sh = next(o.object.shape for o in doc.payload.slides[0].contents if o.object.shape and o.object.shape.identifier == "s1_hero")
+            rects.append((sh.geometry.position.x, sh.geometry.position.y, sh.geometry.size.width, sh.geometry.size.height))
+            if surf == "filled":
+                assert sh.fill is not None and sh.stroke.line is not None
+            elif surf == "ghost":
+                assert sh.fill is None and sh.stroke.line is not None
+            elif surf == "borderless":
+                assert sh.fill is None and sh.stroke.empty is True
+
+    assert rects[0] == rects[1] == rects[2]
+
+    # 2. Audit checks borderless text contrast against slide canvas background
+    bad_contrast = _make_deck("borderless", color_hex="#FFFFFF", theme="paper_light")
+    rep = audit_deck(bad_contrast, strict=True)
+    assert rep.passed is False
+    assert any(e.category == "low_contrast" and e.target_id == "hero" for e in rep.errors)

@@ -27,6 +27,7 @@ LayoutMode = Literal[
 ]
 NodeKind = Literal["card", "group_dashed"]
 NodeVariant = Literal["primary", "accent", "muted", "success", "warn"]
+SurfaceStyle = Literal["filled", "ghost", "borderless"]
 ChildLayout = Literal["row", "column", "grid"]
 CaptionPosition = Literal["bottom", "top", "inside"]
 EdgeStyle = Literal["solid", "dashed"]
@@ -76,6 +77,7 @@ class ChildNodeSpec:
     badge: str | None = None
     metric: str | None = None
     variant: NodeVariant = "primary"
+    surface: SurfaceStyle = "filled"
     note: str = ""
     evidence_refs: list[str] = field(default_factory=list)
 
@@ -91,6 +93,7 @@ class NodeSpec:
     metric: str | None = None
     kind: NodeKind = "card"
     variant: NodeVariant = "primary"
+    surface: SurfaceStyle = "filled"
     children: list[ChildNodeSpec] = field(default_factory=list)
     child_layout: ChildLayout = "row"
     caption_position: CaptionPosition = "bottom"
@@ -266,6 +269,7 @@ class CanvasObjectSpec:
     region: str | None = None
     step: int = 1
     variant: NodeVariant = "primary"
+    surface: SurfaceStyle = "filled"
     note: str = ""
     evidence_refs: list[str] = field(default_factory=list)
     weight: float = 1.0

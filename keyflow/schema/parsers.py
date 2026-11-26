@@ -42,6 +42,7 @@ def _parse_nodes_and_edges(raw_nodes: list[dict[str, Any]], raw_edges: list[dict
                 badge=str(c["badge"]) if c.get("badge") else None,
                 metric=str(c["metric"]) if c.get("metric") else None,
                 variant=c.get("variant", "primary"),
+                surface=c.get("surface", "filled"),
                 note=str(c.get("note", "")),
                 evidence_refs=[str(r) for r in c.get("evidence_refs", [])],
             )
@@ -56,6 +57,7 @@ def _parse_nodes_and_edges(raw_nodes: list[dict[str, Any]], raw_edges: list[dict
                 metric=str(n_raw["metric"]) if n_raw.get("metric") else None,
                 kind=n_raw.get("kind", "card"),
                 variant=n_raw.get("variant", "primary"),
+                surface=n_raw.get("surface", "filled"),
                 children=children,
                 child_layout=n_raw.get("child_layout", "row"),
                 caption_position=n_raw.get("caption_position", "bottom"),
@@ -328,6 +330,7 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
                     region=str(obj_raw["region"]) if obj_raw.get("region") else None,
                     step=int(obj_raw.get("step", 1)),
                     variant=obj_raw.get("variant", "primary"),
+                    surface=obj_raw.get("surface", "filled"),
                     note=str(obj_raw.get("note", "")),
                     evidence_refs=[str(r) for r in obj_raw.get("evidence_refs", [])],
                     weight=float(obj_raw.get("weight", 1.0)),

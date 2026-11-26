@@ -591,14 +591,30 @@ def _make_box_objects(
     if box.label:
         max_fit = max(18.0, (box.rect.w - 24.0) / max(1.0, _text_units(box.label) * 0.56))
         main_size = round(min(main_size, max_fit), 1)
-    fill_rgba = _rgba(hex_to_rgb_float(box.fill_hex)) if box.fill_hex else _fill_for_variant(theme, box.variant, is_sub)
-    bg_rgb = (fill_rgba.red, fill_rgba.green, fill_rgba.blue)
+    surface = getattr(box, "surface", "filled")
+    canvas_bg_rgb = (theme.bg_rgb[0] / 255.0, theme.bg_rgb[1] / 255.0, theme.bg_rgb[2] / 255.0)
+    if surface == "borderless":
+        fill_obj: Fill | None = None
+        bg_rgb = canvas_bg_rgb
+        stroke = Stroke(empty=True)
+    elif surface == "ghost":
+        fill_obj = None
+        bg_rgb = canvas_bg_rgb
+        if box.border_hex:
+            stroke = Stroke(line=Line(color=Color(rgba=_rgba(hex_to_rgb_float(box.border_hex))), width=1.6, pattern=Pattern.SOLID))
+        else:
+            base_stroke = _stroke_for_box(theme, box.variant, is_sub)
+            stroke = Stroke(line=Line(color=base_stroke.line.color, width=1.5, pattern=Pattern.SOLID)) if base_stroke.line else base_stroke
+    else:
+        fill_rgba = _rgba(hex_to_rgb_float(box.fill_hex)) if box.fill_hex else _fill_for_variant(theme, box.variant, is_sub)
+        fill_obj = Fill(color=Color(rgba=fill_rgba))
+        bg_rgb = (fill_rgba.red, fill_rgba.green, fill_rgba.blue)
+        stroke = (
+            Stroke(line=Line(color=Color(rgba=_rgba(hex_to_rgb_float(box.border_hex))), width=2.2, pattern=Pattern.SOLID))
+            if box.border_hex
+            else _stroke_for_box(theme, box.variant, is_sub)
+        )
     para_props, text_obj = _card_text_payload(box, theme, main_size, font_scale, bg_rgb=bg_rgb)
-    stroke = (
-        Stroke(line=Line(color=Color(rgba=_rgba(hex_to_rgb_float(box.border_hex))), width=2.2, pattern=Pattern.SOLID))
-        if box.border_hex
-        else _stroke_for_box(theme, box.variant, is_sub)
-    )
 
     sh = Shape(
         identifier=obj_id,
@@ -612,7 +628,7 @@ def _make_box_objects(
                 space=_UNIT_SPACE,
             )
         ),
-        fill=Fill(color=Color(rgba=fill_rgba)),
+        fill=fill_obj,
         stroke=stroke,
         opacity=box.opacity,
         layout_properties=LayoutProperties(vertical_alignment=VerticalAlignmentType.CENTER),

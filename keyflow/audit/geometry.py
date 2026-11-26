@@ -209,7 +209,7 @@ def _audit_frame(
             dashed_groups.append(box)
         else:
             solid_cards.append(box)
-            if box.kind == "card":
+            if box.kind in ("card", "callout"):
                 top_cards.append(box)
             # Estimate text wrap fit inside solid cards
             font_scale = max(0.74, frame.scale)
@@ -676,17 +676,21 @@ def _audit_frame(
     if theme is not None:
         slide_bg = tuple(c / 255.0 for c in theme.bg_rgb)
         for box in top_cards:
-            if box.fill_hex or box.color_hex or frame.palette:
+            box_surface = getattr(box, "surface", "filled")
+            if box.fill_hex or box.color_hex or frame.palette or box_surface in ("ghost", "borderless"):
                 fg = hex_to_rgb_float(box.color_hex) if box.color_hex else theme.text_rgb
-                bg_rgb = hex_to_rgb_float(box.fill_hex) if box.fill_hex else theme.card_fill_rgb
-                if not box.fill_hex and box.variant == "muted":
-                    # Muted cards use MUTED_CARD_ALPHA over the slide background.
-                    a = MUTED_CARD_ALPHA
-                    bg_rgb = (
-                        bg_rgb[0] * a + slide_bg[0] * (1.0 - a),
-                        bg_rgb[1] * a + slide_bg[1] * (1.0 - a),
-                        bg_rgb[2] * a + slide_bg[2] * (1.0 - a),
-                    )
+                if box_surface in ("ghost", "borderless") and not box.fill_hex:
+                    bg_rgb = slide_bg
+                else:
+                    bg_rgb = hex_to_rgb_float(box.fill_hex) if box.fill_hex else theme.card_fill_rgb
+                    if not box.fill_hex and box.variant == "muted":
+                        # Muted cards use MUTED_CARD_ALPHA over the slide background.
+                        a = MUTED_CARD_ALPHA
+                        bg_rgb = (
+                            bg_rgb[0] * a + slide_bg[0] * (1.0 - a),
+                            bg_rgb[1] * a + slide_bg[1] * (1.0 - a),
+                            bg_rgb[2] * a + slide_bg[2] * (1.0 - a),
+                        )
                 ratio = contrast_ratio(fg, bg_rgb)
                 if ratio < MIN_CONTRAST_RATIO:
                     findings.append(
