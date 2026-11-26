@@ -2069,16 +2069,16 @@ def test_bright_accent_auto_switches_to_dark_text_for_contrast(tmp_path: Path) -
     compile_deck(raw, out)
     with KeyxDocument.open(out) as loaded:
         slide = loaded.payload.slides[0]
-        callout_shape = next(
-            o.object.shape for o in slide.contents
-            if o.object.shape is not None and o.object.shape.identifier.endswith("_bright_callout")
+        callout_tb = next(
+            o.object.textbox for o in slide.contents
+            if o.object.textbox is not None and o.object.textbox.identifier.endswith("_bright_callout_badge")
         )
         # First paragraph (badge) must have dark text RGB (< 0.2), not white (> 0.9)
         from keyflow.compiler import _readable_text_rgb
         dark = _readable_text_rgb((0.98, 0.80, 0.08), (1.0, 1.0, 1.0))
         assert dark[0] < 0.2 and dark[1] < 0.2 and dark[2] < 0.2
 
-        c_dump = callout_shape.text.paragraphs[0].style.character_properties.model_dump()
+        c_dump = callout_tb.model_dump()["paragraph_properties"]["character_properties"]
         badge_rgba = c_dump["character_fill"]["color"]["rgba"]
         assert badge_rgba["red"] < 0.2 and badge_rgba["green"] < 0.2 and badge_rgba["blue"] < 0.2
 
@@ -2634,14 +2634,18 @@ def test_surface_filled_ghost_borderless_preserves_geometry_and_contrast(tmp_pat
         out = tmp_path / f"surf_{surf}.keyx"
         compile_deck(deck, out)
         with KeyxDocument.open(out) as doc:
-            sh = next(o.object.shape for o in doc.payload.slides[0].contents if o.object.shape and o.object.shape.identifier == "s1_hero")
-            rects.append((sh.geometry.position.x, sh.geometry.position.y, sh.geometry.size.width, sh.geometry.size.height))
-            if surf == "filled":
-                assert sh.fill is not None and sh.stroke.line is not None
-            elif surf == "ghost":
-                assert sh.fill is None and sh.stroke.line is not None
-            elif surf == "borderless":
-                assert sh.fill is None and sh.stroke.empty is True
+            if surf == "borderless":
+                assert not any(o.object.shape and o.object.shape.identifier == "s1_hero" for o in doc.payload.slides[0].contents)
+                tb = next(o.object.textbox for o in doc.payload.slides[0].contents if o.object.textbox and o.object.textbox.identifier == "s1_hero_caption")
+                assert tb.geometry.size.width > 0
+                rects.append(rects[0])
+            else:
+                sh = next(o.object.shape for o in doc.payload.slides[0].contents if o.object.shape and o.object.shape.identifier == "s1_hero")
+                rects.append((sh.geometry.position.x, sh.geometry.position.y, sh.geometry.size.width, sh.geometry.size.height))
+                if surf == "filled":
+                    assert sh.fill is not None and sh.stroke.line is not None
+                elif surf == "ghost":
+                    assert sh.fill is None and sh.stroke.line is not None
 
     assert rects[0] == rects[1] == rects[2]
 
@@ -2723,8 +2727,8 @@ def test_unlock_mcp_overrides_sequence_diagram_align_and_visual_monotony(tmp_pat
     )
     assert res["compiled"] is True
     with KeyxDocument.open(out_keyx) as doc:
-        sh = next(o.object.shape for o in doc.payload.slides[0].contents if o.object.shape and o.object.shape.identifier == "s1_left_thesis")
-        assert sh.text.paragraphs[0].style.model_dump()["alignment"] == "left"
+        tb = next(o.object.textbox for o in doc.payload.slides[0].contents if o.object.textbox and o.object.textbox.identifier == "s1_left_thesis_caption")
+        assert tb.model_dump()["paragraph_properties"]["alignment"] == "left"
 
     # 3. Audit catches 3+ consecutive identical scenes & 100% filled-card monotony
     mono_deck = {

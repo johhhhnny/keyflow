@@ -615,28 +615,78 @@ def _make_box_objects(
             if box.border_hex
             else _stroke_for_box(theme, box.variant, is_sub)
         )
-    para_props, text_obj = _card_text_payload(box, theme, main_size, font_scale, bg_rgb=bg_rgb)
 
-    sh = Shape(
-        identifier=obj_id,
-        geometry=Geometry(
-            position=Position(x=box.rect.x, y=box.rect.y),
-            size=Size(width=box.rect.w, height=box.rect.h),
-        ),
-        path=ShapePath(
-            bezier=BezierPath(
-                path=_rounded_rect_path(box.rect.w, box.rect.h, corner_px=corner_base_px * font_scale),
-                space=_UNIT_SPACE,
+    if surface != "borderless":
+        sh = Shape(
+            identifier=obj_id,
+            geometry=Geometry(
+                position=Position(x=box.rect.x, y=box.rect.y),
+                size=Size(width=box.rect.w, height=box.rect.h),
+            ),
+            path=ShapePath(
+                bezier=BezierPath(
+                    path=_rounded_rect_path(box.rect.w, box.rect.h, corner_px=corner_base_px * font_scale),
+                    space=_UNIT_SPACE,
+                )
+            ),
+            fill=fill_obj,
+            stroke=stroke,
+            opacity=box.opacity,
+        )
+        objs.append(SlideObject(object=CanvasObject(shape=sh)))
+
+    # Emit one independent Textbox per line (badge, metric, caption/label, sublabel)
+    # so cards can be paced line-by-line and match group_dashed _badge/_caption IDs in Magic Move.
+    main_rgb = hex_to_rgb_float(box.color_hex) if box.color_hex else _readable_text_rgb(bg_rgb, theme.text_rgb)
+    badge_rgb = _readable_text_rgb(bg_rgb, theme.badge_text_rgb)
+    metric_rgb = _readable_text_rgb(bg_rgb, theme.metric_text_rgb)
+    sub_rgb = _readable_text_rgb(bg_rgb, theme.sublabel_rgb)
+    para_align = _ALIGN_MAP.get(getattr(box, "align", "center"), AlignmentType.CENTER)
+    pad_x = 14.0
+    text_w = max(40.0, box.rect.w - 2 * pad_x)
+    text_x = box.rect.x + pad_x
+
+    line_specs: list[tuple[str, str, str, float, tuple[float, float, float], bool, float, float]] = []
+    if box.badge:
+        bsz = max(14.0, round(17.5 * font_scale, 1))
+        bh = round(bsz * 1.35, 1)
+        line_specs.append((f"{obj_id}_badge", box.badge, theme.font_title, bsz, badge_rgb, True, bh, 4.0 * font_scale))
+    if box.metric:
+        msz = max(32.0, round(52.0 * font_scale, 1))
+        mh = round(msz * 1.25, 1)
+        line_specs.append((f"{obj_id}_metric", box.metric, theme.font_title, msz, metric_rgb, True, mh, 6.0 * font_scale))
+    if box.label:
+        lsz = max(20.0, round(main_size * 0.86, 1)) if box.metric else main_size
+        n_lines = max(1, math.ceil(_text_units(box.label) * lsz * 0.56 / text_w))
+        lh = round(lsz * 1.35 * n_lines, 1)
+        line_specs.append((f"{obj_id}_caption", box.label, theme.font_body, lsz, main_rgb, True, lh, 0.0))
+    if box.sublabel:
+        ssz = max(15.0, round(main_size * 0.64, 1))
+        n_lines = max(1, math.ceil(_text_units(box.sublabel) * ssz * 0.56 / text_w))
+        sh_h = round(ssz * 1.35 * n_lines, 1)
+        if line_specs:
+            prev = line_specs[-1]
+            line_specs[-1] = (*prev[:7], 4.0 * font_scale)
+        line_specs.append((f"{obj_id}_sublabel", box.sublabel, theme.font_body, ssz, sub_rgb, False, sh_h, 0.0))
+
+    total_h = sum(spec[6] + spec[7] for spec in line_specs)
+    cursor_y = box.rect.y + max(6.0, (box.rect.h - total_h) / 2.0)
+    for tb_id, tb_txt, tb_font, tb_sz, tb_rgb, tb_bold, tb_h, gap_after in line_specs:
+        objs.append(
+            _make_textbox(
+                tb_id,
+                BoxRect(text_x, cursor_y, text_w, tb_h),
+                tb_txt,
+                font_name=tb_font,
+                font_size=tb_sz,
+                color=_rgba(tb_rgb),
+                bold=tb_bold,
+                opacity=box.opacity,
+                alignment=para_align,
             )
-        ),
-        fill=fill_obj,
-        stroke=stroke,
-        opacity=box.opacity,
-        layout_properties=LayoutProperties(vertical_alignment=VerticalAlignmentType.CENTER),
-        paragraph_properties=para_props,
-        text=text_obj,
-    )
-    objs.append(SlideObject(object=CanvasObject(shape=sh)))
+        )
+        cursor_y += tb_h + gap_after
+
     return objs, obj_id
 
 
