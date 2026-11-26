@@ -59,6 +59,7 @@ from creator_studio_doc_format.core import (
     Rect,
     Row,
     ScatterChart,
+    SeriesValueLabelPosition,
     Shape,
     Size,
     Slide,
@@ -1760,29 +1761,18 @@ def _make_chart_objects(slide_prefix: str, chart: PlacedChart, theme: ThemePrese
 
     field_name, chart_cls = _CHART_MODEL_MAP[chart.chart_type]
     objs, header_h = _make_chart_header_and_legend(slide_prefix, chart, theme)
-    left_pad = 135.0 if chart.chart_type in ("bar", "stacked_bar") else (20.0 if chart.chart_type in ("pie", "donut") else 42.0)
+    is_circ = chart.chart_type in ("pie", "donut")
+    left_pad = 135.0 if chart.chart_type in ("bar", "stacked_bar") else (72.0 if is_circ else 42.0)
+    right_pad = 72.0 if is_circ else 12.0
+    top_pad = 24.0 if is_circ else 0.0
+    bottom_pad = 36.0 if is_circ else 10.0
     plot_x = chart.rect.x + left_pad
-    plot_y = chart.rect.y + header_h
-    plot_w = max(120.0, chart.rect.w - left_pad - 12.0)
-    plot_h = max(120.0, chart.rect.h - header_h - 10.0)
+    plot_y = chart.rect.y + header_h + top_pad
+    plot_w = max(120.0, chart.rect.w - left_pad - right_pad)
+    plot_h = max(120.0, chart.rect.h - header_h - top_pad - bottom_pad)
 
     active_series = [sr for sr in chart.series if sr.active] or list(chart.series)
     cat_count = len(chart.categories)
-    data_rows: list[ChartDataRow] = []
-    for c_idx in range(cat_count):
-        vals: list[ChartDataValue] = []
-        for sr in active_series:
-            v = sr.values[c_idx] if c_idx < len(sr.values) else None
-            vals.append(ChartDataValue(number=float(v)) if v is not None else ChartDataValue(empty=True))
-        data_rows.append(ChartDataRow(values=vals))
-
-    data = ChartData(
-        chart_data_source=ChartDataSource.CHART_DATA_GRID,
-        plot_direction=PlotDirection.COLUMNS_AS_SERIES,
-        column_labels=[sr.name for sr in active_series],
-        row_labels=list(chart.categories),
-        rows=data_rows,
-    )
 
     label_style = ParagraphProperties(
         character_properties=CharacterProperties(
@@ -1802,26 +1792,81 @@ def _make_chart_objects(slide_prefix: str, chart: PlacedChart, theme: ThemePrese
     )
 
     palette = theme.segment_palette
-    series_models: list[ChartSeries] = []
-    for s_idx, sr in enumerate(active_series):
-        orig_idx = chart.series.index(sr)
-        s_rgb = hex_to_rgb_float(sr.color_hex) if sr.color_hex else palette[orig_idx % len(palette)]
-        s_fill = Fill(color=Color(rgba=_rgba(s_rgb)))
-        s_stroke = (
-            Stroke(line=Line(color=Color(rgba=_rgba(s_rgb)), width=3.5, pattern=Pattern.SOLID))
-            if chart.chart_type in ("line", "area")
-            else None
+    if chart.chart_type in ("pie", "donut"):
+        sr0 = active_series[0]
+        row_vals = [
+            ChartDataValue(number=float(sr0.values[c_idx]))
+            if (c_idx < len(sr0.values) and sr0.values[c_idx] is not None)
+            else ChartDataValue(empty=True)
+            for c_idx in range(cat_count)
+        ]
+        data = ChartData(
+            chart_data_source=ChartDataSource.CHART_DATA_GRID,
+            plot_direction=PlotDirection.COLUMNS_AS_SERIES,
+            column_labels=list(chart.categories),
+            row_labels=[sr0.name],
+            rows=[ChartDataRow(values=row_vals)],
         )
-        series_models.append(
-            ChartSeries(
-                series_index=s_idx,
-                show_value_labels=chart.show_value_labels,
-                value_label_text_style=value_label_style,
-                fill=s_fill,
-                stroke=s_stroke,
-                symbol_fill=s_fill,
+        series_models = []
+        for c_idx in range(max(1, cat_count)):
+            c_rgb = palette[c_idx % len(palette)]
+            in_rgb = (0.08, 0.10, 0.14) if contrast_ratio(c_rgb, (1.0, 1.0, 1.0)) < 2.8 else (1.0, 1.0, 1.0)
+            in_style = ParagraphProperties(
+                character_properties=CharacterProperties(
+                    font_name=theme.font_body,
+                    font_size=15.0,
+                    bold=True,
+                    character_fill=Fill(color=Color(rgba=_rgba(in_rgb))),
+                )
             )
+            series_models.append(
+                ChartSeries(
+                    series_index=c_idx,
+                    show_value_labels=chart.show_value_labels,
+                    value_label_position=SeriesValueLabelPosition.INSIDE,
+                    value_label_text_style=in_style,
+                    value_label_outside_text_style=value_label_style,
+                    fill=Fill(color=Color(rgba=_rgba(c_rgb))),
+                )
+            )
+    else:
+        data_rows: list[ChartDataRow] = []
+        for c_idx in range(cat_count):
+            vals: list[ChartDataValue] = []
+            for sr in active_series:
+                v = sr.values[c_idx] if c_idx < len(sr.values) else None
+                vals.append(ChartDataValue(number=float(v)) if v is not None else ChartDataValue(empty=True))
+            data_rows.append(ChartDataRow(values=vals))
+
+        data = ChartData(
+            chart_data_source=ChartDataSource.CHART_DATA_GRID,
+            plot_direction=PlotDirection.COLUMNS_AS_SERIES,
+            column_labels=[sr.name for sr in active_series],
+            row_labels=list(chart.categories),
+            rows=data_rows,
         )
+
+        series_models = []
+        for s_idx, sr in enumerate(active_series):
+            orig_idx = chart.series.index(sr)
+            s_rgb = hex_to_rgb_float(sr.color_hex) if sr.color_hex else palette[orig_idx % len(palette)]
+            s_fill = Fill(color=Color(rgba=_rgba(s_rgb)))
+            s_stroke = (
+                Stroke(line=Line(color=Color(rgba=_rgba(s_rgb)), width=3.5, pattern=Pattern.SOLID))
+                if chart.chart_type in ("line", "area")
+                else None
+            )
+            series_models.append(
+                ChartSeries(
+                    series_index=s_idx,
+                    show_value_labels=chart.show_value_labels,
+                    value_label_text_style=value_label_style,
+                    value_label_outside_text_style=value_label_style,
+                    fill=s_fill,
+                    stroke=s_stroke,
+                    symbol_fill=s_fill,
+                )
+            )
 
     kwargs: dict[str, Any] = {
         "identifier": f"{slide_prefix}_{chart.id}",

@@ -6,6 +6,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from functools import lru_cache
 import json
+import math
 from pathlib import Path
 from typing import Any, Literal, Sequence
 
@@ -802,7 +803,14 @@ def compute_dag_layers(
 def _as_float(val: Any) -> float | None:
     if isinstance(val, bool) or not isinstance(val, (int, float)):
         return None
-    return float(val)
+    f = float(val)
+    return f if math.isfinite(f) else None
+
+
+def _as_int(val: Any) -> int | None:
+    if isinstance(val, bool) or not isinstance(val, int):
+        return None
+    return int(val)
 
 
 @lru_cache(maxsize=1)
@@ -1065,17 +1073,17 @@ def _validate_canvas_scene(
             errors.append(f"{prefix}.grid must be an object.")
         else:
             _check_allowed_keys(g, "grid", f"{prefix}.grid", errors)
-            cols_val = _as_float(g.get("columns", 12))
+            cols_val = _as_int(g.get("columns", 12))
             if cols_val is None or cols_val < 1 or cols_val > 24:
                 errors.append(f"{prefix}.grid.columns must be an integer in [1, 24].")
             else:
-                grid_cols = int(cols_val)
+                grid_cols = cols_val
             if g.get("rows") is not None:
-                rows_val = _as_float(g["rows"])
+                rows_val = _as_int(g["rows"])
                 if rows_val is None or rows_val < 1 or rows_val > 12:
                     errors.append(f"{prefix}.grid.rows must be an integer in [1, 12].")
                 else:
-                    grid_rows = int(rows_val)
+                    grid_rows = rows_val
             if "gap" in g:
                 gap_val = _as_float(g["gap"])
                 if gap_val is None or gap_val < 0:
@@ -1105,10 +1113,27 @@ def _validate_canvas_scene(
                 arrange = reg.get("arrange", "stack")
                 if arrange not in valid_arranges:
                     errors.append(f"{prefix}.regions['{rid}']: invalid arrange '{arrange}'.")
-                col = int(_as_float(reg.get("col", 1)) or 0)
-                row = int(_as_float(reg.get("row", 1)) or 0)
-                cspan = int(_as_float(reg.get("col_span", 12)) or 0)
-                rspan = int(_as_float(reg.get("row_span", 1)) or 0)
+                if reg.get("gap") is not None:
+                    rgap = _as_float(reg["gap"])
+                    if rgap is None or rgap < 0:
+                        errors.append(f"{prefix}.regions['{rid}'].gap: must be a non-negative number.")
+                if reg.get("padding") is not None:
+                    rpad = _as_float(reg["padding"])
+                    if rpad is None or rpad < 0:
+                        errors.append(f"{prefix}.regions['{rid}'].padding: must be a non-negative number.")
+                if reg.get("frame") is not None and not isinstance(reg["frame"], bool):
+                    errors.append(f"{prefix}.regions['{rid}'].frame: must be a boolean.")
+                if reg.get("title") is not None and not isinstance(reg["title"], str):
+                    errors.append(f"{prefix}.regions['{rid}'].title: must be a string.")
+                col = _as_int(reg.get("col", 1))
+                row = _as_int(reg.get("row", 1))
+                cspan = _as_int(reg.get("col_span", 12))
+                rspan = _as_int(reg.get("row_span", 1))
+                if col is None or row is None or cspan is None or rspan is None:
+                    errors.append(
+                        f"{prefix}.regions['{rid}']: col, row, col_span, and row_span must be integers."
+                    )
+                    continue
                 if col < 1 or cspan < 1 or col + cspan - 1 > grid_cols:
                     errors.append(
                         f"{prefix}.regions['{rid}']: col={col}, col_span={cspan} exceeds grid columns={grid_cols}."
@@ -1173,9 +1198,26 @@ def _validate_canvas_scene(
         if variant not in valid_variants:
             errors.append(f"{prefix}.objects['{oid}']: invalid variant '{variant}'.")
 
-        step_val = _as_float(obj.get("step", 1))
+        step_val = _as_int(obj.get("step", 1))
         if step_val is None or step_val < 0:
             errors.append(f"{prefix}.objects['{oid}']: 'step' must be a non-negative integer.")
+
+        if "weight" in obj:
+            w_val = _as_float(obj["weight"])
+            if w_val is None or w_val < 0.1:
+                errors.append(f"{prefix}.objects['{oid}'].weight: must be a finite number >= 0.1.")
+
+        if obj.get("font_size") is not None:
+            fs_val = _as_float(obj["font_size"])
+            if fs_val is None or fs_val < 10.0 or fs_val > 140.0:
+                errors.append(f"{prefix}.objects['{oid}'].font_size: must be a finite number in [10, 140].")
+
+        if obj.get("bold") is not None and not isinstance(obj["bold"], bool):
+            errors.append(f"{prefix}.objects['{oid}'].bold: must be a boolean.")
+        if obj.get("dashed") is not None and not isinstance(obj["dashed"], bool):
+            errors.append(f"{prefix}.objects['{oid}'].dashed: must be a boolean.")
+        if obj.get("align") is not None and obj["align"] not in {"left", "center", "right"}:
+            errors.append(f"{prefix}.objects['{oid}'].align: invalid align '{obj['align']}'.")
 
         for hex_field in ("fill_hex", "border_hex", "color_hex"):
             if obj.get(hex_field) is not None and not is_valid_hex_color(str(obj[hex_field])):
@@ -1220,9 +1262,27 @@ def _validate_canvas_scene(
                     errors.append(f"{prefix}.objects['{oid}'].chart: invalid render_mode '{crm}'.")
                 cats = ch.get("categories")
                 series = ch.get("series")
-                if not isinstance(cats, list) or not cats:
-                    errors.append(f"{prefix}.objects['{oid}'].chart: 'categories' must be a non-empty list.")
+                if not isinstance(cats, list) or not cats or not all(isinstance(c, str) and c for c in cats):
+                    errors.append(f"{prefix}.objects['{oid}'].chart: 'categories' must be a non-empty list of strings.")
                     cats = []
+                ax_min_val: float | None = None
+                ax_max_val: float | None = None
+                if ch.get("axis_min") is not None:
+                    ax_min_val = _as_float(ch["axis_min"])
+                    if ax_min_val is None:
+                        errors.append(f"{prefix}.objects['{oid}'].chart.axis_min: must be a finite number.")
+                if ch.get("axis_max") is not None:
+                    ax_max_val = _as_float(ch["axis_max"])
+                    if ax_max_val is None:
+                        errors.append(f"{prefix}.objects['{oid}'].chart.axis_max: must be a finite number.")
+                if ax_min_val is not None and ax_max_val is not None and ax_min_val >= ax_max_val:
+                    errors.append(
+                        f"{prefix}.objects['{oid}'].chart: axis_min ({ax_min_val}) must be < axis_max ({ax_max_val})."
+                    )
+                if ch.get("show_legend") is not None and not isinstance(ch["show_legend"], bool):
+                    errors.append(f"{prefix}.objects['{oid}'].chart.show_legend: must be a boolean.")
+                if "show_value_labels" in ch and not isinstance(ch["show_value_labels"], bool):
+                    errors.append(f"{prefix}.objects['{oid}'].chart.show_value_labels: must be a boolean.")
                 if not isinstance(series, list) or not series:
                     errors.append(f"{prefix}.objects['{oid}'].chart: 'series' must be a non-empty list.")
                 else:
@@ -1255,17 +1315,30 @@ def _validate_canvas_scene(
                     errors.append(f"{prefix}.objects['{oid}'].table: invalid reveal '{trev}'.")
                 hdrs = tb.get("headers")
                 trows = tb.get("rows")
-                if not isinstance(hdrs, list) or not hdrs:
-                    errors.append(f"{prefix}.objects['{oid}'].table: 'headers' must be a non-empty list.")
+                if not isinstance(hdrs, list) or not hdrs or not all(isinstance(h, str) for h in hdrs):
+                    errors.append(f"{prefix}.objects['{oid}'].table: 'headers' must be a non-empty list of strings.")
                     hdrs = []
                 if not isinstance(trows, list) or not trows:
                     errors.append(f"{prefix}.objects['{oid}'].table: 'rows' must be a non-empty list.")
+                    trows = []
                 else:
                     for r_idx, row in enumerate(trows):
-                        if not isinstance(row, list) or (hdrs and len(row) != len(hdrs)):
+                        if not isinstance(row, list) or (hdrs and len(row) != len(hdrs)) or not all(isinstance(cell, str) for cell in row):
                             errors.append(
-                                f"{prefix}.objects['{oid}'].table.rows[{r_idx}]: column count must match headers ({len(hdrs)})."
+                                f"{prefix}.objects['{oid}'].table.rows[{r_idx}]: must be a list of {len(hdrs)} strings matching headers."
                             )
+                for hl_key, limit in (("highlight_cols", len(hdrs)), ("highlight_rows", len(trows))):
+                    if hl_key in tb and tb[hl_key] is not None:
+                        hl_vals = tb[hl_key]
+                        if not isinstance(hl_vals, list):
+                            errors.append(f"{prefix}.objects['{oid}'].table.{hl_key}: must be a list of integers.")
+                        else:
+                            for idx_val in hl_vals:
+                                iv = _as_int(idx_val)
+                                if iv is None or iv < 0 or (limit > 0 and iv >= limit):
+                                    errors.append(
+                                        f"{prefix}.objects['{oid}'].table.{hl_key}: index {idx_val!r} out of range [0, {max(0, limit - 1)}]."
+                                    )
         elif kind == "diagram":
             dg = obj.get("diagram")
             if not isinstance(dg, dict):
@@ -1519,8 +1592,9 @@ def validate_deck(
             errors.append(f"{prefix}: invalid pacing '{pacing}'.")
 
         object_ids: set[str] = set()
+        canvas_object_map: dict[str, dict[str, Any]] = {}
         if layout == "canvas":
-            object_ids, _ = _validate_canvas_scene(
+            object_ids, canvas_object_map = _validate_canvas_scene(
                 s,
                 prefix=prefix,
                 claim_ids=claim_ids,
@@ -1709,6 +1783,24 @@ def validate_deck(
                                     errors.append(
                                         f"{prefix}.frames[{f_idx}].object_states['{oid}'].visible_edges: must be 'auto' or list of strings."
                                     )
+                            c_obj = canvas_object_map.get(oid)
+                            if c_obj and c_obj.get("kind") == "diagram" and isinstance(c_obj.get("diagram"), dict):
+                                dg = c_obj["diagram"]
+                                dg_nodes = {str(n.get("id")) for n in dg.get("nodes", []) if isinstance(n, dict) and n.get("id")}
+                                dg_edges = {str(e.get("id")) for e in dg.get("edges", []) if isinstance(e, dict) and e.get("id")}
+                                for list_key in ("visible_nodes", "expanded_nodes", "focus_nodes"):
+                                    if isinstance(st_val.get(list_key), list):
+                                        for ref_id in st_val[list_key]:
+                                            if ref_id not in dg_nodes:
+                                                errors.append(
+                                                    f"{prefix}.frames[{f_idx}].object_states['{oid}'].{list_key}: unknown diagram node '{ref_id}'."
+                                                )
+                                if isinstance(st_val.get("visible_edges"), list):
+                                    for ref_eid in st_val["visible_edges"]:
+                                        if ref_eid not in dg_edges:
+                                            errors.append(
+                                                f"{prefix}.frames[{f_idx}].object_states['{oid}'].visible_edges: unknown diagram edge '{ref_eid}'."
+                                            )
 
             if not f.get("notes"):
                 warnings.append(

@@ -129,7 +129,7 @@ If you prefer full control over every scene—without manually maintaining dozen
 
 ### Run the Built-in Examples
 
-The repository includes 5 example storyboards across varying levels of complexity:
+The repository includes 6 example storyboards across varying levels of complexity:
 
 ```bash
 # Example 1: Minimal 6-frame concept walkthrough (direct Stage 1 compilation)
@@ -138,8 +138,8 @@ uv run keyflow compile -i examples/agent_skill_stage1.json -o out/AgentSkill.key
 # Example 2: LLM sampling deep dive (pinned top flow + Softmax matrix + Top-p proportion bar)
 uv run keyflow compile -i examples/llm_sampling_stage1.json -o out/LLM_Sampling.keyx
 
-# Example 3: Multi-genre showcase (architecture evolution + sequence timeline arcs + metrics cards)
-uv run keyflow compile -i examples/genres_showcase_stage1.json -o out/Showcase.keyx
+# Example 3: Freeform compositional canvas (vector progressive chart + native table + progressive inline diagram)
+uv run keyflow compile -i examples/freeform_canvas_stage1.json -o out/FreeformCanvas.keyx
 ```
 
 Add `--preview-dir` on macOS to export per-slide PNG images via Keynote right after compilation:
@@ -149,13 +149,14 @@ uv run keyflow compile -i examples/llm_sampling_stage1.json -o out/LLM_Sampling.
 ```
 
 <details>
-<summary>View all 5 built-in examples</summary>
+<summary>View all 6 built-in examples</summary>
 
 - [examples/agent_skill_stage1.json](examples/agent_skill_stage1.json) — ~40-line Stage 1 summary that compiles into a 6-slide progressive walkthrough with zero manual frames.
 - [examples/agent_skill_demo.json](examples/agent_skill_demo.json) — Complete 6-frame storyboard with explicit per-frame pacing.
 - [examples/keyflow_readme_deck.json](examples/keyflow_readme_deck.json) — Two-scene deck distilled from documentation (overview flow + side-by-side comparison).
 - [examples/genres_showcase_stage1.json](examples/genres_showcase_stage1.json) — Showcases `architecture_evolution`, `sequence_timeline`, and `metrics_cards`.
 - [examples/llm_sampling_stage1.json](examples/llm_sampling_stage1.json) — Full-featured Stage 1 deck combining `pinned_flow`, `comparison_matrix`, and `proportion_bar`.
+- [examples/freeform_canvas_stage1.json](examples/freeform_canvas_stage1.json) — Freeform `canvas` deck combining custom `palette`, pure-`Shape` progressive vector charts, native `Table` & `DonutChart`, and node-by-node inline `diagram` builds.
 
 </details>
 
@@ -179,6 +180,14 @@ KeyFlow's layouts and pacing rules are built around four practical presentation 
 ---
 
 ## Visual Layouts & Customization
+
+### Freeform Compositional Canvas (`layout: "canvas"`, default `use_templates: false`)
+
+When a single preset layout is too rigid for multi-part analytical storytelling, declare `layout: "canvas"` to partition the slide on a 12-column `grid` into non-overlapping `regions` (`stack`, `row`, or `grid`) and compose heterogeneous `.keyx` primitives:
+
+- **7 Object Types**: `card`, `callout`, `textbox`, `shape` (`rounded_rect`, `rect`, `ellipse`, `pill`, or normalized `svg_path`), `chart` (9 chart types), `table` (native `.keyx` `Table`), and inline `diagram` (reusing flow/DAG/hub solvers with node-by-node progressive pacing).
+- **Dual-Path Charts (`render_mode`: `auto` | `vector` | `native`)**: Under `auto` (default), static `reveal: "whole"` charts compile as editable native Keynote `Chart` objects, while progressive `by_series` / `by_category` charts compile as pure `Shape` + `Textbox` vectors with pre-reserved series slots—keeping earlier bar widths and coordinates 100% locked for Apple Keynote **Magic Move**.
+- **Template Switch (`use_templates`)**: Defaults to `false` (enabling `canvas` and custom `palette` tokens); pass `--use-templates` on the CLI or `use_templates: true` in JSON to enforce the 10 preset layouts only.
 
 ### 10 Built-in Layouts (`layout`)
 

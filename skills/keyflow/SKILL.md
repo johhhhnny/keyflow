@@ -22,14 +22,23 @@ Before authoring any Scene Graph JSON, produce a concise **Stage 0 Narrative Bri
    - `counter_evidence`: caveats, bottlenecks, or competing explanations
    - `conclusion`: synthesized takeaway conditioned strictly on the stated qualifiers
 2. **Choose Visual Expression From Logic First (And Isolate Metric Scopes)**:
-   Decide the visual form by reasoning structure BEFORE reaching for cards, and vary visual rhythm across scenes:
-   - **Single Hero Stat / Core Thesis**: `metrics_cards` with **1–2** bold centerpiece cards (`metric` + crisp `label`, generous whitespace). Never invent dummy cards just to fill a 4-node row.
-   - **Causal Split / Resource Contention / Bottleneck**: `flow_dag` with explicit **fork/merge branches** (e.g., shared scarce capacity splitting between internal demand and external clients), labeled edges, and `FACT` vs `INFERENCE` badges.
-   - **Value Chain / Persistent Chapter Spine**: deck-level `pinned_flow` (centered macro overview -> docked top ribbon via `active_flow_node`) paired with focused deep-dive scenes.
-   - **Single-Denominator Share / Allocation**: `proportion_bar` — **enforce single `metric_scope` per chart** (never put revenue share in the subtitle of a launch-count share chart; split incompatible scopes across scenes).
-   - **Multi-Party Quantitative / Strategic Contrast**: `comparison_matrix` (columns, `formula`, `↑`/`↓` trends, `action_banner`, `takeaway`) or side-by-side `comparison` — label clearly if comparing actual price vs. target cost so differing accounting bases are never blurred.
-   - **Sequential Evolution / Milestones**: `horizontal_flow` (3–5 pillars; unpack 2 children as `row`, 3–4 as `grid`), `architecture_evolution` (`v1 -> v2 -> v3`), or `sequence_timeline` (forward skips + backward loops).
-   - **Core + Radiating Factors**: `hub_spoke` (center `variant: "accent"` + 3–6 spokes).
+   Decide the visual form by reasoning structure BEFORE reaching for cards, and vary visual rhythm across scenes. You have **two complementary modes** controlled by top-level `use_templates` (defaults to `false`):
+   - **Freeform Compositional Canvas (`layout: "canvas"`, default `use_templates: false`) — Preferred for Heterogeneous / Analytical Scenes**:
+     Combine heterogeneous visual objects on a 12-column `grid` partitioned into non-overlapping `regions` (`col`, `row`, `col_span`, `row_span`, `arrange`: `"stack" | "row" | "grid"`, `title`, `frame`), keeping **<= 3–4 regions** and **<= 5–6 top-level objects** per slide for generous breathing room:
+     - `card` / `callout`: concise structural anchors or highlighted conclusions (`label`, optional `badge`, `metric`, `sublabel`, `variant`, `weight`)
+     - `textbox` / `shape`: typography blocks (`align`, `font_size` in `10–140`) and geometric shapes (`rounded_rect`, `rect`, `ellipse`, `pill`, or custom normalized `svg_path`)
+     - `chart`: 9 data-driven chart types (`column`, `bar`, `pie`, `donut`, `line`, `area`, `stacked_column`, `stacked_bar`, `scatter`) with `reveal`: `"whole" | "by_series" | "by_category"` and `render_mode`: `"auto" | "vector" | "native"`. Under `render_mode: "auto"` (recommended), progressive charts (`reveal != "whole"`) compile into pure `.keyx` `Shape` + `Textbox` vectors with locked cluster widths so Keynote Magic Move keeps earlier bars rock-solid; static `reveal: "whole"` charts compile as editable native `.keyx` `Chart` objects.
+     - `table`: native `.keyx` `Table` (`headers`, `rows`, `reveal`: `"whole" | "by_row" | "by_column"`, `highlight_cols`, `highlight_rows`)
+     - `diagram`: inline node-and-edge subgraph (`diagram_layout`: `"horizontal" | "vertical" | "dag" | "hub_spoke"`) embedded inside a region; `pace` automatically decomposes multi-node diagrams node-by-node / layer-by-layer with locked coordinates.
+     - `connectors`: cross-object arrows (`from`, `to`, `label`, `style`) across objects on the canvas; `step` controls object appearance order, and deck/scene `palette` lets you customize visual colors (`bg_hex`, `title_hex`, `accent_fill_hex`, `series_colors`, etc.).
+   - **10 Built-in Preset Layouts (also enforceable via `use_templates: true` / `--use-templates`)**:
+     - **Single Hero Stat / Core Thesis**: `metrics_cards` with **1–2** bold centerpiece cards (`metric` + crisp `label`, generous whitespace). Never invent dummy cards just to fill a 4-node row.
+     - **Causal Split / Resource Contention / Bottleneck**: `flow_dag` with explicit **fork/merge branches** (e.g., shared scarce capacity splitting between internal demand and external clients), labeled edges, and `FACT` vs `INFERENCE` badges.
+     - **Value Chain / Persistent Chapter Spine**: deck-level `pinned_flow` (centered macro overview -> docked top ribbon via `active_flow_node`) paired with focused deep-dive scenes.
+     - **Single-Denominator Share / Allocation**: `proportion_bar` — **enforce single `metric_scope` per chart** (never put revenue share in the subtitle of a launch-count share chart; split incompatible scopes across scenes).
+     - **Multi-Party Quantitative / Strategic Contrast**: `comparison_matrix` (columns, `formula`, `↑`/`↓` trends, `action_banner`, `takeaway`) or side-by-side `comparison` — label clearly if comparing actual price vs. target cost so differing accounting bases are never blurred.
+     - **Sequential Evolution / Milestones**: `horizontal_flow` (3–5 pillars; unpack 2 children as `row`, 3–4 as `grid`), `architecture_evolution` (`v1 -> v2 -> v3`), or `sequence_timeline` (forward skips + backward loops).
+     - **Core + Radiating Factors**: `hub_spoke` (center `variant: "accent"` + 3–6 spokes).
 3. **Design the Narrative Arc Across Scenes**:
    For each scene in the Stage 0 brief, define:
    - `claim`: the single takeaway the audience must remember from this scene
@@ -59,7 +68,9 @@ Translate the Stage 0 brief into clean Stage 1 diagrams. Do **not** hand-write `
    Put all prose explanations, caveats, citations, and presenter context into each node/child's **`note`** field (and scene `intro_note`).
 2. **Structured Story Model & Evidence Grounding (Recommended for Analytical Decks)**:
    Include optional `story_model` at the deck root (`core_question`, `claims`: `id`, `type`, `claim`, `source_quote`, `metric_scope`, `confidence`), set per-scene `claim` & `metric_scope`, and link elements via `evidence_refs: [...]`. `keyflow audit` automatically enforces epistemic alignment (e.g., rejects `badge: "FACT"` pointing to an `inference` claim), flags `scope_mixing` across incompatible denominators, warns on `unsourced_fact`, and catches dropped `thesis` / `counter_evidence` claims.
-3. **Optional Structural Seed for Long Articles**:
+3. **Freeform vs. Template Mode (`use_templates`)**:
+   `use_templates` defaults to `false`, enabling `layout: "canvas"`, `palette`, native/vector `chart`, native `table`, and inline `diagram`. Pass `--use-templates` (CLI) or `use_templates: true` only when validating strict preset-only decks.
+4. **Optional Structural Seed for Long Articles**:
    Run `uv run keyflow outline -i article.md --stage1 -o starter.json` (or MCP `extract_outline`) only as a mechanical starting skeleton — replace generic chapter summaries with your Stage 0 narrative plan.
 
 ---

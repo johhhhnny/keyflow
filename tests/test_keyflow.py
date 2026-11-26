@@ -1790,3 +1790,92 @@ def test_cli_and_mcp_use_templates_switch_and_freeform_compile(tmp_path: Path) -
     assert mcp_ok["compiled"] is True
     assert mcp_ok["audit"]["passed"] is True
     assert mcp_out.exists()
+
+
+def test_canvas_schema_rejects_malformed_types_bounds_and_refs() -> None:
+    import math
+
+    # 1. Float step, bad weight, out-of-range font_size, float grid/region coords
+    bad1 = _freeform_canvas_stage1()
+    bad1["scenes"][0]["grid"]["columns"] = 12.5
+    bad1["scenes"][0]["regions"][0]["col"] = 1.5
+    bad1["scenes"][0]["objects"][0]["step"] = 1.5
+    bad1["scenes"][0]["objects"][0]["weight"] = "heavy"
+    bad1["scenes"][0]["objects"][3]["font_size"] = 220
+    res1 = validate_deck(bad1)
+    assert res1.valid is False
+    joined1 = "\n".join(res1.errors)
+    assert "grid.columns" in joined1
+    assert "col, row, col_span, and row_span must be integers" in joined1
+    assert "'step' must be a non-negative integer" in joined1
+    assert ".weight: must be a finite number >= 0.1" in joined1
+    assert ".font_size: must be a finite number in [10, 140]" in joined1
+
+    # 2. Chart NaN/Inf values, axis_min >= axis_max, and out-of-range table highlight indices
+    bad2 = _freeform_canvas_stage1()
+    bad2["scenes"][0]["objects"][0]["chart"]["series"][0]["values"] = [10, math.nan, 30]
+    bad2["scenes"][0]["objects"][0]["chart"]["axis_min"] = 50
+    bad2["scenes"][0]["objects"][0]["chart"]["axis_max"] = 10
+    bad2["scenes"][0]["objects"][1]["table"]["highlight_cols"] = [9]
+    bad2["scenes"][0]["objects"][1]["table"]["highlight_rows"] = [-1]
+    res2 = validate_deck(bad2)
+    assert res2.valid is False
+    joined2 = "\n".join(res2.errors)
+    assert "all values must be numeric" in joined2
+    assert "axis_min (50.0) must be < axis_max (10.0)" in joined2
+    assert "highlight_cols" in joined2
+    assert "highlight_rows" in joined2
+
+    # 3. Unknown diagram node/edge ids inside frames[].object_states
+    bad3 = _freeform_canvas_stage1()
+    bad3["scenes"][1]["frames"] = [
+        {
+            "visible_objects": ["mix_donut", "mini_flow"],
+            "object_states": {
+                "mini_flow": {
+                    "visible_nodes": ["a", "ghost_node"],
+                    "visible_edges": ["ghost_edge"],
+                }
+            },
+            "notes": "Bad inline diagram state",
+        }
+    ]
+    res3 = validate_deck(bad3)
+    assert res3.valid is False
+    joined3 = "\n".join(res3.errors)
+    assert "unknown diagram node 'ghost_node'" in joined3
+    assert "unknown diagram edge 'ghost_edge'" in joined3
+
+
+def test_freeform_builtin_example_compiles_with_locked_bars_and_native_chart(tmp_path: Path) -> None:
+    from creator_studio_doc_format.core import KeyxDocument
+
+    raw = json.loads(Path("examples/freeform_canvas_stage1.json").read_text(encoding="utf-8"))
+    assert validate_deck(raw).valid is True
+    paced = pace_deck(raw)
+    rep = audit_deck(paced, strict=True)
+    assert rep.passed is True, [e.to_dict() for e in rep.errors]
+
+    out = tmp_path / "builtin_freeform.keyx"
+    compile_deck(paced, out)
+    with KeyxDocument.open(out) as loaded:
+        slides = loaded.payload.slides
+        assert len(slides) == 9  # 5 frames scene 0 + 4 frames scene 1
+        # Progressive vector bars on slides 1 & 2 keep exact locked width
+        s1_bars = {
+            obj.object.shape.identifier.removeprefix("s1_"): obj.object.shape.geometry
+            for obj in slides[0].contents
+            if obj.object.shape is not None and "_compile_col_c_0_" in obj.object.shape.identifier
+        }
+        s2_bars = {
+            obj.object.shape.identifier.removeprefix("s2_"): obj.object.shape.geometry
+            for obj in slides[1].contents
+            if obj.object.shape is not None and "_compile_col_c_0_" in obj.object.shape.identifier
+        }
+        assert len(s1_bars) == 3 and set(s1_bars) == set(s2_bars)
+        for bid in s1_bars:
+            assert s1_bars[bid].size.width == pytest.approx(s2_bars[bid].size.width, abs=0.01)
+            assert s1_bars[bid].position.x == pytest.approx(s2_bars[bid].position.x, abs=0.01)
+        # Native DonutChart preserved on slide 6 (scene 1 frame 0)
+        donut_charts = [obj.object.chart for obj in slides[5].contents if obj.object.chart is not None]
+        assert len(donut_charts) == 1 and donut_charts[0].donut is not None
