@@ -17,6 +17,7 @@ from keyflow.schema import (
     FrameSpec,
     NodeSpec,
     NodeVariant,
+    ObjectGeometrySpec,
     PinnedFlowSpec,
     ProportionBarSpec,
     RegionSpec,
@@ -287,6 +288,54 @@ class ResolvedFrame:
     palette: dict[str, object] | None = None
     notes: str = ""
     depth: int = 1
+    overlay_ids: frozenset[str] = field(default_factory=frozenset)
+
+
+
+def _anchor_point(rect: BoxRect, side: str) -> tuple[float, float]:
+    """Return the midpoint of a named edge side of *rect* for P1-C connector anchors.
+
+    ``side`` is one of ``"top"``, ``"bottom"``, ``"left"``, ``"right"``, or ``"auto"``
+    (which falls back to the box centre).
+    """
+    if side == "top":
+        return (rect.cx, rect.y)
+    if side == "bottom":
+        return (rect.cx, rect.y + rect.h)
+    if side == "left":
+        return (rect.x, rect.cy)
+    if side == "right":
+        return (rect.x + rect.w, rect.cy)
+    # "auto" or unknown — use centre so the caller can clip via _clip_ray_to_box_edge
+    return (rect.cx, rect.cy)
+
+
+def _seg_intersects_rect(p0: tuple[float, float], p1: tuple[float, float], rect: BoxRect) -> bool:
+    """Return True if line segment *p0*→*p1* intersects axis-aligned *rect*.
+
+    Uses a slab (parametric) test on each axis pair.  The segment is treated as
+    half-open so that an endpoint that merely *touches* a corner is not counted.
+    """
+    dx = p1[0] - p0[0]
+    dy = p1[1] - p0[1]
+    t_min, t_max = 0.0, 1.0
+    for d, origin, lo, hi in (
+        (dx, p0[0], rect.x, rect.x + rect.w),
+        (dy, p0[1], rect.y, rect.y + rect.h),
+    ):
+        if abs(d) < 1e-9:
+            if origin < lo or origin > hi:
+                return False
+        else:
+            ta = (lo - origin) / d
+            tb = (hi - origin) / d
+            if ta > tb:
+                ta, tb = tb, ta
+            t_min = max(t_min, ta)
+            t_max = min(t_max, tb)
+            if t_min >= t_max:
+                return False
+    return True
 
 
 def _text_units(text: str) -> float:
@@ -1552,6 +1601,9 @@ def _resolve_canvas_scene(
     default_reg_id = regions[0].id
     objs_by_region: dict[str, list[CanvasObjectSpec]] = {r.id: [] for r in regions}
     for obj in scene.objects:
+        # P1-B: objects with explicit geometry bypass region slot assignment
+        if obj.geometry is not None:
+            continue
         target_reg = obj.region if (obj.region and obj.region in objs_by_region) else default_reg_id
         objs_by_region[target_reg].append(obj)
 
@@ -1565,6 +1617,31 @@ def _resolve_canvas_scene(
         )
         for obj, rect in slots:
             obj_rects[obj.id] = rect
+
+    # P1-B: override rects for objects with explicit geometry; track overlay ids
+    overlay_ids: set[str] = set()
+    for obj in scene.objects:
+        if obj.layer == "overlay":
+            overlay_ids.add(obj.id)
+        if obj.geometry is not None:
+            g = obj.geometry
+            if g.unit == "relative":
+                px_x = safe_x + g.x * safe_w
+                px_y = safe_y + g.y * safe_h
+                px_w = g.w * safe_w
+                px_h = g.h * safe_h
+            else:  # "px"
+                px_x, px_y, px_w, px_h = g.x, g.y, g.w, g.h
+            # anchor_to: treat geometry x,y as offset from referenced object's top-left
+            if g.anchor_to and g.anchor_to in obj_rects:
+                ref = obj_rects[g.anchor_to]
+                if g.unit == "relative":
+                    px_x = ref.x + g.x * safe_w
+                    px_y = ref.y + g.y * safe_h
+                else:
+                    px_x = ref.x + g.x
+                    px_y = ref.y + g.y
+            obj_rects[obj.id] = BoxRect(px_x, px_y, max(20.0, px_w), max(20.0, px_h))
 
     chart_bounds: dict[str, tuple[float | None, float | None]] = {}
     for obj in scene.objects:
@@ -1718,19 +1795,52 @@ def _resolve_canvas_scene(
                 if (focus_ids is None or (conn.from_id in focus_ids and conn.to_id in focus_ids))
                 else 0.42
             )
+
+            # P1-C: anchor-side picking
+            if conn.from_anchor == "auto":
+                p_from: tuple[float, float] = (rf.cx, rf.cy)
+            else:
+                p_from = _anchor_point(rf, conn.from_anchor)
+            if conn.to_anchor == "auto":
+                p_to: tuple[float, float] = (rt.cx, rt.cy)
+            else:
+                p_to = _anchor_point(rt, conn.to_anchor)
+
+            # P1-C: obstacle-aware arc routing
+            curve_ctrl: tuple[float, float] | None = None
+            mx = (p_from[0] + p_to[0]) / 2.0
+            my = (p_from[1] + p_to[1]) / 2.0
+            if conn.routing == "curved":
+                # Always arc 80 px above midpoint
+                curve_ctrl = (mx, my - 80.0)
+            elif conn.routing == "auto":
+                # Check if the straight line hits any other visible object rect
+                obstacles = [
+                    connector_rects[oid]
+                    for oid in vis_ids
+                    if oid != conn.from_id and oid != conn.to_id and oid in connector_rects
+                ]
+                if any(_seg_intersects_rect(p_from, p_to, r) for r in obstacles):
+                    curve_ctrl = (mx, my - 90.0)
+            # routing == "straight" → no curve even with obstacles
+
             lrect: BoxRect | None = None
             if conn.label:
-                mx = (rf.cx + rt.cx) / 2.0
-                my = (rf.cy + rt.cy) / 2.0 - 20.0
                 lw = max(84.0, _text_units(conn.label) * 14.0)
-                lrect = BoxRect(mx - lw / 2.0, my - 16.0, lw, 30.0)
+                if curve_ctrl is not None:
+                    # Place label at arc apex (curve control point), 24 px above
+                    lrect = BoxRect(curve_ctrl[0] - lw / 2.0, curve_ctrl[1] - 36.0, lw, 30.0)
+                else:
+                    lrect = BoxRect(mx - lw / 2.0, my - 36.0, lw, 30.0)
+
             placed_edges.append(
                 PlacedEdge(
                     id=conn.id,
                     from_id=conn.from_id,
                     to_id=conn.to_id,
-                    tail_center=(rf.cx, rf.cy),
-                    head_center=(rt.cx, rt.cy),
+                    tail_center=p_from,
+                    head_center=p_to,
+                    curve_control=curve_ctrl,
                     label=conn.label,
                     label_rect=lrect,
                     style=conn.style,
@@ -1757,6 +1867,7 @@ def _resolve_canvas_scene(
                 palette=scene.palette,
                 notes=frame.notes,
                 depth=1 if f_idx == 0 else 2,
+                overlay_ids=frozenset(overlay_ids),
             )
         )
 

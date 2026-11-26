@@ -749,9 +749,15 @@ def _audit_frame(
                     )
 
     # Check collisions between heterogeneous freeform objects (e.g., chart vs card, table vs textbox)
+    # P1-B: overlay-layer objects are intentionally drawn on top; skip them from collision checks.
+    overlay_ids = getattr(frame, "overlay_ids", frozenset())
     box_ids = {b.id for b in top_cards} | {g.id for g in dashed_groups}
     for i, (id_a, rect_a) in enumerate(canvas_rects):
+        if id_a in overlay_ids:
+            continue
         for id_b, rect_b in canvas_rects[i + 1 :]:
+            if id_b in overlay_ids:
+                continue
             if id_a in box_ids and id_b in box_ids:
                 continue  # Already checked in box/group section above
             if _overlap_area(rect_a, rect_b):

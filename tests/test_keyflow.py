@@ -1909,3 +1909,322 @@ def test_schema_rejects_unhashable_or_non_string_enum_and_ref_values(bad_val: ob
     res2 = validate_deck(deck2)
     assert res2.valid is False
     assert len(res2.errors) >= 4
+
+
+# ---------------------------------------------------------------------------
+# P1-A: Magic Move cross-frame geometry regression harness
+# ---------------------------------------------------------------------------
+
+def _assert_magic_move_stable(slides: list, *, tol: float = 0.01, skip_last: int = 1) -> None:
+    """Assert all persistent Shape objects have identical geometry on consecutive slides.
+
+    For every pair of consecutive slides (i, i+1), collect all Shape objects by their
+    canonical identifier (stripping the ``s{n}_`` slide prefix).  For identifiers
+    present on *both* slides assert that position x/y, size width/height, fill RGBA,
+    and path string are equal within *tol*.  This verifies that Magic Move can smoothly
+    animate between frames rather than dissolving or jumping.
+    """
+    def _shape_map(slide, slide_idx: int) -> dict[str, tuple]:
+        prefix = f"s{slide_idx + 1}_"
+        result: dict[str, tuple] = {}
+        for obj in slide.contents:
+            sh = obj.object.shape
+            if sh is None or not sh.identifier:
+                continue
+            ident = sh.identifier.removeprefix(prefix)
+            fill_sig = str(sh.fill) if sh.fill is not None else None
+            path_sig = str(sh.path) if sh.path is not None else None
+            result[ident] = (sh.geometry.position, sh.geometry.size, fill_sig, path_sig)
+        return result
+
+    limit = len(slides) - 1 if skip_last <= 1 else max(0, len(slides) - skip_last)
+    for slide_i in range(limit):
+        map_a = _shape_map(slides[slide_i], slide_i)
+        map_b = _shape_map(slides[slide_i + 1], slide_i + 1)
+        shared = set(map_a) & set(map_b)
+        for ident in shared:
+            pos_a, sz_a, fill_a, path_a = map_a[ident]
+            pos_b, sz_b, fill_b, path_b = map_b[ident]
+            assert pos_a.x == pytest.approx(pos_b.x, abs=tol), (
+                f"Magic Move jitter: '{ident}' x changed {pos_a.x:.2f} -> {pos_b.x:.2f} between slides {slide_i + 1}->{slide_i + 2}"
+            )
+            assert pos_a.y == pytest.approx(pos_b.y, abs=tol), (
+                f"Magic Move jitter: '{ident}' y changed {pos_a.y:.2f} -> {pos_b.y:.2f} between slides {slide_i + 1}->{slide_i + 2}"
+            )
+            assert sz_a.width == pytest.approx(sz_b.width, abs=tol), (
+                f"Magic Move jitter: '{ident}' width changed {sz_a.width:.2f} -> {sz_b.width:.2f} between slides {slide_i + 1}->{slide_i + 2}"
+            )
+            assert sz_a.height == pytest.approx(sz_b.height, abs=tol), (
+                f"Magic Move jitter: '{ident}' height changed {sz_a.height:.2f} -> {sz_b.height:.2f} between slides {slide_i + 1}->{slide_i + 2}"
+            )
+            assert fill_a == fill_b, (
+                f"Magic Move fill changed for '{ident}' between slides {slide_i + 1}->{slide_i + 2}"
+            )
+            assert path_a == path_b, (
+                f"Magic Move path changed for '{ident}' between slides {slide_i + 1}->{slide_i + 2}"
+            )
+
+
+def test_magic_move_stable_on_freeform_canvas(tmp_path: Path) -> None:
+    """P1-A: Persistent canvas objects must not jitter in position/size between consecutive frames."""
+    from creator_studio_doc_format.core import KeyxDocument
+
+    raw = _freeform_canvas_stage1()
+    out = tmp_path / "p1a_mm.keyx"
+    compile_deck(raw, out)
+    assert out.exists()
+
+    with KeyxDocument.open(out) as loaded:
+        slides = list(loaded.payload.slides)
+    assert len(slides) >= 2, "Need at least 2 slides to test Magic Move stability"
+    _assert_magic_move_stable(slides)
+
+
+@pytest.mark.parametrize("reveal", ["whole", "by_series", "by_category"])
+def test_magic_move_stable_chart_reveals(tmp_path: Path, reveal: str) -> None:
+    """P1-A: Parametric chart reveal modes must keep the chart container rect stable across slides."""
+    from creator_studio_doc_format.core import KeyxDocument
+
+    raw = _freeform_canvas_stage1()
+    for sc in raw.get("scenes", []):
+        for obj in sc.get("objects", []):
+            if obj.get("chart"):
+                obj["chart"]["reveal"] = reveal
+    out = tmp_path / f"p1a_chart_{reveal}.keyx"
+    compile_deck(raw, out)
+    assert out.exists()
+    with KeyxDocument.open(out) as loaded:
+        slides = list(loaded.payload.slides)
+    if len(slides) >= 2:
+        _assert_magic_move_stable(slides)
+
+
+@pytest.mark.parametrize("reveal", ["whole", "by_row"])
+def test_magic_move_stable_table_reveals(tmp_path: Path, reveal: str) -> None:
+    """P1-A: Table reveal modes must keep the table container rect stable across slides."""
+    from creator_studio_doc_format.core import KeyxDocument
+
+    raw = _freeform_canvas_stage1()
+    for sc in raw.get("scenes", []):
+        for obj in sc.get("objects", []):
+            if obj.get("table"):
+                obj["table"]["reveal"] = reveal
+    out = tmp_path / f"p1a_table_{reveal}.keyx"
+    compile_deck(raw, out)
+    assert out.exists()
+    with KeyxDocument.open(out) as loaded:
+        slides = list(loaded.payload.slides)
+    if len(slides) >= 2:
+        _assert_magic_move_stable(slides)
+
+
+# ---------------------------------------------------------------------------
+# P1-B: Explicit geometry and overlay layer
+# ---------------------------------------------------------------------------
+
+def test_p1b_explicit_geometry_bypasses_region_and_overlay_skips_collision() -> None:
+    """P1-B: Objects with geometry override region placement; overlay objects are exempt from collision audit."""
+    raw = _freeform_canvas_stage1()
+    raw["scenes"][0]["objects"].append({
+        "id": "overlay_badge",
+        "kind": "shape",
+        "layer": "overlay",
+        "geometry": {"x": 0.0, "y": 0.0, "w": 0.1, "h": 0.05, "unit": "relative"},
+        "shape_type": "ellipse",
+        "fill_hex": "#FF4444",
+        "label": "NEW",
+    })
+    res = validate_deck(raw)
+    assert res.valid, f"Validation failed: {res.errors}"
+
+    deck = parse_deck(raw)
+    scene = deck.scenes[0]
+    frames = resolve_scene(scene, deck.slide_width, deck.slide_height)
+    assert frames, "Expected at least one resolved frame"
+    for frame in frames:
+        assert "overlay_badge" in frame.overlay_ids, (
+            f"frame {frame.frame_index}: 'overlay_badge' not in overlay_ids"
+        )
+    audit_res = audit_deck(raw)
+    collision_errors = [
+        f for f in audit_res.errors + audit_res.warnings
+        if f.category == "overlap" and "overlay_badge" in (f.target_id or "")
+    ]
+    assert not collision_errors, f"Overlay object incorrectly flagged for collision: {collision_errors}"
+
+
+def test_p1b_geometry_anchor_to_positions_relative_to_parent() -> None:
+    """P1-B: anchor_to places an object's top-left relative to the referenced object."""
+    raw = _freeform_canvas_stage1()
+    first_id = raw["scenes"][0]["objects"][0]["id"]
+    raw["scenes"][0]["objects"].append({
+        "id": "anchored_obj",
+        "kind": "shape",
+        "layer": "overlay",
+        "geometry": {"x": 0.02, "y": 0.0, "w": 0.05, "h": 0.04, "unit": "relative", "anchor_to": first_id},
+        "shape_type": "ellipse",
+        "fill_hex": "#00AA44",
+    })
+    res = validate_deck(raw)
+    assert res.valid, f"Validation failed: {res.errors}"
+
+    deck = parse_deck(raw)
+    frames = resolve_scene(deck.scenes[0], deck.slide_width, deck.slide_height)
+    assert frames
+    parent_rect = next(c.rect for c in frames[0].charts if c.id == first_id)
+    child_rect = next(s.rect for s in frames[0].shapes if s.id == "anchored_obj")
+    assert child_rect.x > parent_rect.x
+    assert child_rect.y == pytest.approx(parent_rect.y, abs=0.01)
+
+
+# ---------------------------------------------------------------------------
+# P1-B validation: reject bad geometry/layer/anchor_to
+# ---------------------------------------------------------------------------
+
+def test_p1b_schema_rejects_bad_geometry_and_layer() -> None:
+    """P1-B: Schema must reject invalid geometry values, bad layer, and unknown anchor_to."""
+    from keyflow.schema import validate_deck
+
+    # 1. Bad layer value
+    bad1 = _freeform_canvas_stage1()
+    bad1["scenes"][0]["objects"].append({
+        "id": "bad_layer",
+        "kind": "shape",
+        "layer": "foreground",   # invalid
+        "shape_type": "rect",
+    })
+    r1 = validate_deck(bad1)
+    assert r1.valid is False
+    assert any("layer" in e for e in r1.errors)
+
+    # 2. Non-numeric geometry coordinate
+    bad2 = _freeform_canvas_stage1()
+    bad2["scenes"][0]["objects"].append({
+        "id": "bad_geom",
+        "kind": "shape",
+        "geometry": {"x": "left", "y": 0, "w": 0.3, "h": 0.2},
+        "shape_type": "rect",
+    })
+    r2 = validate_deck(bad2)
+    assert r2.valid is False
+    assert any("geometry" in e for e in r2.errors)
+
+    # 3. Unknown anchor_to reference
+    bad3 = _freeform_canvas_stage1()
+    bad3["scenes"][0]["objects"].append({
+        "id": "bad_anchor",
+        "kind": "shape",
+        "geometry": {"x": 0, "y": 0, "w": 0.1, "h": 0.1, "anchor_to": "nonexistent_id"},
+        "shape_type": "rect",
+    })
+    r3 = validate_deck(bad3)
+    assert r3.valid is False
+    assert any("anchor_to" in e for e in r3.errors)
+
+
+# ---------------------------------------------------------------------------
+# P1-C: Connector anchors and obstacle-aware routing
+# ---------------------------------------------------------------------------
+
+def test_p1c_connector_anchors_and_routing_validate_and_resolve() -> None:
+    """P1-C: from_anchor/to_anchor/routing are validated, parsed, and produce correct PlacedEdge geometry."""
+    raw = _freeform_canvas_stage1()
+    raw["scenes"][0]["objects"].append({
+        "id": "conn_src", "kind": "card", "region": "right_top",
+        "label": "Source", "step": 1,
+    })
+    raw["scenes"][0]["objects"].append({
+        "id": "conn_dst", "kind": "card", "region": "right_bot",
+        "label": "Target", "step": 1,
+    })
+    raw["scenes"][0].setdefault("connectors", []).append({
+        "id": "edge_p1c",
+        "from": "conn_src", "to": "conn_dst",
+        "from_anchor": "right",
+        "to_anchor": "left",
+        "routing": "curved",
+        "label": "flows to",
+    })
+    res = validate_deck(raw)
+    assert res.valid, f"Validation failed: {res.errors}"
+
+    deck = parse_deck(raw)
+    scene = deck.scenes[0]
+    frames = resolve_scene(scene, deck.slide_width, deck.slide_height)
+    assert frames
+    found = False
+    for frame in frames:
+        p1c_edges = [e for e in frame.edges if e.id == "edge_p1c"]
+        if p1c_edges:
+            edge = p1c_edges[0]
+            assert edge.curve_control is not None, (
+                "routing='curved' should always produce a curve_control point"
+            )
+            assert edge.label_rect is not None
+            assert edge.label_rect.y < edge.curve_control[1]
+            src_box = next(b.rect for b in frame.boxes if b.id == "conn_src")
+            dst_box = next(b.rect for b in frame.boxes if b.id == "conn_dst")
+            assert edge.tail_center == pytest.approx((src_box.x + src_box.w, src_box.cy), abs=0.01)
+            assert edge.head_center == pytest.approx((dst_box.x, dst_box.cy), abs=0.01)
+            found = True
+            break
+    assert found, "Expected edge_p1c in at least one resolved frame"
+
+
+def test_p1c_obstacle_aware_auto_routing() -> None:
+    """P1-C: routing='auto' curves around an obstacle placed between source and target."""
+    raw = {
+        "title": "Obstacle Routing Test",
+        "theme": "slate_dark",
+        "scenes": [
+            {
+                "id": "obs_scene",
+                "title": "Obstacle Avoidance",
+                "grid": {"columns": 12, "rows": 1, "gap": 24},
+                "regions": [
+                    {"id": "left", "col": 1, "row": 1, "col_span": 3, "row_span": 1},
+                    {"id": "mid", "col": 5, "row": 1, "col_span": 4, "row_span": 1},
+                    {"id": "right", "col": 10, "row": 1, "col_span": 3, "row_span": 1},
+                ],
+                "objects": [
+                    {"id": "src", "kind": "card", "region": "left", "label": "A", "step": 1},
+                    {"id": "blocker", "kind": "card", "region": "mid", "label": "Blocker", "step": 1},
+                    {"id": "dst", "kind": "card", "region": "right", "label": "B", "step": 1},
+                ],
+                "connectors": [
+                    {"id": "auto_arc", "from": "src", "to": "dst", "routing": "auto"},
+                    {"id": "forced_straight", "from": "src", "to": "dst", "routing": "straight"},
+                ],
+            }
+        ],
+    }
+    res = validate_deck(raw)
+    assert res.valid, f"Validation failed: {res.errors}"
+    deck = parse_deck(raw)
+    frames = resolve_scene(deck.scenes[0], deck.slide_width, deck.slide_height)
+    edges = {e.id: e for e in frames[0].edges}
+    assert edges["auto_arc"].curve_control is not None
+    assert edges["forced_straight"].curve_control is None
+
+
+def test_p1c_schema_rejects_bad_anchor_and_routing() -> None:
+    """P1-C: Schema must reject invalid from_anchor, to_anchor, and routing values."""
+    from keyflow.schema import validate_deck
+
+    raw = _freeform_canvas_stage1()
+    obj_id = raw["scenes"][0]["objects"][0]["id"]
+    obj_id2 = raw["scenes"][0]["objects"][1]["id"]
+    raw["scenes"][0].setdefault("connectors", []).append({
+        "id": "bad_conn",
+        "from": obj_id,
+        "to": obj_id2,
+        "from_anchor": "northwest",   # invalid
+        "to_anchor": "center",        # invalid
+        "routing": "bezier",          # invalid
+    })
+    res = validate_deck(raw)
+    assert res.valid is False
+    errors = "\n".join(res.errors)
+    assert "from_anchor" in errors
+    assert "to_anchor" in errors
+    assert "routing" in errors

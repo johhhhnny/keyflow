@@ -43,6 +43,10 @@ TableReveal = Literal["whole", "by_row", "by_column"]
 ShapeType = Literal["rounded_rect", "rect", "ellipse", "pill", "custom"]
 DiagramLayout = Literal["horizontal", "vertical", "dag", "hub_spoke"]
 TextAlign = Literal["left", "center", "right"]
+ObjectLayer = Literal["base", "overlay"]
+GeometryUnit = Literal["relative", "px"]
+AnchorSide = Literal["auto", "top", "right", "bottom", "left"]
+ConnectorRouting = Literal["auto", "straight", "curved"]
 
 
 @dataclass(slots=True)
@@ -100,13 +104,28 @@ class NodeSpec:
 
 @dataclass(slots=True)
 class EdgeSpec:
-    """Directed relationship between two top-level nodes."""
+    """Directed relationship between two top-level nodes or canvas objects."""
 
     id: str
     from_id: str
     to_id: str
     label: str | None = None
     style: EdgeStyle = "solid"
+    from_anchor: AnchorSide = "auto"
+    to_anchor: AnchorSide = "auto"
+    routing: ConnectorRouting = "auto"
+
+
+@dataclass(slots=True)
+class ObjectGeometrySpec:
+    """Explicit relative or pixel placement for a canvas object (with optional anchor_to)."""
+
+    x: float
+    y: float
+    w: float
+    h: float
+    unit: GeometryUnit = "relative"
+    anchor_to: str | None = None
 
 
 @dataclass(slots=True)
@@ -264,6 +283,8 @@ class CanvasObjectSpec:
     id: str
     kind: CanvasObjectKind
     region: str | None = None
+    layer: ObjectLayer = "base"
+    geometry: ObjectGeometrySpec | None = None
     step: int = 1
     variant: NodeVariant = "primary"
     note: str = ""
@@ -641,6 +662,19 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
                     id=str(obj_raw["id"]),
                     kind=obj_raw["kind"],
                     region=str(obj_raw["region"]) if obj_raw.get("region") else None,
+                    layer=obj_raw.get("layer", "base"),
+                    geometry=(
+                        ObjectGeometrySpec(
+                            x=float(obj_raw["geometry"]["x"]),
+                            y=float(obj_raw["geometry"]["y"]),
+                            w=float(obj_raw["geometry"]["w"]),
+                            h=float(obj_raw["geometry"]["h"]),
+                            unit=obj_raw["geometry"].get("unit", "relative"),
+                            anchor_to=str(obj_raw["geometry"]["anchor_to"]) if obj_raw["geometry"].get("anchor_to") else None,
+                        )
+                        if isinstance(obj_raw.get("geometry"), dict)
+                        else None
+                    ),
                     step=int(obj_raw.get("step", 1)),
                     variant=obj_raw.get("variant", "primary"),
                     note=str(obj_raw.get("note", "")),
@@ -673,6 +707,9 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
                 to_id=str(e["to"]),
                 label=str(e["label"]) if e.get("label") else None,
                 style=e.get("style", "solid"),
+                from_anchor=e.get("from_anchor", "auto"),
+                to_anchor=e.get("to_anchor", "auto"),
+                routing=e.get("routing", "auto"),
             )
             for e in s_raw.get("connectors", [])
         ]
@@ -1200,6 +1237,32 @@ def _validate_canvas_scene(
         if reg_ref is not None and (not isinstance(reg_ref, str) or (region_ids and reg_ref not in region_ids)):
             errors.append(f"{prefix}.objects['{oid}']: unknown region '{reg_ref}'.")
 
+        # P1-B: layer validation
+        layer_val = obj.get("layer", "base")
+        if not _is_in(layer_val, {"base", "overlay"}):
+            errors.append(f"{prefix}.objects['{oid}'].layer: must be 'base' or 'overlay'.")
+
+        # P1-B: geometry validation
+        geom = obj.get("geometry")
+        if geom is not None:
+            if not isinstance(geom, dict):
+                errors.append(f"{prefix}.objects['{oid}'].geometry: must be an object.")
+            else:
+                _check_allowed_keys(geom, "geometry", f"{prefix}.objects['{oid}'].geometry", errors)
+                for coord in ("x", "y", "w", "h"):
+                    cv = _as_float(geom.get(coord))
+                    if cv is None:
+                        errors.append(f"{prefix}.objects['{oid}'].geometry.{coord}: must be a finite number.")
+                geom_unit = geom.get("unit", "relative")
+                if not _is_in(geom_unit, {"relative", "px"}):
+                    errors.append(f"{prefix}.objects['{oid}'].geometry.unit: must be 'relative' or 'px'.")
+                if geom.get("anchor_to") is not None and not isinstance(geom["anchor_to"], str):
+                    errors.append(f"{prefix}.objects['{oid}'].geometry.anchor_to: must be a string object id.")
+            if reg_ref is not None:
+                warnings.append(
+                    f"{prefix}.objects['{oid}']: 'geometry' is set; 'region' assignment will be ignored."
+                )
+
         variant = obj.get("variant", "primary")
         if not _is_in(variant, valid_variants):
             errors.append(f"{prefix}.objects['{oid}']: invalid variant '{variant}'.")
@@ -1364,6 +1427,17 @@ def _validate_canvas_scene(
                     warnings=warnings,
                 )
 
+    # P1-B: validate anchor_to references now that all object ids are known
+    for oid, obj in object_map.items():
+        geom = obj.get("geometry")
+        if isinstance(geom, dict) and geom.get("anchor_to") is not None:
+            at = geom["anchor_to"]
+            if at not in object_map:
+                errors.append(f"{prefix}.objects['{oid}'].geometry.anchor_to: unknown object id '{at}'.")
+
+    _valid_anchor_sides = {"auto", "top", "right", "bottom", "left"}
+    _valid_routings = {"auto", "straight", "curved"}
+
     connectors = s.get("connectors", [])
     if not isinstance(connectors, list):
         errors.append(f"{prefix}.connectors must be a list.")
@@ -1385,6 +1459,13 @@ def _validate_canvas_scene(
                 errors.append(f"{prefix}.connectors['{eid}']: unknown 'from' object '{e.get('from')}'.")
             if not _is_in(e.get("to"), object_map):
                 errors.append(f"{prefix}.connectors['{eid}']: unknown 'to' object '{e.get('to')}'.")
+            # P1-C: anchor side and routing validation
+            if not _is_in(e.get("from_anchor", "auto"), _valid_anchor_sides):
+                errors.append(f"{prefix}.connectors['{eid}'].from_anchor: must be one of {sorted(_valid_anchor_sides)}.")
+            if not _is_in(e.get("to_anchor", "auto"), _valid_anchor_sides):
+                errors.append(f"{prefix}.connectors['{eid}'].to_anchor: must be one of {sorted(_valid_anchor_sides)}.")
+            if not _is_in(e.get("routing", "auto"), _valid_routings):
+                errors.append(f"{prefix}.connectors['{eid}'].routing: must be one of {sorted(_valid_routings)}.")
 
     return set(object_map), object_map
 
