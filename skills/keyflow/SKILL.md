@@ -72,6 +72,8 @@ Translate the Stage 0 brief into clean Stage 1 diagrams. Do **not** hand-write `
    `use_templates` defaults to `false`, enabling `layout: "canvas"`, `palette`, native/vector `chart`, native `table`, and inline `diagram`. Pass `--use-templates` (CLI) or `use_templates: true` only when validating strict preset-only decks.
 4. **Optional Structural Seed for Long Articles**:
    Run `uv run keyflow outline -i article.md --stage1 -o starter.json` (or MCP `extract_outline`) only as a mechanical starting skeleton — replace generic chapter summaries with your Stage 0 narrative plan.
+5. **Reusable Canvas Snippets (`keyflow snippets`)**:
+   Instead of authoring 12-column `grid`/`regions` from scratch, inspect built-in canvas templates via `uv run keyflow snippets` (or `--show <id>` / MCP `list_snippets`): `chart_with_takeaway`, `two_column_counter`, `kpi_waterfall_breakdown`, `architecture_with_table`, and `thesis_evidence_matrix`. Each snippet is pre-audited for strict Magic Move alignment and contrast.
 
 ---
 

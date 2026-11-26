@@ -16,6 +16,7 @@ from keyflow.exporter import export_slide_pngs
 from keyflow.outline import extract_markdown_outline, extract_outline_from_file
 from keyflow.pace import pace_deck
 from keyflow.schema import validate_deck
+from keyflow.snippets import list_snippets, load_snippet
 from keyflow.themes import THEMES
 
 TOOLS: list[dict[str, Any]] = [
@@ -23,6 +24,16 @@ TOOLS: list[dict[str, Any]] = [
         "name": "list_themes",
         "description": "List available KeyFlow visual theme presets for .keyx presentations.",
         "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "list_snippets",
+        "description": "List built-in freeform canvas scene snippets, or return a specific snippet's starter scene JSON when 'name' is provided.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Optional snippet ID (e.g. 'chart_with_takeaway') to inspect its full scene JSON."}
+            },
+        },
     },
     {
         "name": "extract_outline",
@@ -158,6 +169,12 @@ def dispatch_tool(
                 for k, v in THEMES.items()
             }
         }
+
+    if name == "list_snippets":
+        snippet_name = args.get("name")
+        if snippet_name:
+            return {"snippet": str(snippet_name), "scene": load_snippet(str(snippet_name))}
+        return {"snippets": list_snippets()}
 
     if name == "extract_outline":
         theme = args.get("theme", "slate_dark")

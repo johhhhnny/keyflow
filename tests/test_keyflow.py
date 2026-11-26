@@ -2412,3 +2412,35 @@ def test_phase3_layout_and_object_registries() -> None:
     assert {"chart", "table", "diagram"}.issubset(OBJECT_PACERS)
     assert compiler_mod._make_chart_objects is OBJECT_RENDERERS["chart"]
     assert compiler_mod._make_table_objects is OBJECT_RENDERERS["table"]
+
+
+def test_phase4_snippets_validate_audit_compile_and_cli_mcp(tmp_path: Path) -> None:
+    from keyflow.cli import main as cli_main
+    from keyflow.mcp_server import dispatch_tool
+    from keyflow.snippets import instantiate_snippet, list_snippets
+
+    items = list_snippets()
+    assert len(items) == 5
+
+    scenes = [
+        instantiate_snippet(item["id"], scene_id=f"sc_{item['id']}", title=item["name"])
+        for item in items
+    ]
+    deck = {"title": "Snippets Showcase", "scenes": scenes}
+
+    val = validate_deck(deck)
+    assert val.valid, val.errors
+
+    report = audit_deck(deck, strict=True)
+    assert report.passed, [f.to_dict() for f in report.errors + report.warnings]
+
+    out = tmp_path / "snippets.keyx"
+    compile_deck(deck, out)
+    assert out.exists() and out.stat().st_size > 0
+
+    assert cli_main(["snippets"]) == 0
+    assert cli_main(["snippets", "--show", "chart_with_takeaway"]) == 0
+    mcp_list = dispatch_tool("list_snippets", {})
+    assert len(mcp_list["snippets"]) == 5
+    mcp_one = dispatch_tool("list_snippets", {"name": "kpi_waterfall_breakdown"})
+    assert mcp_one["scene"]["layout"] == "canvas"

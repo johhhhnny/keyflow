@@ -1,0 +1,61 @@
+{
+  "id": "two_column_counter",
+  "name": "双栏对比 + 反证卡（Thesis vs Counter-Evidence）",
+  "description": "左右双栏对比主流论点与关键反证/边界条件，适合深度调查与理性辩证。",
+  "use_case": "适用于存在明显正反观点、需要呈现反证与边界条件的论证页。",
+  "scene": {
+    "id": "two_col_counter",
+    "title": "正反对照：表面叙事与真实约束",
+    "subtitle": "左侧为常规共识，右侧给出关键反证与边界条件",
+    "layout": "canvas",
+    "grid": { "columns": 12, "rows": 2, "gap": 24 },
+    "regions": [
+      { "id": "pro_top", "col": 1, "row": 1, "col_span": 6, "row_span": 1 },
+      { "id": "pro_bot", "col": 1, "row": 2, "col_span": 6, "row_span": 1 },
+      { "id": "con_top", "col": 7, "row": 1, "col_span": 6, "row_span": 1 },
+      { "id": "con_bot", "col": 7, "row": 2, "col_span": 6, "row_span": 1 }
+    ],
+    "objects": [
+      {
+        "id": "pro_claim",
+        "kind": "callout",
+        "region": "pro_top",
+        "step": 1,
+        "variant": "primary",
+        "badge": "THESIS",
+        "label": "主流叙事：规模效应持续放大",
+        "sublabel": "单位成本随体量增长呈线性下降"
+      },
+      {
+        "id": "pro_evidence",
+        "kind": "card",
+        "region": "pro_bot",
+        "step": 1,
+        "variant": "muted",
+        "badge": "FACT",
+        "label": "历史毛利率维持高位",
+        "sublabel": "过去四个季度均高于行业均值"
+      },
+      {
+        "id": "counter_claim",
+        "kind": "callout",
+        "region": "con_top",
+        "step": 2,
+        "variant": "warn",
+        "badge": "COUNTER",
+        "label": "反证视角：增量边际正在恶化",
+        "sublabel": "新客户获客成本与履约复杂度同步抬头"
+      },
+      {
+        "id": "counter_boundary",
+        "kind": "card",
+        "region": "con_bot",
+        "step": 2,
+        "variant": "muted",
+        "badge": "LIMIT",
+        "label": "仅在核心区域成立",
+        "sublabel": "下沉市场尚未验证相同回收周期"
+      }
+    ]
+  }
+}

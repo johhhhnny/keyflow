@@ -15,6 +15,7 @@ from keyflow.exporter import export_slide_pngs
 from keyflow.outline import extract_outline_from_file
 from keyflow.pace import pace_deck
 from keyflow.schema import validate_deck
+from keyflow.snippets import list_snippets, load_snippet
 from keyflow.themes import THEMES
 
 
@@ -26,6 +27,15 @@ def _load_json(path: str | Path) -> dict:
 def _cmd_themes(_: argparse.Namespace) -> int:
     for name, preset in THEMES.items():
         print(f"{name}: {preset.description}")
+    return 0
+
+
+def _cmd_snippets(args: argparse.Namespace) -> int:
+    if args.show:
+        print(json.dumps(load_snippet(args.show), ensure_ascii=False, indent=2))
+        return 0
+    for item in list_snippets():
+        print(f"{item['id']}: {item['name']} - {item['description']}")
     return 0
 
 
@@ -163,6 +173,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_themes = sub.add_parser("themes", help="List built-in visual theme presets.")
     p_themes.set_defaults(func=_cmd_themes)
+
+    p_snip = sub.add_parser("snippets", help="List or inspect built-in freeform canvas scene snippets.")
+    p_snip.add_argument("--show", help="Print the full scene JSON for a specific snippet ID.")
+    p_snip.set_defaults(func=_cmd_snippets)
 
     p_val = sub.add_parser("validate", help="Validate a Stage 1 scene graph or Stage 2 storyboard JSON.")
     p_val.add_argument("-i", "--input", required=True, help="Path to storyboard JSON.")

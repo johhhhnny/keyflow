@@ -31,4 +31,4 @@ keyflow-mcp = "keyflow.mcp_server:main"
 include = ["keyflow*"]
 
 [tool.setuptools.package-data]
-keyflow = ["deck.schema.json", "themes/*.json"]
+keyflow = ["deck.schema.json", "themes/*.json", "snippets/*.json"]

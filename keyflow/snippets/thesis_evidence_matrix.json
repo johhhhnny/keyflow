@@ -1,0 +1,72 @@
+{
+  "id": "thesis_evidence_matrix",
+  "name": "核心论点 + 多维证据矩阵（Thesis + 2x2 Matrix）",
+  "description": "顶部全宽核心论点卡，下方 2x2 网格展开 4 项独立支撑证据。",
+  "use_case": "适用于总论页、多维度归因总结页。",
+  "scene": {
+    "id": "thesis_matrix",
+    "title": "总论：四大支柱共同锁定结构性壁垒",
+    "subtitle": "顶部提出核心判断，下方四象限逐一展开独立证据",
+    "layout": "canvas",
+    "grid": { "columns": 12, "rows": 3, "gap": 20 },
+    "regions": [
+      { "id": "thesis_bar", "col": 1, "row": 1, "col_span": 12, "row_span": 1 },
+      { "id": "ev_1", "col": 1, "row": 2, "col_span": 6, "row_span": 1 },
+      { "id": "ev_2", "col": 7, "row": 2, "col_span": 6, "row_span": 1 },
+      { "id": "ev_3", "col": 1, "row": 3, "col_span": 6, "row_span": 1 },
+      { "id": "ev_4", "col": 7, "row": 3, "col_span": 6, "row_span": 1 }
+    ],
+    "objects": [
+      {
+        "id": "main_thesis",
+        "kind": "callout",
+        "region": "thesis_bar",
+        "step": 1,
+        "variant": "accent",
+        "badge": "THESIS",
+        "label": "系统性耦合构成核心壁垒",
+        "sublabel": "竞争优势来自全链路协同而非单点领先"
+      },
+      {
+        "id": "pillar_1",
+        "kind": "card",
+        "region": "ev_1",
+        "step": 2,
+        "variant": "primary",
+        "badge": "01",
+        "label": "供给侧锁定",
+        "sublabel": "关键产能与供应链排他协议"
+      },
+      {
+        "id": "pillar_2",
+        "kind": "card",
+        "region": "ev_2",
+        "step": 2,
+        "variant": "primary",
+        "badge": "02",
+        "label": "生态标准控制",
+        "sublabel": "工具链与开发者迁移壁垒"
+      },
+      {
+        "id": "pillar_3",
+        "kind": "card",
+        "region": "ev_3",
+        "step": 3,
+        "variant": "primary",
+        "badge": "03",
+        "label": "定价权传导",
+        "sublabel": "高毛利反哺下一代研发投入"
+      },
+      {
+        "id": "pillar_4",
+        "kind": "card",
+        "region": "ev_4",
+        "step": 3,
+        "variant": "primary",
+        "badge": "04",
+        "label": "客户替换成本",
+        "sublabel": "全栈绑定下的高昂切换代价"
+      }
+    ]
+  }
+}
