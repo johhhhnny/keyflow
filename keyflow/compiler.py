@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import json
 import math
-import shutil
-import subprocess
-import sys
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -84,6 +81,7 @@ from creator_studio_doc_format.core import (
 from creator_studio_doc_format.core import Path as ShapePath
 from creator_studio_doc_format.validation import validate_document
 
+from keyflow.exporter import export_slide_pngs  # noqa: F401 (backward-compat re-export)
 from keyflow.layout import (
     BoxRect,
     PlacedBox,
@@ -104,6 +102,16 @@ from keyflow.layout import (
 from keyflow.pace import pace_deck
 from keyflow.schema import DeckSpec, NodeVariant, StyleConfigSpec, parse_deck, validate_deck
 from keyflow.themes import ThemePreset, apply_palette_overrides, contrast_ratio, get_theme, hex_to_rgb_float
+from keyflow.tokens import (
+    CHART_Y_LABEL_MAX_W_PT,
+    CHART_Y_LABEL_MIN_W_PT,
+    DEFAULT_ARROW_WIDTH,
+    DEFAULT_CARD_CORNER_PX,
+    DEFAULT_SUBTITLE_SIZE,
+    DEFAULT_TITLE_MAX_SIZE,
+    DEFAULT_TITLE_MIN_SIZE,
+    MUTED_CARD_ALPHA,
+)
 
 _BG_PRESET_ID = "keyflow_bg_fill"
 
@@ -146,7 +154,7 @@ def _fill_for_variant(theme: ThemePreset, variant: NodeVariant, is_subcard: bool
         return _rgba(theme.warn_fill_rgb)
     if variant == "muted":
         r, g, b = theme.card_fill_rgb
-        return RGBA(red=r, green=g, blue=b, alpha=0.72)
+        return RGBA(red=r, green=g, blue=b, alpha=MUTED_CARD_ALPHA)
     return _rgba(theme.subcard_fill_rgb if is_subcard else theme.card_fill_rgb)
 
 
@@ -982,7 +990,7 @@ def _make_edge_objects(
     theme: ThemePreset,
     *,
     scale: float,
-    arrow_base_width: float = 4.5,
+    arrow_base_width: float = DEFAULT_ARROW_WIDTH,
 ) -> list[SlideObject]:
     pattern = Pattern.MEDIUM_DASH if edge.style == "dashed" else Pattern.SOLID
     outset = round(14.0 * max(0.75, scale), 1)
@@ -1560,7 +1568,7 @@ def _make_vector_chart_objects(
 
     # Vertical charts: column, stacked_column, line, area, scatter
     max_tick_w = max(_text_units(_format_chart_num(tv)) * 9.5 for tv in tick_vals)
-    y_label_w = max(56.0, min(96.0, max_tick_w + 14.0))
+    y_label_w = max(CHART_Y_LABEL_MIN_W_PT, min(CHART_Y_LABEL_MAX_W_PT, max_tick_w + 14.0))
     inner_x = chart.rect.x + y_label_w + 8.0
     inner_y = chart.rect.y + header_h + (28.0 if chart.unit else 16.0)
     inner_w = max(100.0, (chart.rect.x + chart.rect.w) - inner_x - 16.0)
@@ -2202,16 +2210,16 @@ def _render_slide(
 ) -> Slide:
     slide_prefix = f"s{slide_num}"
     contents: list[SlideObject] = []
-    title_max = style_config.title_max_size if (style_config and style_config.title_max_size is not None) else 58.0
-    sub_size = style_config.subtitle_size if (style_config and style_config.subtitle_size is not None) else 28.0
-    corner_px = style_config.card_corner_px if (style_config and style_config.card_corner_px is not None) else 15.0
-    arrow_w = style_config.arrow_width if (style_config and style_config.arrow_width is not None) else 4.5
+    title_max = style_config.title_max_size if (style_config and style_config.title_max_size is not None) else DEFAULT_TITLE_MAX_SIZE
+    sub_size = style_config.subtitle_size if (style_config and style_config.subtitle_size is not None) else DEFAULT_SUBTITLE_SIZE
+    corner_px = style_config.card_corner_px if (style_config and style_config.card_corner_px is not None) else DEFAULT_CARD_CORNER_PX
+    arrow_w = style_config.arrow_width if (style_config and style_config.arrow_width is not None) else DEFAULT_ARROW_WIDTH
 
     if frame.pinned_flow is not None:
         contents.extend(_make_pinned_flow_objects(slide_prefix, frame.pinned_flow, theme))
 
     if frame.title_rect is not None:
-        title_size = round(min(title_max, max(min(40.0, title_max), (frame.title_rect.w - 80.0) / max(1.0, _text_units(frame.title) * 0.56))), 1)
+        title_size = round(min(title_max, max(min(DEFAULT_TITLE_MIN_SIZE, title_max), (frame.title_rect.w - 80.0) / max(1.0, _text_units(frame.title) * 0.56))), 1)
         contents.append(
             _make_textbox(
                 f"{slide_prefix}_title",
@@ -2452,39 +2460,3 @@ def compile_deck(
     doc.save(out, pre_save_hooks=[validate_document])
     return out
 
-
-def export_slide_pngs(keyx_path: str | Path, output_dir: str | Path) -> list[Path]:
-    """Optional macOS Keynote helper: export a .keyx file as PNG slide previews."""
-    if sys.platform != "darwin" or shutil.which("osascript") is None:
-        raise RuntimeError(
-            "PNG preview export requires macOS with Apple Keynote ('osascript' is unavailable here). "
-            "Your .keyx presentation can still be compiled cleanly on any OS."
-        )
-
-    src = Path(keyx_path).resolve()
-    if not src.exists():
-        raise FileNotFoundError(f"Keynote file not found: {src}")
-
-    out = Path(output_dir).resolve()
-    out.mkdir(parents=True, exist_ok=True)
-
-    applescript = """
-on run argv
-    set srcPath to POSIX file (item 1 of argv)
-    set outPath to POSIX file (item 2 of argv)
-    tell application id "com.apple.Keynote"
-        set doc to open srcPath
-        export doc to outPath as slide images with properties {image format:PNG}
-        close doc saving no
-    end tell
-end run
-"""
-    proc = subprocess.run(
-        ["osascript", "-e", applescript, str(src), str(out)],
-        capture_output=True,
-        text=True,
-    )
-    if proc.returncode != 0:
-        detail = proc.stderr.strip() or "Make sure Apple Keynote is installed and allowed to run AppleScript."
-        raise RuntimeError(f"Keynote PNG export failed: {detail}")
-    return sorted(out.glob("*.png"))

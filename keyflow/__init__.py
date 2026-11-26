@@ -1,7 +1,8 @@
 """KeyFlow: Cognitive-first progressive Keynote (.keyx) compiler."""
 
 from keyflow.audit import AuditFinding, AuditReport, audit_deck, select_review_slides
-from keyflow.compiler import compile_deck, export_slide_pngs
+from keyflow.compiler import compile_deck
+from keyflow.exporter import export_slide_pngs
 from keyflow.outline import extract_markdown_outline, extract_outline_from_file
 from keyflow.pace import expand_scene_frames, pace_deck
 from keyflow.schema import DeckSpec, ValidationResult, parse_deck, validate_deck

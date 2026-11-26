@@ -16,6 +16,16 @@ from keyflow.themes import (
     get_theme,
     hex_to_rgb_float,
 )
+from keyflow.tokens import (
+    ANCHOR_JITTER_TOLERANCE_PT,
+    CHART_BAR_SLOT_STEP_PT,
+    CHART_GROUP_PAD_PT,
+    CHART_MIN_CATEGORY_WIDTH_PT,
+    MIN_CONTRAST_RATIO,
+    MIN_READABLE_SCALE,
+    MUTED_CARD_ALPHA,
+    OVERLAP_TOLERANCE_PT,
+)
 
 Severity = Literal["error", "warning"]
 
@@ -90,7 +100,7 @@ def _text_units(text: str) -> float:
     return sum(1.8 if ord(ch) > 127 else 1.0 for ch in text)
 
 
-def _overlap_area(a: BoxRect, b: BoxRect, tol: float = 4.0) -> bool:
+def _overlap_area(a: BoxRect, b: BoxRect, tol: float = OVERLAP_TOLERANCE_PT) -> bool:
     ox = min(a.x + a.w, b.x + b.w) - max(a.x, b.x)
     oy = min(a.y + a.h, b.y + b.h) - max(a.y, b.y)
     return ox > tol and oy > tol
@@ -163,7 +173,7 @@ def _audit_frame(
     theme: ThemePreset | None = None,
 ) -> None:
     # 1. Scale check
-    if frame.scale < 0.72:
+    if frame.scale < MIN_READABLE_SCALE:
         findings.append(
             AuditFinding(
                 severity="warning",
@@ -607,7 +617,11 @@ def _audit_frame(
                     )
                 )
         if ch.chart_type in ("column", "stacked_column", "line", "area", "waterfall"):
-            min_cat_w = max(56.0, len(ch.series) * 44.0 + 28.0) if ch.chart_type == "column" else 56.0
+            min_cat_w = (
+                max(CHART_MIN_CATEGORY_WIDTH_PT, len(ch.series) * CHART_BAR_SLOT_STEP_PT + CHART_GROUP_PAD_PT)
+                if ch.chart_type == "column"
+                else CHART_MIN_CATEGORY_WIDTH_PT
+            )
             if len(ch.categories) * min_cat_w > ch.rect.w:
                 findings.append(
                     AuditFinding(
@@ -672,7 +686,7 @@ def _audit_frame(
             fg = hex_to_rgb_float(sh.color_hex) if sh.color_hex else theme.text_rgb
             bg_rgb = hex_to_rgb_float(sh.fill_hex) if sh.fill_hex else theme.card_fill_rgb
             ratio = contrast_ratio(fg, bg_rgb)
-            if ratio < 3.0:
+            if ratio < MIN_CONTRAST_RATIO:
                 findings.append(
                     AuditFinding(
                         severity="error",
@@ -680,7 +694,7 @@ def _audit_frame(
                         slide_num=slide_num,
                         scene_id=frame.scene_id,
                         frame_index=frame.frame_index,
-                        message=f"Shape '{sh.id}' text contrast ratio {ratio:.2f} is below 3.0.",
+                        message=f"Shape '{sh.id}' text contrast ratio {ratio:.2f} is below {MIN_CONTRAST_RATIO:.1f}.",
                         suggestion="Adjust fill_hex or color_hex so text remains clearly legible.",
                         target_id=sh.id,
                         suggested_action="adjust_contrast",
@@ -724,7 +738,7 @@ def _audit_frame(
                 else (theme.bg_rgb[0] / 255.0, theme.bg_rgb[1] / 255.0, theme.bg_rgb[2] / 255.0)
             )
             ratio = contrast_ratio(fg, bg_rgb)
-            if ratio < 3.0:
+            if ratio < MIN_CONTRAST_RATIO:
                 findings.append(
                     AuditFinding(
                         severity="error",
@@ -732,7 +746,7 @@ def _audit_frame(
                         slide_num=slide_num,
                         scene_id=frame.scene_id,
                         frame_index=frame.frame_index,
-                        message=f"Textbox '{tb.id}' contrast ratio {ratio:.2f} is below 3.0.",
+                        message=f"Textbox '{tb.id}' contrast ratio {ratio:.2f} is below {MIN_CONTRAST_RATIO:.1f}.",
                         suggestion="Adjust color_hex/fill_hex or palette bg_hex for higher contrast.",
                         target_id=tb.id,
                         suggested_action="adjust_contrast",
@@ -746,15 +760,15 @@ def _audit_frame(
                 fg = hex_to_rgb_float(box.color_hex) if box.color_hex else theme.text_rgb
                 bg_rgb = hex_to_rgb_float(box.fill_hex) if box.fill_hex else theme.card_fill_rgb
                 if not box.fill_hex and box.variant == "muted":
-                    # Muted cards use alpha=0.72 over the slide background.
-                    a = 0.72
+                    # Muted cards use MUTED_CARD_ALPHA over the slide background.
+                    a = MUTED_CARD_ALPHA
                     bg_rgb = (
                         bg_rgb[0] * a + slide_bg[0] * (1.0 - a),
                         bg_rgb[1] * a + slide_bg[1] * (1.0 - a),
                         bg_rgb[2] * a + slide_bg[2] * (1.0 - a),
                     )
                 ratio = contrast_ratio(fg, bg_rgb)
-                if ratio < 3.0:
+                if ratio < MIN_CONTRAST_RATIO:
                     findings.append(
                         AuditFinding(
                             severity="error",
@@ -762,8 +776,8 @@ def _audit_frame(
                             slide_num=slide_num,
                             scene_id=frame.scene_id,
                             frame_index=frame.frame_index,
-                            message=f"Card '{box.id}' text contrast ratio {ratio:.2f} is below 3.0.",
-                            suggestion="Adjust fill_hex or color_hex to meet >= 3.0 contrast.",
+                            message=f"Card '{box.id}' text contrast ratio {ratio:.2f} is below {MIN_CONTRAST_RATIO:.1f}.",
+                            suggestion=f"Adjust fill_hex or color_hex to meet >= {MIN_CONTRAST_RATIO:.1f} contrast.",
                             target_id=box.id,
                             suggested_action="adjust_contrast",
                         )
@@ -852,7 +866,7 @@ def _check_pinned_flow_pair(
             pn = prev_nodes.get(nid)
             if pn is not None:
                 delta = _max_rect_delta(pn.rect, nn.rect)
-                if delta > 0.5:
+                if delta > ANCHOR_JITTER_TOLERANCE_PT:
                     _emit_jitter(
                         findings,
                         slide_num=slide_num,
@@ -865,7 +879,7 @@ def _check_pinned_flow_pair(
             pg = prev_groups.get(gid)
             if pg is not None:
                 delta = max(_max_rect_delta(pg.rect, ng.rect), _max_rect_delta(pg.legend_rect, ng.legend_rect))
-                if delta > 0.5:
+                if delta > ANCHOR_JITTER_TOLERANCE_PT:
                     _emit_jitter(
                         findings,
                         slide_num=slide_num,
@@ -881,7 +895,7 @@ def _check_pinned_flow_pair(
                     _max_point_delta(pe.tail_center, ne.tail_center),
                     _max_point_delta(pe.head_center, ne.head_center),
                 )
-                if delta > 0.5:
+                if delta > ANCHOR_JITTER_TOLERANCE_PT:
                     _emit_jitter(
                         findings,
                         slide_num=slide_num,
@@ -907,7 +921,7 @@ def _check_pinned_flow_pair(
             )
             continue
         if prev_pf.is_centered and not next_pf.is_centered:
-            if nn.rect.cy >= pn.rect.cy or nn.rect.h > pn.rect.h + 0.5:
+            if nn.rect.cy >= pn.rect.cy or nn.rect.h > pn.rect.h + ANCHOR_JITTER_TOLERANCE_PT:
                 _emit_jitter(
                     findings,
                     slide_num=slide_num,
@@ -948,7 +962,7 @@ def _audit_scene_anchor_stability(
             delta = _max_rect_delta(pb.rect, nb.rect)
             if pb.caption_rect is not None and nb.caption_rect is not None:
                 delta = max(delta, _max_rect_delta(pb.caption_rect, nb.caption_rect))
-            if delta > 0.5:
+            if delta > ANCHOR_JITTER_TOLERANCE_PT:
                 _emit_jitter(
                     findings,
                     slide_num=slide_num,
@@ -998,7 +1012,7 @@ def _audit_scene_anchor_stability(
                 delta = max(delta, _max_point_delta(pe.curve_control, ne.curve_control))
             if pe.label_rect is not None and ne.label_rect is not None:
                 delta = max(delta, _max_rect_delta(pe.label_rect, ne.label_rect))
-            if delta > 0.5:
+            if delta > ANCHOR_JITTER_TOLERANCE_PT:
                 _emit_jitter(
                     findings,
                     slide_num=slide_num,
@@ -1021,7 +1035,7 @@ def _audit_scene_anchor_stability(
                 if cit is None:
                     continue
                 delta = _max_rect_delta(cit.rect, nit.rect)
-                if delta > 0.5:
+                if delta > ANCHOR_JITTER_TOLERANCE_PT:
                     _emit_jitter(
                         findings,
                         slide_num=slide_num,
@@ -1065,7 +1079,7 @@ def _audit_scene_anchor_stability(
                 if pd.label != nd.label:
                     continue
                 delta = max(abs(pd.x - nd.x), abs(pd.y_top - nd.y_top), abs(pd.y_bottom - nd.y_bottom))
-                if delta > 0.5:
+                if delta > ANCHOR_JITTER_TOLERANCE_PT:
                     _emit_jitter(
                         findings,
                         slide_num=slide_num,
@@ -1085,7 +1099,7 @@ def _audit_scene_anchor_stability(
                 abs(cpb.bar_y - npb.bar_y),
                 abs(cpb.bar_h - npb.bar_h),
             )
-            if axis_delta > 0.5:
+            if axis_delta > ANCHOR_JITTER_TOLERANCE_PT:
                 _emit_jitter(
                     findings,
                     slide_num=slide_num,
@@ -1102,7 +1116,7 @@ def _audit_scene_anchor_stability(
                 if cit is None:
                     continue
                 delta = max(_max_rect_delta(cit.seg_rect, nit.seg_rect), _max_rect_delta(cit.label_rect, nit.label_rect))
-                if delta > 0.5:
+                if delta > ANCHOR_JITTER_TOLERANCE_PT:
                     _emit_jitter(
                         findings,
                         slide_num=slide_num,
@@ -1118,7 +1132,7 @@ def _audit_scene_anchor_stability(
             nmx = nxt.comparison_matrix
             if cmx.formula_rect is not None and nmx.formula_rect is not None:
                 f_delta = _max_rect_delta(cmx.formula_rect, nmx.formula_rect)
-                if f_delta > 0.5:
+                if f_delta > ANCHOR_JITTER_TOLERANCE_PT:
                     _emit_jitter(
                         findings,
                         slide_num=slide_num,
@@ -1136,7 +1150,7 @@ def _audit_scene_anchor_stability(
                     _max_rect_delta(ccol.box_rect, ncol.box_rect),
                     _max_rect_delta(ccol.caption_rect, ncol.caption_rect),
                 )
-                if delta > 0.5:
+                if delta > ANCHOR_JITTER_TOLERANCE_PT:
                     _emit_jitter(
                         findings,
                         slide_num=slide_num,

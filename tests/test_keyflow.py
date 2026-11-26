@@ -518,12 +518,12 @@ def test_mcp_lifecycle_methods_and_malformed_stdin() -> None:
 
 
 def test_export_slide_pngs_clear_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("keyflow.compiler.sys.platform", "linux")
+    monkeypatch.setattr("keyflow.exporter.sys.platform", "linux")
     with pytest.raises(RuntimeError, match="requires macOS with Apple Keynote"):
         export_slide_pngs(tmp_path / "missing.keyx", tmp_path / "png")
 
-    monkeypatch.setattr("keyflow.compiler.sys.platform", "darwin")
-    monkeypatch.setattr("keyflow.compiler.shutil.which", lambda _: "/usr/bin/osascript")
+    monkeypatch.setattr("keyflow.exporter.sys.platform", "darwin")
+    monkeypatch.setattr("keyflow.exporter.shutil.which", lambda _: "/usr/bin/osascript")
     with pytest.raises(FileNotFoundError, match="Keynote file not found"):
         export_slide_pngs(tmp_path / "missing.keyx", tmp_path / "png")
 
@@ -789,15 +789,15 @@ def test_export_slide_pngs_passes_paths_via_osascript_argv(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Ensure paths containing quotes/spaces are passed as argv rather than interpolated into AppleScript."""
-    monkeypatch.setattr("keyflow.compiler.sys.platform", "darwin")
-    monkeypatch.setattr("keyflow.compiler.shutil.which", lambda _: "/usr/bin/osascript")
+    monkeypatch.setattr("keyflow.exporter.sys.platform", "darwin")
+    monkeypatch.setattr("keyflow.exporter.shutil.which", lambda _: "/usr/bin/osascript")
     captured: dict[str, object] = {}
 
     def _fake_run(cmd: list[str], **kwargs: object) -> object:
         captured["cmd"] = cmd
         return type("Proc", (), {"returncode": 0, "stderr": ""})()
 
-    monkeypatch.setattr("keyflow.compiler.subprocess.run", _fake_run)
+    monkeypatch.setattr("keyflow.exporter.subprocess.run", _fake_run)
     keyx_file = tmp_path / 'tricky "quote" deck.keyx'
     keyx_file.write_bytes(b"zip")
     out_dir = tmp_path / 'out "png" dir'
@@ -2371,3 +2371,18 @@ def test_phase1_external_theme_json_style_config_and_overrides(tmp_path: Path) -
         assert a_ov.geometry.position.x == pytest.approx(a_base.geometry.position.x + 25.0)
         assert a_ov.geometry.position.y == pytest.approx(a_base.geometry.position.y - 10.0)
         assert a_ov.opacity == pytest.approx(0.75)
+
+
+def test_phase2_tokens_and_exporter_compat() -> None:
+    import keyflow
+    import keyflow.compiler as compiler_mod
+    import keyflow.exporter as exporter_mod
+    from keyflow import tokens
+
+    assert keyflow.export_slide_pngs is exporter_mod.export_slide_pngs
+    assert compiler_mod.export_slide_pngs is exporter_mod.export_slide_pngs
+    assert tokens.SLIDE_WIDTH == 1920
+    assert tokens.SLIDE_HEIGHT == 1080
+    assert tokens.MUTED_CARD_ALPHA == pytest.approx(0.72)
+    assert tokens.MIN_CONTRAST_RATIO == pytest.approx(3.0)
+    assert tokens.ANCHOR_JITTER_TOLERANCE_PT == pytest.approx(0.5)

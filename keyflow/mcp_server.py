@@ -11,7 +11,8 @@ from typing import Any, TextIO
 
 from keyflow import __version__
 from keyflow.audit import audit_deck
-from keyflow.compiler import compile_deck, export_slide_pngs
+from keyflow.compiler import compile_deck
+from keyflow.exporter import export_slide_pngs
 from keyflow.outline import extract_markdown_outline, extract_outline_from_file
 from keyflow.pace import pace_deck
 from keyflow.schema import validate_deck

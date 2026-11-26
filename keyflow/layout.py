@@ -25,6 +25,14 @@ from keyflow.schema import (
     TrendDirection,
     compute_dag_layers,
 )
+from keyflow.tokens import (
+    PINNED_FLOW_GAP_BELOW,
+    SAFE_AREA_BOTTOM_MARGIN,
+    SLIDE_HEIGHT,
+    SLIDE_WIDTH,
+    SUBTITLE_MARGIN_X,
+    TITLE_MARGIN_X,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1817,8 +1825,8 @@ _LAYOUT_SOLVERS = {
 
 def resolve_scene(
     scene: SceneSpec,
-    canvas_w: int = 1920,
-    canvas_h: int = 1080,
+    canvas_w: int = SLIDE_WIDTH,
+    canvas_h: int = SLIDE_HEIGHT,
     *,
     pinned_flow: PinnedFlowSpec | None = None,
 ) -> list[ResolvedFrame]:
@@ -1844,17 +1852,17 @@ def resolve_scene(
     )
 
     has_any_subtitle = bool(scene.subtitle or any(f.subtitle for f in scene.frames))
-    title_rect = BoxRect(160.0, 86.0, canvas_w - 320.0, 112.0)
-    subtitle_rect = BoxRect(260.0, 198.0, canvas_w - 520.0, 50.0) if has_any_subtitle else None
+    title_rect = BoxRect(TITLE_MARGIN_X, 86.0, canvas_w - 2 * TITLE_MARGIN_X, 112.0)
+    subtitle_rect = BoxRect(SUBTITLE_MARGIN_X, 198.0, canvas_w - 2 * SUBTITLE_MARGIN_X, 50.0) if has_any_subtitle else None
 
     if is_macro_only:
-        ribbon_title_rect = BoxRect(160.0, 72.0, canvas_w - 320.0, 92.0)
-        ribbon_subtitle_rect = BoxRect(260.0, 168.0, canvas_w - 520.0, 44.0) if has_any_subtitle else None
+        ribbon_title_rect = BoxRect(TITLE_MARGIN_X, 72.0, canvas_w - 2 * TITLE_MARGIN_X, 92.0)
+        ribbon_subtitle_rect = BoxRect(SUBTITLE_MARGIN_X, 168.0, canvas_w - 2 * SUBTITLE_MARGIN_X, 44.0) if has_any_subtitle else None
         docked_cy = 160.0
     else:
         # Title & optional subtitle sit ABOVE the docked ribbon so the slide headline stays the top anchor.
-        ribbon_title_rect = BoxRect(160.0, 44.0, canvas_w - 320.0, 56.0)
-        ribbon_subtitle_rect = BoxRect(260.0, 102.0, canvas_w - 520.0, 38.0) if has_any_subtitle else None
+        ribbon_title_rect = BoxRect(TITLE_MARGIN_X, 44.0, canvas_w - 2 * TITLE_MARGIN_X, 56.0)
+        ribbon_subtitle_rect = BoxRect(SUBTITLE_MARGIN_X, 102.0, canvas_w - 2 * SUBTITLE_MARGIN_X, 38.0) if has_any_subtitle else None
         has_groups = bool(effective_pf and effective_pf.groups)
         docked_cy = (198.0 if has_any_subtitle else 156.0) + (42.0 if has_groups else 0.0)
 
@@ -1879,11 +1887,11 @@ def resolve_scene(
             + [g.rect.y + g.rect.h for g in placed_ribbon.groups],
             default=docked_cy + 36.0,
         )
-        area_top = pf_bottom + 20.0
+        area_top = pf_bottom + PINNED_FLOW_GAP_BELOW
     else:
         area_top = 262.0 if has_any_subtitle else 225.0
 
-    area_bottom = float(canvas_h) - 72.0
+    area_bottom = float(canvas_h) - SAFE_AREA_BOTTOM_MARGIN
 
     def _frame_header(fr: FrameSpec) -> tuple[PlacedPinnedFlow | None, BoxRect | None, BoxRect | None]:
         if _frame_uses_ribbon(fr):
