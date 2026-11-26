@@ -251,7 +251,7 @@
                   "properties": {
                     "diagram_layout": {
                       "type": "string",
-                      "enum": ["horizontal", "vertical", "dag", "hub_spoke"],
+                      "enum": ["horizontal", "vertical", "dag", "hub_spoke", "sequence"],
                       "default": "horizontal"
                     },
                     "nodes": {

@@ -2643,3 +2643,104 @@ def test_surface_filled_ghost_borderless_preserves_geometry_and_contrast(tmp_pat
     rep = audit_deck(bad_contrast, strict=True)
     assert rep.passed is False
     assert any(e.category == "low_contrast" and e.target_id == "hero" for e in rep.errors)
+
+
+def test_unlock_mcp_overrides_sequence_diagram_align_and_visual_monotony(tmp_path: Path) -> None:
+    from creator_studio_doc_format.core import AlignmentType, KeyxDocument
+    from keyflow.mcp_server import dispatch_tool
+
+    # 1. Canvas inline diagram_layout='sequence' produces Bezier arcs + card align='left'
+    deck = {
+        "title": "Unlocked Primitives",
+        "scenes": [
+            {
+                "id": "sc_seq",
+                "title": "Inline Sequence & Left-Aligned Borderless",
+                "layout": "canvas",
+                "grid": {"columns": 12, "rows": 2, "gap": 20},
+                "regions": [
+                    {"id": "top_txt", "col": 1, "row": 1, "col_span": 12, "row_span": 1},
+                    {"id": "seq_zone", "col": 1, "row": 2, "col_span": 12, "row_span": 1},
+                ],
+                "objects": [
+                    {
+                        "id": "left_thesis",
+                        "kind": "callout",
+                        "region": "top_txt",
+                        "step": 1,
+                        "surface": "borderless",
+                        "align": "left",
+                        "badge": "THESIS",
+                        "label": "Left-aligned editorial thesis",
+                    },
+                    {
+                        "id": "seq_diag",
+                        "kind": "diagram",
+                        "region": "seq_zone",
+                        "step": 2,
+                        "diagram": {
+                            "diagram_layout": "sequence",
+                            "nodes": [
+                                {"id": "a", "label": "Draft"},
+                                {"id": "b", "label": "Check"},
+                                {"id": "c", "label": "Done"},
+                            ],
+                            "edges": [
+                                {"id": "e1", "from": "a", "to": "b"},
+                                {"id": "e2", "from": "b", "to": "c"},
+                                {"id": "skip", "from": "a", "to": "c", "style": "dashed", "label": "Fast path"},
+                            ],
+                        },
+                    },
+                ],
+            }
+        ],
+    }
+    assert validate_deck(deck).valid is True
+    assert audit_deck(deck, strict=True).passed is True
+    parsed = parse_deck(pace_deck(deck))
+    frames = resolve_scene(parsed.scenes[0], parsed.slide_width, parsed.slide_height)
+    assert any(e.curve_control is not None for e in frames[-1].edges)
+
+    # 2. MCP compile_keyx supports overrides + custom workspace theme
+    out_keyx = tmp_path / "unlocked.keyx"
+    res = dispatch_tool(
+        "compile_keyx",
+        {
+            "storyboard": deck,
+            "output_path": str(out_keyx),
+            "overrides": {"s1_left_thesis": {"dx": 30.0}},
+            "fail_on_audit": True,
+        },
+        workspace_root=tmp_path,
+    )
+    assert res["compiled"] is True
+    with KeyxDocument.open(out_keyx) as doc:
+        sh = next(o.object.shape for o in doc.payload.slides[0].contents if o.object.shape and o.object.shape.identifier == "s1_left_thesis")
+        assert sh.text.paragraphs[0].style.model_dump()["alignment"] == "left"
+
+    # 3. Audit catches 3+ consecutive identical scenes & 100% filled-card monotony
+    mono_deck = {
+        "title": "Monotonous",
+        "scenes": [
+            {
+                "id": f"m{i}",
+                "title": f"Slide {i}",
+                "layout": "canvas",
+                "grid": {"columns": 12, "rows": 1},
+                "regions": [
+                    {"id": "r1", "col": 1, "row": 1, "col_span": 6, "row_span": 1},
+                    {"id": "r2", "col": 7, "row": 1, "col_span": 6, "row_span": 1},
+                ],
+                "objects": [
+                    {"id": f"c{i}_1", "kind": "card", "region": "r1", "label": "Card A"},
+                    {"id": f"c{i}_2", "kind": "card", "region": "r2", "label": "Card B"},
+                ],
+            }
+            for i in range(3)
+        ],
+    }
+    mono_rep = audit_deck(mono_deck, strict=False)
+    monotony_msgs = [w.message for w in mono_rep.warnings if w.category == "visual_monotony"]
+    assert any("3+ consecutive scenes" in m for m in monotony_msgs)
+    assert any("surface=filled" in m for m in monotony_msgs)

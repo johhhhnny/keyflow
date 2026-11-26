@@ -448,8 +448,9 @@ def _card_text_payload(
     metric_rgb = _readable_text_rgb(bg_rgb, theme.metric_text_rgb) if bg_rgb is not None else theme.metric_text_rgb
     sublabel_rgb = _readable_text_rgb(bg_rgb, theme.sublabel_rgb) if bg_rgb is not None else theme.sublabel_rgb
 
+    para_align = _ALIGN_MAP.get(getattr(box, "align", "center"), AlignmentType.CENTER)
     base_para = ParagraphProperties(
-        alignment=AlignmentType.CENTER,
+        alignment=para_align,
         character_properties=CharacterProperties(
             font_name=theme.font_body,
             font_size=main_size,
@@ -465,7 +466,7 @@ def _card_text_payload(
         paragraphs.append(
             Paragraph(
                 style=ParagraphProperties(
-                    alignment=AlignmentType.CENTER,
+                    alignment=para_align,
                     space_after=4.0 * font_scale,
                     character_properties=CharacterProperties(
                         font_name=theme.font_title,
@@ -481,7 +482,7 @@ def _card_text_payload(
         paragraphs.append(
             Paragraph(
                 style=ParagraphProperties(
-                    alignment=AlignmentType.CENTER,
+                    alignment=para_align,
                     space_after=6.0 * font_scale,
                     character_properties=CharacterProperties(
                         font_name=theme.font_title,
@@ -498,7 +499,7 @@ def _card_text_payload(
     paragraphs.append(
         Paragraph(
             style=ParagraphProperties(
-                alignment=AlignmentType.CENTER,
+                alignment=para_align,
                 character_properties=CharacterProperties(
                     font_name=theme.font_body,
                     font_size=label_size,
@@ -515,7 +516,7 @@ def _card_text_payload(
         paragraphs.append(
             Paragraph(
                 style=ParagraphProperties(
-                    alignment=AlignmentType.CENTER,
+                    alignment=para_align,
                     space_before=4.0 * font_scale,
                     character_properties=CharacterProperties(
                         font_name=theme.font_body,

@@ -123,7 +123,7 @@ def _validate_canvas_scene(
     valid_chart_render_modes = {"auto", "vector", "native"}
     valid_table_reveals = {"whole", "by_row", "by_column"}
     valid_shape_types = {"rounded_rect", "rect", "ellipse", "pill", "custom"}
-    valid_diagram_layouts = {"horizontal", "vertical", "dag", "hub_spoke"}
+    valid_diagram_layouts = {"horizontal", "vertical", "dag", "hub_spoke", "sequence"}
 
     object_map: dict[str, dict[str, Any]] = {}
     raw_objects = s.get("objects")

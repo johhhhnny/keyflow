@@ -11,6 +11,7 @@ _DIAGRAM_LAYOUT_MAP = {
     "vertical": "vertical_flow",
     "dag": "flow_dag",
     "hub_spoke": "hub_spoke",
+    "sequence": "sequence_timeline",
 }
 
 

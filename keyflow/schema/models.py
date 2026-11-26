@@ -42,7 +42,7 @@ ChartReveal = Literal["whole", "by_series", "by_category"]
 ChartRenderMode = Literal["auto", "vector", "native"]
 TableReveal = Literal["whole", "by_row", "by_column"]
 ShapeType = Literal["rounded_rect", "rect", "ellipse", "pill", "custom"]
-DiagramLayout = Literal["horizontal", "vertical", "dag", "hub_spoke"]
+DiagramLayout = Literal["horizontal", "vertical", "dag", "hub_spoke", "sequence"]
 TextAlign = Literal["left", "center", "right"]
 
 

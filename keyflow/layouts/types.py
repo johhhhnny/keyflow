@@ -23,6 +23,7 @@ from keyflow.schema import (
     SceneSpec,
     SurfaceStyle,
     TableSpec,
+    TextAlign,
     TrendDirection,
     compute_dag_layers,
 )
@@ -74,6 +75,7 @@ class PlacedBox:
     color_hex: str | None = None
     font_scale: float | None = None
     surface: SurfaceStyle = "filled"
+    align: TextAlign = "center"
 
 
 @dataclass(frozen=True, slots=True)
@@ -260,6 +262,7 @@ class PlacedShape:
     color_hex: str | None = None
     font_scale: float | None = None
     surface: SurfaceStyle = "filled"
+    align: TextAlign = "center"
     dashed: bool = False
     variant: NodeVariant = "primary"
     opacity: float = 1.0
@@ -298,6 +301,25 @@ class ResolvedFrame:
     palette: dict[str, object] | None = None
     notes: str = ""
     depth: int = 1
+
+
+def _sequence_curve_control(
+    r_from: BoxRect,
+    r_to: BoxRect,
+    from_idx: int,
+    to_idx: int,
+    scale: float,
+) -> tuple[float, float] | None:
+    """Compute quadratic Bezier control point for sequence_timeline forward-skip / backward-retry arcs."""
+    span = to_idx - from_idx
+    mx = (r_from.cx + r_to.cx) / 2.0
+    if span > 1:
+        arc_y = min(r_from.y, r_to.y) - (78.0 + 36.0 * (span - 2)) * max(0.75, scale)
+        return (mx, arc_y)
+    if span < 0:
+        arc_y = max(r_from.y + r_from.h, r_to.y + r_to.h) + (82.0 + 36.0 * (abs(span) - 1)) * max(0.75, scale)
+        return (mx, arc_y)
+    return None
 
 
 def _text_units(text: str) -> float:

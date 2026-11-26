@@ -43,7 +43,7 @@ TOOLS: list[dict[str, Any]] = [
             "properties": {
                 "markdown": {"type": "string", "description": "Inline Markdown article text."},
                 "input_path": {"type": "string", "description": "Path to a Markdown README/article file."},
-                "theme": {"type": "string", "enum": sorted(THEMES), "default": "slate_dark"},
+                "theme": {"type": "string", "default": "slate_dark", "description": "Built-in theme name or workspace .json theme path."},
                 "density": {"type": "string", "enum": ["standard", "compact"], "default": "standard"},
             },
         },
@@ -98,7 +98,11 @@ TOOLS: list[dict[str, Any]] = [
                 "storyboard": {"type": "object", "description": "Inline storyboard JSON object."},
                 "input_path": {"type": "string", "description": "Path to a storyboard JSON file."},
                 "output_path": {"type": "string", "description": "Destination .keyx file path."},
-                "theme": {"type": "string", "enum": sorted(THEMES), "description": "Optional theme override."},
+                "theme": {"type": "string", "description": "Optional built-in theme name or workspace .json theme path."},
+                "overrides": {
+                    "oneOf": [{"type": "object"}, {"type": "string"}],
+                    "description": "Optional per-object override patch dict or workspace .json path.",
+                },
                 "use_templates": {"type": "boolean", "description": "Optional override: true enforces preset template-only mode; false (default) enables freeform canvas."},
                 "preview_dir": {"type": "string", "description": "Optional directory to export PNG previews via Keynote."},
                 "fail_on_audit": {
@@ -314,7 +318,19 @@ def dispatch_tool(
         preview_dest = _check_path(args["preview_dir"], root) if args.get("preview_dir") else None
         theme_override = args.get("theme")
         _check_theme_ref(theme_override, root)
-        out = compile_deck(raw, out_dest, theme_override=theme_override, use_templates=use_templates)
+        raw_overrides = args.get("overrides")
+        eff_overrides: dict[str, Any] | None = None
+        if isinstance(raw_overrides, dict):
+            eff_overrides = _validate_json_limits(raw_overrides)
+        elif isinstance(raw_overrides, str) and raw_overrides.strip():
+            eff_overrides = _read_json_safe(raw_overrides, root)
+        out = compile_deck(
+            raw,
+            out_dest,
+            theme_override=theme_override,
+            use_templates=use_templates,
+            overrides=eff_overrides,
+        )
         pngs: list[Path] | None = None
         if preview_dest is not None:
             pngs = export_slide_pngs(out, preview_dest)

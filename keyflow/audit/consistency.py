@@ -95,3 +95,65 @@ def _audit_cross_page_consistency(
                     suggested_action="unify_deck_palette",
                 )
             )
+
+    # 4. Visual monotony checks: >= 3 consecutive identical layouts or 100% filled-card decks
+    if len(deck.scenes) >= 3:
+        streak = 1
+        for i in range(1, len(deck.scenes)):
+            cur_sc = deck.scenes[i]
+            prev_sc = deck.scenes[i - 1]
+            same_layout = cur_sc.layout == prev_sc.layout
+            if same_layout and cur_sc.layout == "canvas":
+                cur_sig = tuple(sorted(o.kind for o in cur_sc.objects))
+                prev_sig = tuple(sorted(o.kind for o in prev_sc.objects))
+                same_layout = cur_sig == prev_sig
+            elif same_layout:
+                cur_sig = (bool(cur_sc.nodes), bool(cur_sc.edges), cur_sc.show_pinned_flow, cur_sc.pinned_flow is not None)
+                prev_sig = (bool(prev_sc.nodes), bool(prev_sc.edges), prev_sc.show_pinned_flow, prev_sc.pinned_flow is not None)
+                same_layout = cur_sig == prev_sig
+            if same_layout:
+                streak += 1
+                if streak == 3:
+                    first_slide = scene_frames[i][1]
+                    findings.append(
+                        AuditFinding(
+                            severity="warning",
+                            category="visual_monotony",
+                            slide_num=first_slide,
+                            scene_id=cur_sc.id,
+                            frame_index=0,
+                            message=f"3+ consecutive scenes share identical '{cur_sc.layout}' structure ending at '{cur_sc.id}'.",
+                            suggestion="Vary visual rhythm using sequence_timeline, proportion_bar, comparison_matrix, charts, or borderless hero typography.",
+                            suggested_action="diversify_scene_layouts",
+                        )
+                    )
+            else:
+                streak = 1
+
+        total_cards = 0
+        filled_cards = 0
+        has_rich_visuals = False
+        for _, _, frames in scene_frames:
+            if not frames:
+                continue
+            lf = frames[-1]
+            if lf.charts or lf.tables or lf.proportion_bar or lf.comparison_matrix or lf.edges:
+                has_rich_visuals = True
+            for b in lf.boxes:
+                if b.kind in ("card", "callout") and "__" not in b.id:
+                    total_cards += 1
+                    if getattr(b, "surface", "filled") == "filled":
+                        filled_cards += 1
+        if total_cards >= 6 and filled_cards == total_cards and not has_rich_visuals:
+            findings.append(
+                AuditFinding(
+                    severity="warning",
+                    category="visual_monotony",
+                    slide_num=1,
+                    scene_id=deck.scenes[0].id,
+                    frame_index=0,
+                    message=f"All {total_cards} cards across {len(deck.scenes)} scenes use 'surface=filled' with no charts, diagrams, or borderless typography.",
+                    suggestion="Use surface='borderless' for hero numbers/thesis statements, surface='ghost' for lightweight groups, or add nonlinear diagrams/charts.",
+                    suggested_action="reduce_filled_card_monotony",
+                )
+            )

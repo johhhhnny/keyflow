@@ -24,6 +24,7 @@ from keyflow.layouts.types import (
     PlacedTable,
     PlacedTextbox,
     ResolvedFrame,
+    _sequence_curve_control,
     _text_units,
 )
 from keyflow.schema import (
@@ -163,6 +164,7 @@ def _resolve_inline_diagram(
         "vertical": "vertical_flow",
         "dag": "flow_dag",
         "hub_spoke": "hub_spoke",
+        "sequence": "sequence_timeline",
     }
     sub_layout = layout_map[dg.diagram_layout]
     dummy_scene = SceneSpec(
@@ -249,6 +251,7 @@ def _resolve_inline_diagram(
                     )
                 )
 
+    node_order = {n.id: i for i, n in enumerate(dg.nodes)}
     placed_edges: list[PlacedEdge] = []
     for edge in dg.edges:
         if edge.from_id not in anchor_rects or edge.to_id not in anchor_rects:
@@ -260,10 +263,20 @@ def _resolve_inline_diagram(
         e_op = opacity
         if focus_nodes is not None and (edge.from_id not in focus_nodes or edge.to_id not in focus_nodes):
             e_op *= 0.42
+        curve_ctrl: tuple[float, float] | None = None
+        if sub_layout == "sequence_timeline" and edge.from_id != edge.to_id:
+            curve_ctrl = _sequence_curve_control(
+                rf, rt, node_order.get(edge.from_id, 0), node_order.get(edge.to_id, 0), outcome.scale
+            )
         lrect: BoxRect | None = None
         if edge.label:
-            mx = (rf.cx + rt.cx) / 2.0
-            my = (rf.cy + rt.cy) / 2.0 - 20.0
+            if curve_ctrl is not None:
+                mx = curve_ctrl[0]
+                is_upper = curve_ctrl[1] < rf.cy
+                my = curve_ctrl[1] + (-18.0 if is_upper else 20.0) * max(0.8, outcome.scale)
+            else:
+                mx = (rf.cx + rt.cx) / 2.0
+                my = (rf.cy + rt.cy) / 2.0 - 20.0
             lw = max(84.0, _text_units(edge.label) * 14.0)
             lrect = BoxRect(mx - lw / 2.0, my - 16.0, lw, 30.0)
         placed_edges.append(
@@ -273,6 +286,7 @@ def _resolve_inline_diagram(
                 to_id=f"{obj.id}__{edge.to_id}",
                 tail_center=(rf.cx, rf.cy),
                 head_center=(rt.cx, rt.cy),
+                curve_control=curve_ctrl,
                 label=edge.label,
                 label_rect=lrect,
                 style=edge.style,
@@ -405,6 +419,7 @@ def _resolve_canvas_scene(
                         border_hex=obj.border_hex,
                         color_hex=obj.color_hex,
                         surface=obj.surface,
+                        align=obj.align,
                     )
                 )
             elif obj.kind == "textbox":
