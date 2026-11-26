@@ -1,0 +1,82 @@
+{
+  "title": "商业调查：算力基础设施收费站",
+  "theme": "slate_dark",
+  "story_model": {
+    "core_question": "利润集中究竟源自技术领先还是全链路控制？",
+    "claims": [
+      {
+        "id": "c_margin",
+        "type": "fact",
+        "claim": "核心硬件毛利率维持在 75% 附近。",
+        "source_quote": "Gross margin reached 75% in fiscal year.",
+        "metric_scope": "gross_margin_pct",
+        "confidence": "high"
+      },
+      {
+        "id": "c_lock",
+        "type": "thesis",
+        "claim": "硬件、互联与生态耦合形成了收费站壁垒。",
+        "confidence": "high"
+      },
+      {
+        "id": "c_alt",
+        "type": "counter_evidence",
+        "claim": "自研替代芯片在推理场景已开始分流。",
+        "source_quote": "Custom ASIC inference workloads grew steadily."
+      }
+    ]
+  },
+  "scenes": [
+    {
+      "id": "inv_thesis",
+      "title": "核心判断：全栈耦合形成结构性壁垒",
+      "layout": "canvas",
+      "claim": "硬件、互联与生态耦合形成了收费站壁垒。",
+      "metric_scope": "gross_margin_pct",
+      "evidence_refs": ["c_lock"],
+      "grid": { "columns": 12, "rows": 2, "gap": 24 },
+      "regions": [
+        { "id": "chart_r", "col": 1, "row": 1, "col_span": 7, "row_span": 2 },
+        { "id": "claim_r", "col": 8, "row": 1, "col_span": 5, "row_span": 1 },
+        { "id": "counter_r", "col": 8, "row": 2, "col_span": 5, "row_span": 1 }
+      ],
+      "objects": [
+        {
+          "id": "margin_chart",
+          "kind": "chart",
+          "region": "chart_r",
+          "step": 1,
+          "evidence_refs": ["c_margin"],
+          "chart": {
+            "chart_type": "column",
+            "title": "毛利率对比",
+            "unit": "%",
+            "categories": ["传统芯片", "云厂商", "核心算力"],
+            "series": [{ "name": "毛利率", "values": [48, 61, 75] }],
+            "reveal": "by_category"
+          }
+        },
+        {
+          "id": "main_claim",
+          "kind": "callout",
+          "region": "claim_r",
+          "step": 2,
+          "variant": "accent",
+          "badge": "THESIS",
+          "label": "生态与互联锁定溢价",
+          "evidence_refs": ["c_lock"]
+        },
+        {
+          "id": "counter_card",
+          "kind": "card",
+          "region": "counter_r",
+          "step": 3,
+          "variant": "warn",
+          "badge": "COUNTER",
+          "label": "自研芯片分流推理",
+          "evidence_refs": ["c_alt"]
+        }
+      ]
+    }
+  ]
+}

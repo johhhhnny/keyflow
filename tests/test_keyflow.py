@@ -2505,3 +2505,64 @@ def test_p0_mcp_security_boundaries_and_input_limits(tmp_path: Path, monkeypatch
         cur = nxt
     with pytest.raises(ValueError, match="nesting depth"):
         dispatch_tool("validate_storyboard", {"storyboard": nested})
+
+
+def test_p1_cross_page_consistency_audit() -> None:
+    # Abrupt density jump (1 -> 7) and recurring object variant drift across scenes
+    deck = {
+        "title": "Consistency Check",
+        "scenes": [
+            {
+                "id": "s_sparse",
+                "title": "Sparse Intro",
+                "layout": "canvas",
+                "grid": {"columns": 12, "rows": 1},
+                "regions": [{"id": "r1", "col": 1, "row": 1, "col_span": 12, "row_span": 1}],
+                "objects": [
+                    {"id": "hero", "kind": "card", "region": "r1", "variant": "accent", "label": "Hero"}
+                ],
+            },
+            {
+                "id": "s_dense",
+                "title": "Dense Dump",
+                "layout": "canvas",
+                "grid": {"columns": 12, "rows": 2},
+                "regions": [
+                    {"id": "ra", "col": 1, "row": 1, "col_span": 3, "row_span": 1},
+                    {"id": "rb", "col": 4, "row": 1, "col_span": 3, "row_span": 1},
+                    {"id": "rc", "col": 7, "row": 1, "col_span": 3, "row_span": 1},
+                    {"id": "rd", "col": 10, "row": 1, "col_span": 3, "row_span": 1},
+                    {"id": "re", "col": 1, "row": 2, "col_span": 4, "row_span": 1},
+                    {"id": "rf", "col": 5, "row": 2, "col_span": 4, "row_span": 1},
+                    {"id": "rg", "col": 9, "row": 2, "col_span": 4, "row_span": 1},
+                ],
+                "objects": [
+                    {"id": "hero", "kind": "card", "region": "ra", "variant": "warn", "label": "Hero"},
+                    {"id": "c2", "kind": "card", "region": "rb", "label": "Two"},
+                    {"id": "c3", "kind": "card", "region": "rc", "label": "Three"},
+                    {"id": "c4", "kind": "card", "region": "rd", "label": "Four"},
+                    {"id": "c5", "kind": "card", "region": "re", "label": "Five"},
+                    {"id": "c6", "kind": "card", "region": "rf", "label": "Six"},
+                    {"id": "c7", "kind": "card", "region": "rg", "label": "Seven"},
+                ],
+            },
+        ],
+    }
+    report = audit_deck(deck, strict=False)
+    consistency_msgs = [w.message for w in report.warnings if w.category == "cross_page_consistency"]
+    assert any("density jump" in m for m in consistency_msgs)
+    assert any("changed variant" in m for m in consistency_msgs)
+
+
+def test_p1_standardized_benchmark_suite(tmp_path: Path) -> None:
+    benchmarks = sorted(Path("tests/benchmarks").glob("*.json"))
+    assert len(benchmarks) == 4
+    for path in benchmarks:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        val = validate_deck(raw)
+        assert val.valid, f"{path.name} failed validation: {val.errors}"
+        rep = audit_deck(raw, strict=True)
+        assert rep.passed, f"{path.name} failed strict audit: {[f.to_dict() for f in rep.errors + rep.warnings]}"
+        out = tmp_path / f"{path.stem}.keyx"
+        compile_deck(raw, out)
+        assert out.exists() and out.stat().st_size > 0

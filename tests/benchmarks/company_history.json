@@ -1,0 +1,22 @@
+{
+  "title": "企业发展史：从濒临破产到商业航天领先",
+  "theme": "midnight_indigo",
+  "scenes": [
+    {
+      "id": "history_timeline",
+      "title": "四次关键转折决定生存曲线",
+      "layout": "sequence_timeline",
+      "nodes": [
+        { "id": "t1", "badge": "2008", "label": "三次发射失败", "sublabel": "资金链濒临断裂", "variant": "warn" },
+        { "id": "t2", "badge": "2008.09", "label": "第四次成功入轨", "sublabel": "赢得关键商业合同", "variant": "accent" },
+        { "id": "t3", "badge": "2015", "label": "一级火箭回收", "sublabel": "重构发射边际成本", "variant": "success" },
+        { "id": "t4", "badge": "2020+", "label": "高频复用常态化", "sublabel": "确立行业绝对领先", "variant": "primary" }
+      ],
+      "edges": [
+        { "id": "e1", "from": "t1", "to": "t2" },
+        { "id": "e2", "from": "t2", "to": "t3" },
+        { "id": "e3", "from": "t3", "to": "t4" }
+      ]
+    }
+  ]
+}
