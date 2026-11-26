@@ -596,20 +596,22 @@ def _audit_frame(
                         suggested_action="fix_chart_values",
                     )
                 )
-        if ch.chart_type in ("column", "stacked_column", "line", "area", "waterfall") and len(ch.categories) * 56.0 > ch.rect.w:
-            findings.append(
-                AuditFinding(
-                    severity="warning",
-                    category="chart_crowded",
-                    slide_num=slide_num,
-                    scene_id=frame.scene_id,
-                    frame_index=frame.frame_index,
-                    message=f"Chart '{ch.id}' has {len(ch.categories)} categories inside {ch.rect.w:.0f}px width.",
-                    suggestion="Widen the chart region, group tail categories, or switch to horizontal bar chart.",
-                    target_id=ch.id,
-                    suggested_action="widen_chart_or_reduce_categories",
+        if ch.chart_type in ("column", "stacked_column", "line", "area", "waterfall"):
+            min_cat_w = max(56.0, len(ch.series) * 44.0 + 28.0) if ch.chart_type == "column" else 56.0
+            if len(ch.categories) * min_cat_w > ch.rect.w:
+                findings.append(
+                    AuditFinding(
+                        severity="warning",
+                        category="chart_crowded",
+                        slide_num=slide_num,
+                        scene_id=frame.scene_id,
+                        frame_index=frame.frame_index,
+                        message=f"Chart '{ch.id}' has {len(ch.categories)} categories ({len(ch.series)} series) inside {ch.rect.w:.0f}px width.",
+                        suggestion="Widen the chart region, group tail categories, or switch to horizontal bar chart.",
+                        target_id=ch.id,
+                        suggested_action="widen_chart_or_reduce_categories",
+                    )
                 )
-            )
 
     for tbl in frame.tables:
         _check_rect_bounds(
@@ -728,10 +730,19 @@ def _audit_frame(
                 )
 
     if theme is not None:
+        slide_bg = tuple(c / 255.0 for c in theme.bg_rgb)
         for box in top_cards:
             if box.fill_hex or box.color_hex or frame.palette:
                 fg = hex_to_rgb_float(box.color_hex) if box.color_hex else theme.text_rgb
                 bg_rgb = hex_to_rgb_float(box.fill_hex) if box.fill_hex else theme.card_fill_rgb
+                if not box.fill_hex and box.variant == "muted":
+                    # Muted cards use alpha=0.72 over the slide background.
+                    a = 0.72
+                    bg_rgb = (
+                        bg_rgb[0] * a + slide_bg[0] * (1.0 - a),
+                        bg_rgb[1] * a + slide_bg[1] * (1.0 - a),
+                        bg_rgb[2] * a + slide_bg[2] * (1.0 - a),
+                    )
                 ratio = contrast_ratio(fg, bg_rgb)
                 if ratio < 3.0:
                     findings.append(
@@ -747,6 +758,21 @@ def _audit_frame(
                             suggested_action="adjust_contrast",
                         )
                     )
+        for box in top_cards:
+            if "__" in box.id and box.font_scale is not None and box.font_scale < 0.58:
+                findings.append(
+                    AuditFinding(
+                        severity="warning",
+                        category="cramped_scale",
+                        slide_num=slide_num,
+                        scene_id=frame.scene_id,
+                        frame_index=frame.frame_index,
+                        message=f"Inline diagram node '{box.id}' shrunk to scale {box.font_scale:.2f} (< 0.58).",
+                        suggestion="Reduce nodes inside the inline diagram, shorten labels, or widen its region.",
+                        target_id=box.id,
+                        suggested_action="reduce_diagram_nodes_or_widen_region",
+                    )
+                )
 
     # Check collisions between heterogeneous freeform objects (e.g., chart vs card, table vs textbox)
     box_ids = {b.id for b in top_cards} | {g.id for g in dashed_groups}

@@ -274,6 +274,13 @@ def apply_palette_overrides(
         if isinstance(val, str):
             updates[dst_field] = hex_to_rgb_float(val)
 
+    if "accent_fill_rgb" in updates and "accent_border_rgb" not in updates:
+        af = updates["accent_fill_rgb"]
+        if isinstance(af, tuple) and len(af) == 3:
+            is_dark_bg = (updates.get("bg_rgb", base.bg_rgb)[0] < 128)
+            delta = 0.12 if is_dark_bg else -0.12
+            updates["accent_border_rgb"] = tuple(max(0.0, min(1.0, c + delta)) for c in af)
+
     if "card_fill_rgb" in updates and isinstance(updates["card_fill_rgb"], tuple):
         updates["subcard_fill_rgb"] = updates["card_fill_rgb"]
     if "title_rgb" in updates and isinstance(updates["title_rgb"], tuple):

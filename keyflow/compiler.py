@@ -459,9 +459,9 @@ def _card_text_payload(
     else:
         main_rgb = theme.text_rgb
     text_rgba = _rgba(main_rgb)
-    badge_rgb = _readable_text_rgb(bg_rgb, theme.badge_text_rgb) if (bg_rgb is not None and not box.color_hex) else theme.badge_text_rgb
-    metric_rgb = _readable_text_rgb(bg_rgb, theme.metric_text_rgb) if (bg_rgb is not None and not box.color_hex) else theme.metric_text_rgb
-    sublabel_rgb = _readable_text_rgb(bg_rgb, theme.sublabel_rgb) if (bg_rgb is not None and not box.color_hex) else theme.sublabel_rgb
+    badge_rgb = _readable_text_rgb(bg_rgb, theme.badge_text_rgb) if bg_rgb is not None else theme.badge_text_rgb
+    metric_rgb = _readable_text_rgb(bg_rgb, theme.metric_text_rgb) if bg_rgb is not None else theme.metric_text_rgb
+    sublabel_rgb = _readable_text_rgb(bg_rgb, theme.sublabel_rgb) if bg_rgb is not None else theme.sublabel_rgb
 
     base_para = ParagraphProperties(
         alignment=AlignmentType.CENTER,
@@ -1361,7 +1361,7 @@ def _make_vector_chart_objects(
                     lbl_r = (r_outer + r_inner) / 2.0 if r_inner > 0 else r_outer * 0.65
                     lx = cx + lbl_r * math.cos(mid_a) - 36.0
                     ly = cy + lbl_r * math.sin(mid_a) - 14.0
-                    txt_rgb = (1.0, 1.0, 1.0) if contrast_ratio(c_rgb, (1.0, 1.0, 1.0)) >= 3.0 else theme.text_rgb
+                    txt_rgb = _readable_text_rgb(c_rgb, (1.0, 1.0, 1.0), min_ratio=3.5)
                     objs.append(
                         _make_textbox(
                             f"{slide_prefix}_{chart.id}_wlbl_{c_idx}",
@@ -1540,7 +1540,7 @@ def _make_vector_chart_objects(
                         )
                     )
                     if chart.show_value_labels and bw >= 34.0:
-                        txt_rgb = (1.0, 1.0, 1.0) if contrast_ratio(s_rgb, (1.0, 1.0, 1.0)) >= 3.0 else theme.text_rgb
+                        txt_rgb = _readable_text_rgb(s_rgb, (1.0, 1.0, 1.0), min_ratio=3.5)
                         objs.append(
                             _make_textbox(
                                 f"{slide_prefix}_{chart.id}_svl_{s_idx}_{c_idx}",
@@ -1704,7 +1704,7 @@ def _make_vector_chart_objects(
                     )
                 )
                 if chart.show_value_labels and bh >= 24.0:
-                    txt_rgb = (1.0, 1.0, 1.0) if contrast_ratio(s_rgb, (1.0, 1.0, 1.0)) >= 3.0 else theme.text_rgb
+                    txt_rgb = _readable_text_rgb(s_rgb, (1.0, 1.0, 1.0), min_ratio=3.5)
                     objs.append(
                         _make_textbox(
                             f"{slide_prefix}_{chart.id}_svl_{s_idx}_{c_idx}",
@@ -2202,7 +2202,7 @@ def _render_slide(
         contents.extend(_make_pinned_flow_objects(slide_prefix, frame.pinned_flow, theme))
 
     if frame.title_rect is not None:
-        title_size = round(min(78.0, max(44.0, (frame.title_rect.w - 40.0) / max(1.0, _text_units(frame.title) * 0.56))), 1)
+        title_size = round(min(58.0, max(40.0, (frame.title_rect.w - 80.0) / max(1.0, _text_units(frame.title) * 0.56))), 1)
         contents.append(
             _make_textbox(
                 f"{slide_prefix}_title",

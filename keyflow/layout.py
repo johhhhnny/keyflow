@@ -1609,10 +1609,13 @@ def _resolve_canvas_scene(
         placed_shapes: list[PlacedShape] = []
         placed_textboxes: list[PlacedTextbox] = []
         connector_rects: dict[str, BoxRect] = {}
+        active_regions: set[str] = set()
 
         for obj in scene.objects:
             if obj.id not in vis_ids:
                 continue
+            target_reg = obj.region if (obj.region and obj.region in objs_by_region) else default_reg_id
+            active_regions.add(target_reg)
             rect = obj_rects[obj.id]
             opacity = 1.0 if (focus_ids is None or obj.id in focus_ids) else 0.42
             state = frame.object_states.get(obj.id, {})
@@ -1775,7 +1778,7 @@ def _resolve_canvas_scene(
                 pinned_flow=placed_ribbon,
                 boxes=placed_boxes,
                 edges=placed_edges,
-                region_frames=region_frames,
+                region_frames=[rf for rf in region_frames if rf.id in active_regions],
                 charts=placed_charts,
                 tables=placed_tables,
                 shapes=placed_shapes,

@@ -2154,3 +2154,75 @@ def test_waterfall_chart_progressive_compile_and_magic_move_stable(tmp_path: Pat
         ]
         assert len(wf_bars) == 5
         assert len(wf_links) == 4
+
+
+def test_v031_palette_border_derivation_region_visibility_and_grouped_chart_audit() -> None:
+    """Verify accent_border_rgb derivation, active-only region frames, and series-aware chart_crowded audit."""
+    from keyflow.themes import apply_palette_overrides, get_theme
+
+    # 1. accent_fill_hex without accent_border_hex derives a coordinated border instead of keeping yellow
+    base = get_theme("slate_dark")
+    derived = apply_palette_overrides(base, {"accent_fill_hex": "#76B900"})
+    assert derived.accent_border_rgb != base.accent_border_rgb
+    assert derived.accent_border_rgb[1] > derived.accent_fill_rgb[1]  # lightened on dark bg
+
+    # 2. Region frame stays hidden on frames where none of its objects are visible yet
+    raw = {
+        "title": "Region Visibility Test",
+        "scenes": [
+            {
+                "id": "rv",
+                "title": "Step Reveal",
+                "grid": {"columns": 12, "rows": 1, "gap": 24},
+                "regions": [
+                    {"id": "left", "col": 1, "row": 1, "col_span": 5, "row_span": 1},
+                    {"id": "right", "col": 6, "row": 1, "col_span": 7, "row_span": 1, "frame": True, "title": "Details"},
+                ],
+                "objects": [
+                    {"id": "intro", "kind": "card", "region": "left", "label": "Intro", "step": 1},
+                    {"id": "detail", "kind": "card", "region": "right", "label": "Detail", "step": 2},
+                ],
+            }
+        ],
+    }
+    paced = pace_deck(raw)
+    parsed = parse_deck(paced)
+    frames = resolve_scene(parsed.scenes[0], parsed.slide_width, parsed.slide_height)
+    assert [rf.id for rf in frames[0].region_frames] == []
+    assert [rf.id for rf in frames[1].region_frames] == ["right"]
+
+    # 3. Grouped column chart with 3 series x 5 categories triggers chart_crowded when width is tight
+    crowded_raw = {
+        "title": "Crowded Grouped Column",
+        "scenes": [
+            {
+                "id": "cc",
+                "title": "Crowded Chart",
+                "grid": {"columns": 12, "rows": 1, "gap": 24},
+                "regions": [
+                    {"id": "narrow", "col": 1, "row": 1, "col_span": 4, "row_span": 1},
+                    {"id": "rest", "col": 5, "row": 1, "col_span": 8, "row_span": 1},
+                ],
+                "objects": [
+                    {
+                        "id": "grp_col",
+                        "kind": "chart",
+                        "region": "narrow",
+                        "step": 1,
+                        "chart": {
+                            "chart_type": "column",
+                            "categories": ["A", "B", "C", "D", "E"],
+                            "series": [
+                                {"name": "S1", "values": [10, 20, 30, 40, 50]},
+                                {"name": "S2", "values": [12, 22, 32, 42, 52]},
+                                {"name": "S3", "values": [14, 24, 34, 44, 54]},
+                            ],
+                        },
+                    },
+                    {"id": "note_card", "kind": "card", "region": "rest", "label": "Summary", "step": 1},
+                ],
+            }
+        ],
+    }
+    rep = audit_deck(crowded_raw, strict=True)
+    assert any(f.category == "chart_crowded" and f.target_id == "grp_col" for f in rep.errors + rep.warnings)
