@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [0.3.0] - 2026-11-26
+
+### Added
+- **Freeform Compositional Canvas (`layout: "canvas"`, default `use_templates: false`)**:
+  - Added 12-column `grid`, non-overlapping `regions` (`stack`, `row`, `grid`), custom `palette` overrides, and 7 composable canvas object types (`card`, `callout`, `textbox`, `shape`, `chart`, `table`, and inline `diagram`) plus cross-object `connectors`.
+  - Added `use_templates` toggle (`--use-templates` in CLI, `use_templates: true` in MCP/JSON) to enforce preset-only layouts when desired.
+  - Added [examples/freeform_canvas_stage1.json](examples/freeform_canvas_stage1.json) and updated `README.md` / `README.zh-CN.md` / `skills/keyflow/SKILL.md`.
+- **10 Data-Driven Chart Types & Native Tables**:
+  - Added dual-path chart compilation (`render_mode`: `auto` | `vector` | `native`): static `reveal: "whole"` charts compile as native editable `.keyx` `Chart` objects (including `COLUMNS_AS_SERIES` per-slice `PieChart`/`DonutChart` mapping), while progressive `by_series` / `by_category` charts compile as pure `Shape` + `Textbox` vectors with locked cluster widths for zero-jitter Keynote Magic Move.
+  - Added progressive vector `waterfall` chart (`chart_type: "waterfall"`) with cumulative axis bounds, start/total vs. positive/negative delta styling, dashed bridge connectors, zero-baseline rendering, and collision-safe value labels.
+  - Added native `.keyx` `Table` compilation with `by_row` / `by_column` progressive reveal and `highlight_rows` / `highlight_cols`.
+- **Step Pacing & Inline Diagram Decomposition**:
+  - Added `step`-based canvas pacing, progressive `chart` (`by_series` / `by_category`) and `table` (`by_row` / `by_column`) expansion, and node-by-node / layer-by-layer progressive decomposition for inline `diagram` objects in [keyflow/pace.py](keyflow/pace.py).
+- **Regression & Packaging Hardening**:
+  - Added P1-A Magic Move cross-frame geometry regression harness (`_assert_magic_move_stable`) in [tests/test_keyflow.py](tests/test_keyflow.py).
+  - Bundled `keyflow/deck.schema.json` as wheel package data (`pyproject.toml`) with byte-identity test against `schemas/deck.schema.json`, and enabled feature-branch matrix CI in `.github/workflows/ci.yml`.
+
+### Fixed
+- **Bright Accent Auto-Contrast**: Added `_readable_text_rgb()` in [keyflow/compiler.py](keyflow/compiler.py) so bright `accent_fill_hex` or card fills automatically select dark legible text in `callout`/`card` payloads and `table.highlight_rows`.
+- **Strict Schema Validation**: Added `_as_int()`, finite `_as_float()`, `_is_in()` unhashable enum/ref guards, chart axis/series checks, table highlight index bounds, region overlap detection, and `frames[].object_states` ref validation in [keyflow/schema.py](keyflow/schema.py).
+
+---
+
 ## [0.2.0] - 2026-11-26
 
 ### Added

@@ -7,7 +7,7 @@ from keyflow.pace import expand_scene_frames, pace_deck
 from keyflow.schema import DeckSpec, ValidationResult, parse_deck, validate_deck
 from keyflow.themes import THEMES, ThemePreset, get_theme
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "__version__",
