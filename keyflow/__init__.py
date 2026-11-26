@@ -9,7 +9,7 @@ from keyflow.schema import DeckSpec, ValidationResult, parse_deck, validate_deck
 from keyflow.snippets import instantiate_snippet, list_snippets, load_snippet
 from keyflow.themes import THEMES, ThemePreset, get_theme
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 __all__ = [
     "__version__",
