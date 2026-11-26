@@ -434,6 +434,7 @@
                   }
                 },
                 "show_annotations": { "type": "boolean", "default": true },
+                "show_pinned_flow": { "type": "boolean" },
                 "notes": { "type": "string", "default": "" }
               }
             }

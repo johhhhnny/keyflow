@@ -1525,6 +1525,8 @@ def _resolve_canvas_scene(
     title_rect: BoxRect | None,
     subtitle_rect: BoxRect | None,
     placed_ribbon: PlacedPinnedFlow | None,
+    ribbon_title_rect: BoxRect | None = None,
+    ribbon_subtitle_rect: BoxRect | None = None,
 ) -> list[ResolvedFrame]:
     """Resolve a freeform region/grid canvas scene with anchor-locked object coordinates."""
     safe_x = 80.0
@@ -1767,15 +1769,23 @@ def _resolve_canvas_scene(
                 )
             )
 
+        f_uses_ribbon = bool(
+            placed_ribbon is not None
+            and (frame.show_pinned_flow if frame.show_pinned_flow is not None else scene.show_pinned_flow)
+        )
+        f_ribbon = placed_ribbon if f_uses_ribbon else None
+        f_title_rect = (ribbon_title_rect if ribbon_title_rect is not None else title_rect) if f_uses_ribbon else title_rect
+        f_sub_base = (ribbon_subtitle_rect if ribbon_subtitle_rect is not None else subtitle_rect) if f_uses_ribbon else subtitle_rect
+
         resolved_frames.append(
             ResolvedFrame(
                 scene_id=scene.id,
                 frame_index=f_idx,
                 title=scene.title,
                 subtitle=frame.subtitle if frame.subtitle is not None else scene.subtitle,
-                title_rect=title_rect,
-                subtitle_rect=subtitle_rect if (frame.subtitle or scene.subtitle) else None,
-                pinned_flow=placed_ribbon,
+                title_rect=f_title_rect,
+                subtitle_rect=f_sub_base if (frame.subtitle or scene.subtitle) else None,
+                pinned_flow=f_ribbon,
                 boxes=placed_boxes,
                 edges=placed_edges,
                 region_frames=[rf for rf in region_frames if rf.id in active_regions],
@@ -1812,9 +1822,18 @@ def resolve_scene(
     pinned_flow: PinnedFlowSpec | None = None,
 ) -> list[ResolvedFrame]:
     """Compute anchor-preserved geometry for every progressive frame in a scene."""
-    use_ribbon = bool(pinned_flow and scene.show_pinned_flow)
+    def _frame_uses_ribbon(fr: FrameSpec) -> bool:
+        if not pinned_flow:
+            return False
+        return fr.show_pinned_flow if fr.show_pinned_flow is not None else scene.show_pinned_flow
+
+    any_ribbon = (
+        any(_frame_uses_ribbon(f) for f in scene.frames)
+        if scene.frames
+        else bool(pinned_flow and scene.show_pinned_flow)
+    )
     is_macro_only = (
-        use_ribbon
+        any_ribbon
         and not scene.nodes
         and not scene.objects
         and scene.proportion_bar is None
@@ -1829,22 +1848,45 @@ def resolve_scene(
             float(canvas_h),
             centered=is_macro_only,
         )
-        if use_ribbon and pinned_flow is not None
+        if any_ribbon and pinned_flow is not None
         else None
     )
 
-    if use_ribbon:
-        title_rect = None
-        has_any_subtitle = bool(scene.subtitle or any(f.subtitle for f in scene.frames))
-        subtitle_rect = BoxRect(260.0, 178.0, canvas_w - 520.0, 44.0) if has_any_subtitle else None
-        area_top = 232.0 if has_any_subtitle else 196.0
+    has_any_subtitle = bool(scene.subtitle or any(f.subtitle for f in scene.frames))
+    title_rect = BoxRect(160.0, 86.0, canvas_w - 320.0, 112.0)
+    subtitle_rect = BoxRect(260.0, 198.0, canvas_w - 520.0, 50.0) if has_any_subtitle else None
+
+    if is_macro_only:
+        ribbon_title_rect = BoxRect(160.0, 72.0, canvas_w - 320.0, 92.0)
+        ribbon_subtitle_rect = BoxRect(260.0, 168.0, canvas_w - 520.0, 44.0) if has_any_subtitle else None
+        area_top = 224.0 if has_any_subtitle else 184.0
     else:
-        title_rect = BoxRect(160.0, 86.0, canvas_w - 320.0, 112.0)
-        has_any_subtitle = bool(scene.subtitle or any(f.subtitle for f in scene.frames))
-        subtitle_rect = BoxRect(260.0, 198.0, canvas_w - 520.0, 50.0) if has_any_subtitle else None
-        area_top = 262.0 if has_any_subtitle else 225.0
+        pf_bottom = (
+            max(
+                [n.rect.y + n.rect.h for n in placed_ribbon.nodes]
+                + [g.rect.y + g.rect.h for g in placed_ribbon.groups],
+                default=146.0,
+            )
+            if placed_ribbon is not None
+            else 146.0
+        )
+        r_title_y = pf_bottom + 10.0
+        ribbon_title_rect = BoxRect(160.0, r_title_y, canvas_w - 320.0, 52.0)
+        r_sub_y = r_title_y + 56.0
+        ribbon_subtitle_rect = BoxRect(260.0, r_sub_y, canvas_w - 520.0, 38.0) if has_any_subtitle else None
+        if any_ribbon:
+            area_top = (r_sub_y + 46.0) if has_any_subtitle else (r_title_y + 62.0)
+        else:
+            area_top = 262.0 if has_any_subtitle else 225.0
 
     area_bottom = float(canvas_h) - 72.0
+
+    def _frame_header(fr: FrameSpec) -> tuple[PlacedPinnedFlow | None, BoxRect | None, BoxRect | None]:
+        if _frame_uses_ribbon(fr):
+            sub_r = ribbon_subtitle_rect if (fr.subtitle or scene.subtitle) else None
+            return placed_ribbon, ribbon_title_rect, sub_r
+        sub_r = subtitle_rect if (fr.subtitle or scene.subtitle) else None
+        return None, title_rect, sub_r
 
     if scene.layout == "canvas":
         return _resolve_canvas_scene(
@@ -1855,6 +1897,8 @@ def resolve_scene(
             title_rect=title_rect,
             subtitle_rect=subtitle_rect,
             placed_ribbon=placed_ribbon,
+            ribbon_title_rect=ribbon_title_rect,
+            ribbon_subtitle_rect=ribbon_subtitle_rect,
         )
 
     # Dedicated data visualization layouts
@@ -1865,15 +1909,16 @@ def resolve_scene(
             pb_placed = _resolve_proportion_bar(
                 scene.proportion_bar, vis_items, float(canvas_w), area_top, area_bottom
             )
+            f_ribbon, f_title_r, f_sub_r = _frame_header(frame)
             resolved.append(
                 ResolvedFrame(
                     scene_id=scene.id,
                     frame_index=f_idx,
                     title=scene.title,
                     subtitle=frame.subtitle if frame.subtitle is not None else scene.subtitle,
-                    title_rect=title_rect,
-                    subtitle_rect=subtitle_rect if (frame.subtitle or scene.subtitle) else None,
-                    pinned_flow=placed_ribbon,
+                    title_rect=f_title_r,
+                    subtitle_rect=f_sub_r,
+                    pinned_flow=f_ribbon,
                     proportion_bar=pb_placed,
                     notes=frame.notes,
                     depth=1 if f_idx == 0 else 2,
@@ -1893,15 +1938,16 @@ def resolve_scene(
                 area_top,
                 area_bottom,
             )
+            f_ribbon, f_title_r, f_sub_r = _frame_header(frame)
             resolved.append(
                 ResolvedFrame(
                     scene_id=scene.id,
                     frame_index=f_idx,
                     title=scene.title,
                     subtitle=frame.subtitle if frame.subtitle is not None else scene.subtitle,
-                    title_rect=title_rect,
-                    subtitle_rect=subtitle_rect if (frame.subtitle or scene.subtitle) else None,
-                    pinned_flow=placed_ribbon,
+                    title_rect=f_title_r,
+                    subtitle_rect=f_sub_r,
+                    pinned_flow=f_ribbon,
                     comparison_matrix=mx_placed,
                     notes=frame.notes,
                     depth=1 if f_idx == 0 else 2,
@@ -2047,6 +2093,7 @@ def resolve_scene(
             )
 
         frame_dividers = outcome.dividers if len(active_anchor_rects) >= 2 else []
+        f_ribbon, f_title_r, f_sub_r = _frame_header(frame)
 
         resolved_frames.append(
             ResolvedFrame(
@@ -2054,10 +2101,10 @@ def resolve_scene(
                 frame_index=f_idx,
                 title=scene.title,
                 subtitle=frame.subtitle if frame.subtitle is not None else scene.subtitle,
-                title_rect=title_rect,
-                subtitle_rect=subtitle_rect if (frame.subtitle or scene.subtitle) else None,
+                title_rect=f_title_r,
+                subtitle_rect=f_sub_r,
                 scale=outcome.scale,
-                pinned_flow=placed_ribbon,
+                pinned_flow=f_ribbon,
                 boxes=placed_boxes,
                 edges=placed_edges,
                 dividers=frame_dividers,

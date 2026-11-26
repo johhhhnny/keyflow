@@ -302,6 +302,7 @@ class FrameSpec:
     focus_objects: list[str] | None = None
     object_states: dict[str, dict[str, Any]] = field(default_factory=dict)
     show_annotations: bool = True
+    show_pinned_flow: bool | None = None
     notes: str = ""
     subtitle: str | None = None
 
@@ -555,6 +556,11 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
                     ),
                     object_states=obj_states,
                     show_annotations=bool(f_raw.get("show_annotations", True)),
+                    show_pinned_flow=(
+                        bool(f_raw["show_pinned_flow"])
+                        if f_raw.get("show_pinned_flow") is not None
+                        else None
+                    ),
                     notes=str(f_raw.get("notes", "")),
                     subtitle=f_raw.get("subtitle"),
                 )
@@ -1709,6 +1715,8 @@ def validate_deck(
                 errors.append(f"{prefix}.frames[{f_idx}]: frame entry must be an object.")
                 continue
             _check_allowed_keys(f, "frame", f"{prefix}.frames[{f_idx}]", errors)
+            if f.get("show_pinned_flow") is not None and not isinstance(f["show_pinned_flow"], bool):
+                errors.append(f"{prefix}.frames[{f_idx}].show_pinned_flow: must be a boolean.")
             vis = f.get("visible_nodes", [])
             exp = f.get("expanded_nodes", [])
             if not isinstance(vis, list):

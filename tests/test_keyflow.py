@@ -2226,3 +2226,61 @@ def test_v031_palette_border_derivation_region_visibility_and_grouped_chart_audi
     }
     rep = audit_deck(crowded_raw, strict=True)
     assert any(f.category == "chart_crowded" and f.target_id == "grp_col" for f in rep.errors + rep.warnings)
+
+
+def test_pinned_flow_preserves_title_and_supports_per_frame_toggle(tmp_path: Path) -> None:
+    """Ribbon scenes keep title_rect below docked ribbon and allow per-frame show_pinned_flow toggles."""
+    raw = {
+        "title": "Per-Frame Ribbon Test",
+        "pinned_flow": {
+            "nodes": [
+                {"id": "step_a", "label": "阶段一"},
+                {"id": "step_b", "label": "阶段二"},
+            ],
+            "edges": [{"id": "pe1", "from": "step_a", "to": "step_b"}],
+        },
+        "scenes": [
+            {
+                "id": "macro",
+                "title": "全局概览标题",
+                "show_pinned_flow": True,
+                "frames": [{"visible_nodes": [], "notes": "Centered macro overview with title."}],
+            },
+            {
+                "id": "detail",
+                "title": "章节详情标题",
+                "active_flow_node": "step_a",
+                "show_pinned_flow": True,
+                "nodes": [
+                    {"id": "n1", "label": "要点一", "note": "frame 0 shows ribbon"},
+                    {"id": "n2", "label": "要点二", "note": "frame 1 hides ribbon"},
+                ],
+                "edges": [{"id": "e1", "from": "n1", "to": "n2"}],
+                "frames": [
+                    {"visible_nodes": ["n1"], "show_pinned_flow": True, "notes": "With ribbon"},
+                    {"visible_nodes": ["n1", "n2"], "show_pinned_flow": False, "notes": "Without ribbon"},
+                ],
+            },
+        ],
+    }
+    res = validate_deck(raw)
+    assert res.valid, res.errors
+    rep = audit_deck(raw, strict=True)
+    assert rep.passed is True, [e.to_dict() for e in rep.errors]
+
+    parsed = parse_deck(raw)
+    macro_frames = resolve_scene(parsed.scenes[0], parsed.slide_width, parsed.slide_height, pinned_flow=parsed.pinned_flow)
+    assert macro_frames[0].pinned_flow is not None and macro_frames[0].pinned_flow.is_centered is True
+    assert macro_frames[0].title_rect is not None
+
+    detail_frames = resolve_scene(parsed.scenes[1], parsed.slide_width, parsed.slide_height, pinned_flow=parsed.pinned_flow)
+    assert detail_frames[0].pinned_flow is not None
+    assert detail_frames[0].title_rect is not None and detail_frames[0].title_rect.y >= 156.0
+    assert detail_frames[1].pinned_flow is None
+    assert detail_frames[1].title_rect is not None and detail_frames[1].title_rect.y < 100.0
+    # Content node n1 keeps exact locked coordinates across ribbon-on and ribbon-off frames
+    assert detail_frames[0].boxes[0].rect == detail_frames[1].boxes[0].rect
+
+    out = tmp_path / "per_frame_ribbon.keyx"
+    compile_deck(raw, out)
+    assert out.exists()
