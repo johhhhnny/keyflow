@@ -10,11 +10,14 @@ from typing import Any
 from pydantic import TypeAdapter
 
 from keyflow.compiler import CompileResult, compile_deck
+from keyflow.geometry import audit_slide_geometry
 from keyflow.renderer import is_render_enabled, render_keyx_to_pngs
 from keyflow.spec import (
+    CompositionSpec,
     DeckSpec,
     FillValue,
     GroupSpec,
+    SemanticBriefSpec,
     SizeSpec,
     SlideSpec,
     VisualObjectSpec,
@@ -120,6 +123,8 @@ def _summarize_object(obj: VisualObjectSpec, depth: int = 0) -> dict[str, Any]:
         "type": obj.type,
         "depth": depth,
     }
+    if obj.semantic is not None:
+        info["semantic"] = obj.semantic.model_dump(mode="json")
     if hasattr(obj, "geometry"):
         g = obj.geometry
         info["geometry"] = {"x": g.x, "y": g.y, "w": g.w, "h": g.h, "angle": g.angle}
@@ -205,6 +210,30 @@ class DesignSession:
 
     def set_note(self, slide_index: int, note: str | None) -> None:
         self._slide(slide_index).note = note
+
+    def set_brief(
+        self,
+        slide_index: int,
+        brief: SemanticBriefSpec | dict[str, Any],
+    ) -> None:
+        parsed = (
+            brief
+            if isinstance(brief, SemanticBriefSpec)
+            else SemanticBriefSpec.model_validate(brief)
+        )
+        self._slide(slide_index).brief = parsed
+
+    def set_composition(
+        self,
+        slide_index: int,
+        composition: CompositionSpec | dict[str, Any],
+    ) -> None:
+        parsed = (
+            composition
+            if isinstance(composition, CompositionSpec)
+            else CompositionSpec.model_validate(composition)
+        )
+        self._slide(slide_index).composition = parsed
 
     def add_object(
         self,
@@ -332,9 +361,12 @@ class DesignSession:
             "slides": [
                 {
                     "index": idx,
+                    "brief": s.brief.model_dump(mode="json") if s.brief else None,
+                    "composition": s.composition.model_dump(mode="json") if s.composition else None,
                     "object_count": len(s.objects),
                     "note": s.note,
                     "objects": [_summarize_object(o) for o in s.objects],
+                    "geometry_notes": audit_slide_geometry(s, self.deck.slide_size, idx).summary_notes,
                 }
                 for idx, s in slides_to_show
             ],

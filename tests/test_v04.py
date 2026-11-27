@@ -330,3 +330,76 @@ def test_png_render_switch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     res, pngs = sess.compile_and_render(tmp_path / "prod.keyx", render_png=True)
     assert res.keyx_path.exists()
     assert pngs == []
+
+
+def test_semantic_identity_composition_and_geometry_audit(tmp_path: Path) -> None:
+    from keyflow.geometry import audit_slide_geometry
+    from keyflow.spec import SizeSpec, SlideSpec
+
+    sess = DesignSession.create(background="#0F172A")
+    sess.set_brief(
+        0,
+        {
+            "core_thesis": "Reusability breaks the launch cost floor.",
+            "audience": "Aerospace investors",
+            "goal": "Show why vertical landing shifts economics.",
+            "key_facts": ["1st stage recovery", "Higher flight cadence"],
+            "relationships": ["recovery -> lower cost -> scale"],
+            "visual_subject": "Falcon 9 booster",
+        },
+    )
+    sess.set_composition(
+        0,
+        {
+            "visual_concept": "Asymmetric contrast between expendable vs reusable",
+            "central_tension": "Discarded hardware vs flying again",
+            "expression_form": "contrast",
+            "focal_point": "booster_hero",
+            "reading_order": ["thesis_title", "booster_hero"],
+        },
+    )
+    sess.add_object(
+        0,
+        {
+            "type": "textbox",
+            "id": "thesis_title",
+            "semantic": {
+                "role": "core_thesis",
+                "meaning": "Main claim on reusability",
+                "hierarchy": "primary",
+            },
+            "geometry": {"x": 80, "y": 60, "w": 200, "h": 40},
+            "text": {
+                "string": "This is a deliberately very long paragraph that will overflow a tiny 200x40 textbox at 28pt.",
+                "style": {"size": 28},
+            },
+        },
+    )
+    sess.add_object(
+        0,
+        {
+            "type": "shape",
+            "id": "oob_shape",
+            "geometry": {"x": 1850, "y": 100, "w": 200, "h": 100},
+            "shape": "rect",
+            "fill": "#38BDF8",
+        },
+    )
+
+    summary = sess.inspect(0)
+    assert summary["slides"][0]["brief"]["core_thesis"] == "Reusability breaks the launch cost floor."
+    assert summary["slides"][0]["composition"]["expression_form"] == "contrast"
+    assert summary["slides"][0]["objects"][0]["semantic"]["role"] == "core_thesis"
+
+    audit = audit_slide_geometry(
+        SlideSpec.model_validate(sess.deck.slides[0]),
+        SizeSpec(w=1920, h=1080),
+        0,
+    )
+    kinds = {i.kind for i in audit.issues}
+    assert "text_overflow" in kinds
+    assert "out_of_bounds" in kinds
+
+    res = sess.compile(tmp_path / "semantic_audit.keyx")
+    assert res.keyx_path.exists()
+    assert len(res.geometry_notes) >= 2

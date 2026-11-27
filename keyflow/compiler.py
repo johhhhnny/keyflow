@@ -113,6 +113,7 @@ from creator_studio_doc_format.core import Line as StrokeLine
 from creator_studio_doc_format.core import Path as ShapePath
 from creator_studio_doc_format.validation import validate_document
 
+from keyflow.geometry import audit_slide_geometry
 from keyflow.spec import (
     AnchorSpec,
     ChartAxisSpec,
@@ -1095,16 +1096,11 @@ def compile_deck(
     out.parent.mkdir(parents=True, exist_ok=True)
     doc.save(out, pre_save_hooks=[validate_document])
 
-    # Factual geometry telemetry (never blocking, purely observational)
+    # Stage 4 · Factual geometry audit (never blocking, purely observational)
     notes: list[str] = []
-    cw, ch = deck.slide_size.w, deck.slide_size.h
-    for b in all_bounds:
-        label = b.id or f"{b.type}@slide{b.slide_index}"
-        if b.x < 0 or b.y < 0 or b.x + b.w > cw or b.y + b.h > ch:
-            notes.append(
-                f"slide {b.slide_index}: {label} extends outside canvas "
-                f"({b.x:.0f},{b.y:.0f} {b.w:.0f}x{b.h:.0f} vs {cw:.0f}x{ch:.0f})"
-            )
+    for idx, slide_spec in enumerate(deck.slides):
+        audit = audit_slide_geometry(slide_spec, deck.slide_size, idx)
+        notes.extend(audit.summary_notes)
 
     return CompileResult(
         keyx_path=out.resolve(),

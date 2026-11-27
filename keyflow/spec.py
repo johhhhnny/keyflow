@@ -221,6 +221,44 @@ class TextSpec(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Semantic Identity & Composition Model (preserved for future multi-slide/motion)
+# ---------------------------------------------------------------------------
+
+
+class SemanticIdentity(BaseModel):
+    """Why a visual object exists, what it expresses, and its role in the scene."""
+
+    role: str  # e.g. "hero_visual", "core_thesis", "evidence_chart", "causal_link", "anchor_number"
+    meaning: str  # Concise statement of what this object communicates
+    hierarchy: Literal["primary", "secondary", "supporting", "ambient"] = "secondary"
+    source_claim: str | None = None
+
+
+class SemanticBriefSpec(BaseModel):
+    """Stage 1 output: structured understanding of the source text."""
+
+    core_thesis: str
+    audience: str = "General / Decision Makers"
+    goal: str = ""
+    key_facts: list[str] = Field(default_factory=list)
+    relationships: list[str] = Field(default_factory=list)  # causal, contrast, comparison, etc.
+    visual_subject: str | None = None
+    text_vs_visual: str | None = None
+
+
+class CompositionSpec(BaseModel):
+    """Stage 2 & 3 output: visual concept, composition intent, and spatial strategy."""
+
+    visual_concept: str
+    central_tension: str | None = None
+    expression_form: str = "custom"  # e.g. contrast, flow, data, hero_visual, editorial, diagram, custom
+    focal_point: str | None = None
+    reading_order: list[str] = Field(default_factory=list)  # ordered object IDs
+    spatial_strategy: str | None = None
+    color_rationale: str | None = None
+
+
+# ---------------------------------------------------------------------------
 # Native Visual Objects
 # ---------------------------------------------------------------------------
 
@@ -246,6 +284,7 @@ class TextboxSpec(BaseModel):
 
     type: Literal["textbox"] = "textbox"
     id: str | None = None
+    semantic: SemanticIdentity | None = None
     geometry: GeometrySpec
     text: TextSpec
     fill: FillValue = None
@@ -263,6 +302,7 @@ class ShapeSpec(BaseModel):
 
     type: Literal["shape"] = "shape"
     id: str | None = None
+    semantic: SemanticIdentity | None = None
     geometry: GeometrySpec
     shape: ShapeKind = "rect"
     corner_radius: float = Field(default=0.12, ge=0.0, le=0.5)
@@ -317,6 +357,7 @@ class ConnectionSpec(BaseModel):
 
     type: Literal["connection"] = "connection"
     id: str | None = None
+    semantic: SemanticIdentity | None = None
     line_type: Literal["straight", "curved", "orthogonal"] = "straight"
     from_point: tuple[float, float]
     to_point: tuple[float, float]
@@ -335,6 +376,7 @@ class ImageSpec(BaseModel):
 
     type: Literal["image"] = "image"
     id: str | None = None
+    semantic: SemanticIdentity | None = None
     geometry: GeometrySpec
     src: str
     mask_shape: Literal["rect", "rounded_rect", "oval", "custom"] | None = None
@@ -368,6 +410,7 @@ class TableSpec(BaseModel):
 
     type: Literal["table"] = "table"
     id: str | None = None
+    semantic: SemanticIdentity | None = None
     geometry: GeometrySpec
     columns: list[TableColumnSpec] = Field(min_length=1)
     rows: list[list[Union[TableCellSpec, str, float, int]]] = Field(default_factory=list)
@@ -432,6 +475,7 @@ class ChartSpec(BaseModel):
 
     type: Literal["chart"] = "chart"
     id: str | None = None
+    semantic: SemanticIdentity | None = None
     geometry: GeometrySpec
     chart_type: ChartKind = "column"
     title: str | None = None
@@ -452,6 +496,7 @@ class GroupSpec(BaseModel):
 
     type: Literal["group"] = "group"
     id: str | None = None
+    semantic: SemanticIdentity | None = None
     title: str | None = None
     children: list["VisualObjectSpec"] = Field(default_factory=list)
     opacity: float = Field(default=1.0, ge=0.0, le=1.0)
@@ -479,9 +524,11 @@ GroupSpec.model_rebuild()
 
 
 class SlideSpec(BaseModel):
-    """One designed slide: background, ordered visual objects (bottom-to-top), and presenter note."""
+    """One designed slide: semantic brief, composition model, background, objects, and note."""
 
     id: str | None = None
+    brief: SemanticBriefSpec | None = None
+    composition: CompositionSpec | None = None
     background: FillValue = "#0F172A"
     objects: list[VisualObjectSpec] = Field(default_factory=list)
     note: str | None = None

@@ -157,6 +157,32 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "design_set_brief",
+        "description": "Stage 1: Record structured semantic understanding (core_thesis, audience, goal, key_facts, relationships, visual_subject).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string"},
+                "slide_index": {"type": "integer", "default": 0},
+                "brief": {"type": "object"},
+            },
+            "required": ["session_id", "brief"],
+        },
+    },
+    {
+        "name": "design_set_composition",
+        "description": "Stage 2 & 3: Record visual concept, central tension, expression form, focal point, and reading order.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string"},
+                "slide_index": {"type": "integer", "default": 0},
+                "composition": {"type": "object"},
+            },
+            "required": ["session_id", "composition"],
+        },
+    },
+    {
         "name": "design_inspect",
         "description": "Inspect the current scene graph, object IDs, and bounding boxes.",
         "inputSchema": {
@@ -269,6 +295,16 @@ def handle_tool_call(name: str, args: dict[str, Any]) -> dict[str, Any]:
     if name == "design_set_background":
         sess = _get_session(args["session_id"])
         sess.set_background(args.get("slide_index", 0), args["background"])
+        return {"ok": True}
+
+    if name == "design_set_brief":
+        sess = _get_session(args["session_id"])
+        sess.set_brief(args.get("slide_index", 0), args["brief"])
+        return {"ok": True}
+
+    if name == "design_set_composition":
+        sess = _get_session(args["session_id"])
+        sess.set_composition(args.get("slide_index", 0), args["composition"])
         return {"ok": True}
 
     if name == "design_inspect":
