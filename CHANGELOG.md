@@ -6,9 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
-## [Unreleased]
+## [0.3.3] - 2026-11-27
 
 ### Added
+- **Editorial Cover Slide (`cover`)**:
+  - Added optional root `cover: true | { kicker, title, subtitle, meta, align, accent_bar }` in schema, parsers, and compiler (`_render_cover_slide()`), with `audit_deck` slide-number offset alignment.
 - **Agent-Directed Spatial Composition (`geometry`, `anchor`, `z_index`, `group`)**:
   - Added normalized `[0..1]` spatial positioning (`geometry` with `rotation`), 9-point relative `anchor` placement with topological resolution and cycle detection, `z_index` render ordering, and `group` composition identifiers across `keyflow/schema/`, `keyflow/layouts/canvas.py`, and `keyflow/compiler.py`.
   - Upgraded `keyflow/audit/geometry.py` to allow intentional overlap across distinct `z_index` layers while strictly catching same-layer collisions.
