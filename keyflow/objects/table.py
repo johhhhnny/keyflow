@@ -13,6 +13,7 @@ from creator_studio_doc_format.core import (
     ColumnHeader,
     Fill,
     Geometry,
+    HeaderFooterStrokeProperties,
     Line,
     OverallProperties,
     Paragraph,
@@ -67,10 +68,17 @@ def _make_table_objects(slide_prefix: str, table: PlacedTable, theme: ThemePrese
     col_w = round(table_rect.w / n_cols, 2)
     row_h = round(table_rect.h / n_rows, 2)
 
-    grid_line = Stroke(line=Line(color=Color(rgba=_rgba(theme.card_border_rgb, 0.55)), width=1.0, pattern=Pattern.SOLID))
+    grid_line = Stroke(line=Line(color=Color(rgba=_rgba(theme.card_border_rgb, 0.78)), width=1.0, pattern=Pattern.SOLID))
     header_fill = Fill(color=Color(rgba=_rgba(theme.flow_node_fill_rgb)))
     body_fill = Fill(color=Color(rgba=_rgba(theme.card_fill_rgb)))
     highlight_fill = Fill(color=Color(rgba=_rgba(theme.accent_fill_rgb)))
+    is_dark_theme = theme.bg_rgb[0] < 128
+    hl_alt_delta = 0.025 if is_dark_theme else -0.025
+    highlight_fill_alt = Fill(
+        color=Color(
+            rgba=_rgba(tuple(max(0.0, min(1.0, c + hl_alt_delta)) for c in theme.accent_fill_rgb))
+        )
+    )
 
     hdr_text_rgb = _readable_text_rgb(theme.flow_node_fill_rgb, theme.title_rgb)
     header_text_props = ParagraphProperties(
@@ -140,12 +148,13 @@ def _make_table_objects(slide_prefix: str, table: PlacedTable, theme: ThemePrese
         for c_idx in range(n_cols):
             val = raw_row[c_idx] if (row_visible and c_idx < table.visible_cols and c_idx < len(raw_row)) else ""
             is_hl = is_hl_row or (c_idx in table.highlight_cols)
+            hl_cell_fill = highlight_fill_alt if (r_idx % 2 == 1) else highlight_fill
             cells.append(
                 Cell(
                     value=val,
                     column_index=c_idx,
                     cell_properties=CellProperties(
-                        fill=highlight_fill if is_hl else body_fill,
+                        fill=hl_cell_fill if is_hl else body_fill,
                         vertical_alignment=VerticalAlignmentType.CENTER,
                     ),
                     text_properties=highlight_text_props if is_hl else body_text_props,
@@ -176,6 +185,14 @@ def _make_table_objects(slide_prefix: str, table: PlacedTable, theme: ThemePrese
             overall_properties=OverallProperties(has_alternating_rows=False, auto_resize=False),
             header_row_cell_properties=CellProperties(fill=header_fill, vertical_alignment=VerticalAlignmentType.CENTER),
             header_row_text_properties=header_text_props,
+            header_row_stroke_properties=HeaderFooterStrokeProperties(
+                border_stroke=grid_line,
+                separator_stroke=grid_line,
+                horizontal_stroke=grid_line,
+                vertical_stroke=grid_line,
+                separator_visible=True,
+                across_strokes_visible=True,
+            ),
             body_cell_properties=CellProperties(fill=body_fill, vertical_alignment=VerticalAlignmentType.CENTER),
             body_text_properties=body_text_props,
             body_stroke_properties=BodyStrokeProperties(

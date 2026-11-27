@@ -538,7 +538,7 @@ def _step_down_font(
     text_w: float,
     eff_scale: float,
     *,
-    max_lines: int = 2,
+    max_lines: int = 1,
 ) -> float:
     """Pick the largest modular font size from ladder that fits cleanly without decimal drift."""
     start_idx = 0
@@ -548,7 +548,7 @@ def _step_down_font(
         start_idx = 1
     units = _text_units(text)
     for sz in ladder[start_idx:]:
-        est_lines = max(1, math.ceil(units * sz * 0.56 / max(40.0, text_w)))
+        est_lines = max(1, math.ceil(units * sz * 0.62 / max(40.0, text_w)))
         if est_lines <= max_lines:
             return sz
     return ladder[-1]
@@ -583,12 +583,12 @@ def compute_box_text_layout(
         line_specs.append(("metric", box.metric, "title", msz, True, mh, gap_md))
     if box.label:
         lsz = main_size
-        n_lines = max(1, math.ceil(_text_units(box.label) * lsz * 0.56 / text_w))
+        n_lines = max(1, math.ceil(_text_units(box.label) * lsz * 0.62 / text_w))
         lh = round(lsz * LINE_HEIGHT_RATIO * n_lines, 1)
         line_specs.append(("caption", box.label, "body", lsz, True, lh, 0.0))
     if box.sublabel:
         ssz = 15.0 if (is_sub or eff_scale < 0.85) else 19.0
-        n_lines = max(1, math.ceil(_text_units(box.sublabel) * ssz * 0.56 / text_w))
+        n_lines = max(1, math.ceil(_text_units(box.sublabel) * ssz * 0.62 / text_w))
         sh_h = round(ssz * LINE_HEIGHT_RATIO * n_lines, 1)
         if line_specs:
             prev = line_specs[-1]
