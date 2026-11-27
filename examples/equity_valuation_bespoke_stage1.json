@@ -1,0 +1,302 @@
+{
+  "title": "NVDA 深度研报：估值落差、盈利瀑布与边界",
+  "theme": "slate_dark",
+  "use_templates": false,
+  "story_model": {
+    "core_question": "NVDA 在管理层变动与情绪承压下，基本面与 DCF 估值是否仍支撑买入评级？",
+    "claims": [
+      {
+        "id": "t1",
+        "type": "thesis",
+        "claim": "当前股价 $162.85（较 52 周高点回撤 33.1%）过度悲观，DCF 公允价值中值 $288.24 隐含 +77.0% 上行空间，维持 BUY 评级。",
+        "source_quote": "当前股票收盘价为 $162.85...DCF 模型给出的公允价值中值为 $288.24...隐含了 +77.0% 的上涨空间...recommendation: BUY",
+        "confidence": "high"
+      },
+      {
+        "id": "f1",
+        "type": "fact",
+        "claim": "TTM 营收 $303.0B 扣除营业成本 $76.7B、研发 $23.6B 与管销 $5.1B 后，实现营业利润 $197.6B（营业利润率 65.2%）。",
+        "source_quote": "Revenue 302,969.00 M USD (TTM), Gross Margin 74.67%, Operating Margin 65.21%, Operating Income 197,579.00 M USD",
+        "metric_scope": "ttm_income_usd_b",
+        "confidence": "high"
+      },
+      {
+        "id": "f2",
+        "type": "fact",
+        "claim": "DCF 10 年营收增速路径从 Y1 36.8%、Y2 40.0% 线性衰减至 Y10 3.0% 终期增速。",
+        "source_quote": "analyst consensus FY1-3 growth 40.0%/40.0%/33.6%, then linear fade to terminal 3.0%; Year 1 applied as 36.8%",
+        "metric_scope": "dcf_10y_growth_pct",
+        "confidence": "high"
+      },
+      {
+        "id": "ce1",
+        "type": "counter_evidence",
+        "claim": "过去 30 天新闻净情绪指数为 -0.84（CEO 离职与监管传闻冲击）；fmp 与 yfinance 现金数据相差 37%；同业前瞻 P/E 样本仅 2 家。",
+        "source_quote": "净情绪指数为 -0.84...total_cash differs by 37%...前瞻 P/E 样本仅有 2 家企业",
+        "confidence": "high"
+      },
+      {
+        "id": "c1",
+        "type": "conclusion",
+        "claim": "最终目标价审慎锚定 DCF $288.24（置信度 0.85），若实际增速低于 15.1% 隐含 CAGR 须下修估值。",
+        "source_quote": "最终评级与目标价锚定在较为审慎的 DCF 结果 $288.24 上...若未来实际营收增长无法达到市场暗含的 15.1% 年化增长率预期，可能引发向下修正",
+        "confidence": "high"
+      }
+    ]
+  },
+  "pinned_flow": {
+    "nodes": [
+      { "id": "gap", "label": "估值落差" },
+      { "id": "fundamentals", "label": "盈利与增长" },
+      { "id": "verdict", "label": "方法与张力" }
+    ],
+    "edges": [
+      { "id": "pf1", "from": "gap", "to": "fundamentals" },
+      { "id": "pf2", "from": "fundamentals", "to": "verdict" }
+    ]
+  },
+  "scenes": [
+    {
+      "id": "scene_price_gap",
+      "title": "估值落差：市场定价与 DCF 公允价值",
+      "subtitle": "较 52 周高点 $243.37 回撤 33.1%，处于区间 15% 低位",
+      "layout": "canvas",
+      "visual_intent": "price_value_gap",
+      "active_flow_node": "gap",
+      "claim": "现价 $162.85 相对 DCF 公允价值 $288.24 存在 +77.0% 修复空间。",
+      "intro_note": "开篇用杂志式超大字号直接凸显价格与价值的落差，而非平铺三张小卡片。",
+      "grid": { "columns": 12, "rows": 3, "gap": 20 },
+      "regions": [
+        { "id": "reg_giant_num", "col": 1, "row": 1, "col_span": 12, "row_span": 1 },
+        { "id": "reg_upside", "col": 1, "row": 2, "col_span": 12, "row_span": 1 },
+        { "id": "reg_context", "col": 1, "row": 3, "col_span": 12, "row_span": 1 }
+      ],
+      "objects": [
+        {
+          "id": "giant_price_gap",
+          "kind": "textbox",
+          "region": "reg_giant_num",
+          "step": 1,
+          "text": "$162.85  →  $288.24",
+          "font_size": 92,
+          "bold": true,
+          "align": "center",
+          "evidence_refs": ["t1"],
+          "note": "左为当前收盘价（2026-11-13），右为 DCF 公允价值中值（置信度 0.85）。"
+        },
+        {
+          "id": "upside_headline",
+          "kind": "textbox",
+          "region": "reg_upside",
+          "step": 2,
+          "text": "+77.0% 上行空间  ·  BUY 评级",
+          "font_size": 40,
+          "bold": true,
+          "align": "center",
+          "evidence_refs": ["t1"],
+          "note": "WACC 11.86%，终期增长率 3.00%。"
+        },
+        {
+          "id": "range_callout",
+          "kind": "callout",
+          "region": "reg_context",
+          "surface": "borderless",
+          "variant": "primary",
+          "step": 3,
+          "badge": "52W LOW 15%",
+          "label": "市场隐含 15.1% 增长预期",
+          "sublabel": "区间 $148.80–$243.37",
+          "evidence_refs": ["t1", "c1"],
+          "note": "过去一年股价回报 -15.8%，当前隐含 WACC 达 16.8%，反映市场情绪过度悲观。"
+        }
+      ]
+    },
+    {
+      "id": "scene_ttm_waterfall",
+      "title": "TTM 盈利瀑布：从 $303B 营收至 $198B 营业利润",
+      "subtitle": "截至 2026-07-26（USD · 十亿美元，含推导 Q4 计算值）",
+      "layout": "canvas",
+      "visual_intent": "profit_bridge",
+      "active_flow_node": "fundamentals",
+      "claim": "NVDA TTM 营收 $303.0B 在扣除成本、研发与管销后，营业利润仍高达 $197.6B（65.2%）。",
+      "metric_scope": "ttm_income_usd_b",
+      "intro_note": "用瀑布图直观呈现极高的毛利率（74.7%）与轻费用结构如何转化为 65.2% 的营业利润率。",
+      "grid": { "columns": 12, "rows": 1, "gap": 24 },
+      "regions": [
+        { "id": "reg_wf", "col": 1, "row": 1, "col_span": 12, "row_span": 1 }
+      ],
+      "objects": [
+        {
+          "id": "ttm_waterfall",
+          "kind": "chart",
+          "region": "reg_wf",
+          "step": 1,
+          "evidence_refs": ["f1"],
+          "note": "营业成本 $76.7B、研发 $23.6B、管销 $5.1B，最终营业利润 $197.6B（净利润 $192.9B，经营现金流 $134.4B）。",
+          "chart": {
+            "chart_type": "waterfall",
+            "reveal": "by_category",
+            "render_mode": "auto",
+            "unit": "$B",
+            "categories": ["营业收入", "营业成本", "研发费用", "管销费用", "营业利润"],
+            "series": [
+              { "name": "TTM 利润桥", "values": [303.0, -76.7, -23.6, -5.1, 197.6] }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "scene_dcf_fade",
+      "title": "DCF 十年营收增速衰减曲线",
+      "subtitle": "前三年采用一致预期，随后线性收敛至 3.0% 长期名义 GDP 增速",
+      "layout": "canvas",
+      "visual_intent": "decay_trajectory",
+      "active_flow_node": "fundamentals",
+      "claim": "DCF 模型假设营收增速在 Y2 见顶 40.0% 后逐年线性递减至 Y10 3.0%。",
+      "metric_scope": "dcf_10y_growth_pct",
+      "intro_note": "用连续折线完整展示 10 年增速衰减斜率，避免只展示前几年造成线性外推误解。",
+      "grid": { "columns": 12, "rows": 1, "gap": 24 },
+      "regions": [
+        { "id": "reg_line", "col": 1, "row": 1, "col_span": 12, "row_span": 1 }
+      ],
+      "objects": [
+        {
+          "id": "dcf_10y_line",
+          "kind": "chart",
+          "region": "reg_line",
+          "step": 1,
+          "evidence_refs": ["f2"],
+          "note": "Y1 采用 36.8%（由 TTM 基数衔接至 FY1 共识），Y4–Y10 按线性步长递减至 3.0%。",
+          "chart": {
+            "chart_type": "line",
+            "reveal": "whole",
+            "render_mode": "native",
+            "show_title": false,
+            "unit": "%",
+            "categories": ["Y1", "Y2", "Y3", "Y4", "Y5", "Y6", "Y7", "Y8", "Y9", "Y10"],
+            "series": [
+              { "name": "DCF 营收增速 (%)", "values": [36.8, 40.0, 33.6, 29.2, 24.8, 20.5, 16.1, 11.7, 7.4, 3.0] }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "scene_valuation_matrix",
+      "title": "估值方法论对照：为何锚定 $288.24？",
+      "subtitle": "比较独立 DCF、历史 EV/EBITDA 与同业可比倍数",
+      "layout": "comparison_matrix",
+      "visual_intent": "methodology_tradeoff",
+      "active_flow_node": "verdict",
+      "claim": "因历史倍数置信度较低且同业前瞻样本仅 2 家，最终目标价审慎锚定 DCF $288.24。",
+      "intro_note": "用对比矩阵直面估值方法分歧，避免挑高不挑低。",
+      "matrix": {
+        "formula": "目标价锚定 = 审慎 DCF ($288.24)  |  现价 $162.85 (+77.0%)",
+        "columns": [
+          {
+            "id": "col_dcf",
+            "caption": "DCF 模型",
+            "action_banner": "主锚 · BUY",
+            "action_subtext": "置信度 0.85",
+            "takeaway": "采用为目标价",
+            "evidence_refs": ["t1", "c1"],
+            "note": "WACC 11.86%，终期增速 3.00%，Blume Beta 1.81。",
+            "headers": ["关键参数", "数值"],
+            "rows": [
+              { "chip": "公允价值", "values": ["$288.24"], "trend": "up" },
+              { "chip": "WACC", "values": ["11.86%"] },
+              { "chip": "隐含空间", "values": ["+77.0%"], "trend": "up" }
+            ]
+          },
+          {
+            "id": "col_hist",
+            "caption": "历史 EV/EBITDA",
+            "is_baseline": true,
+            "evidence_refs": ["c1"],
+            "note": "历史 EV/EBITDA 给出 $543.15 中间价，但置信度仅 0.72。",
+            "headers": ["关键参数", "数值"],
+            "rows": [
+              { "chip": "模型中价", "values": ["$543.15"], "trend": "up" },
+              { "chip": "置信度", "values": ["0.72"], "trend": "down" },
+              { "chip": "当前倍数", "values": ["19.2x"] }
+            ]
+          },
+          {
+            "id": "col_peer",
+            "caption": "同业可比倍数",
+            "action_banner": "样本受限",
+            "action_subtext": "仅作辅助参考",
+            "takeaway": "不作主锚",
+            "evidence_refs": ["ce1"],
+            "note": "前瞻 P/E 仅 2 家可比样本，且 TSM($2.07T) 与 AMD(115x PE) 业务结构差异大。",
+            "headers": ["关键参数", "数值"],
+            "rows": [
+              { "chip": "同业倍数", "values": ["22.7x"] },
+              { "chip": "有效样本", "values": ["2 家"], "trend": "down" },
+              { "chip": "AMD P/E", "values": ["115.0x"] }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "scene_tension_hub",
+      "title": "多空张力与核心边界",
+      "subtitle": "围绕 BUY · $288.24 评级的业绩催化与四大风险/数据约束",
+      "layout": "hub_spoke",
+      "visual_intent": "tension_radiation",
+      "active_flow_node": "verdict",
+      "claim": "短期业绩超预期催化与 CEO 离职、-0.84 舆情及 37% 现金口径差异形成直接张力。",
+      "intro_note": "用中心辐射图呈现围绕评级的多空力量对比与数据边界。",
+      "nodes": [
+        {
+          "id": "hub_buy",
+          "badge": "VERDICT",
+          "label": "BUY · $288.24",
+          "variant": "accent",
+          "evidence_refs": ["t1"],
+          "note": "维持买入评级，但须紧密跟踪以下四项边界。"
+        },
+        {
+          "id": "sp_cat",
+          "badge": "CATALYST · 4",
+          "label": "Wedbush 预计超预期",
+          "variant": "success",
+          "evidence_refs": ["t1"],
+          "note": "业绩超预期有望在管理层过渡期提供基本面缓冲。"
+        },
+        {
+          "id": "sp_ceo",
+          "badge": "RISK · 5",
+          "label": "CEO 离职与 -0.84 情绪",
+          "variant": "warn",
+          "evidence_refs": ["ce1"],
+          "note": "Jensen Huang 辞职、监管及内幕交易传闻导致 30 日净情绪 -0.84。"
+        },
+        {
+          "id": "sp_cash",
+          "badge": "DATA AUDIT",
+          "label": "现金口径差异 37%",
+          "variant": "warn",
+          "evidence_refs": ["ce1"],
+          "note": "fmp ($99.4B) 与 yfinance ($62.5B) 总现金存在 37% 分歧。"
+        },
+        {
+          "id": "sp_cagr",
+          "badge": "EXECUTION",
+          "label": "15.1% CAGR 兑现",
+          "variant": "primary",
+          "evidence_refs": ["c1"],
+          "note": "若实际营收增速低于市场隐含 15.1%，须下修 DCF 估值。"
+        }
+      ],
+      "edges": [
+        { "id": "he1", "from": "hub_buy", "to": "sp_cat" },
+        { "id": "he2", "from": "hub_buy", "to": "sp_ceo" },
+        { "id": "he3", "from": "hub_buy", "to": "sp_cash" },
+        { "id": "he4", "from": "hub_buy", "to": "sp_cagr" }
+      ]
+    }
+  ]
+}

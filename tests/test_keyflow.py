@@ -3014,3 +3014,42 @@ def test_design_system_elevation_modular_scale_and_theme_aesthetics() -> None:
     cats = {w.category for w in rep.warnings}
     assert "border_visibility" in cats
     assert "series_distinguishability" in cats
+
+
+def test_visual_intent_alignment_idiom_monotony_and_outline_signals() -> None:
+    from keyflow.outline import extract_markdown_outline
+
+    # 1. outline emits recommended_visual_intents
+    md = "# Report\n## 盈利拆解\n营收 300B 扣除成本与研发后营业利润 197B。\n## 风险与催化\n核心风险与上行催化。\n"
+    res = extract_markdown_outline(md)
+    secs = res["source_summary"]["sections"]
+    assert any("profit_bridge -> chart(waterfall)" in s["recommended_visual_intents"] for s in secs)
+    assert any("tension_radiation -> hub_spoke" in s["recommended_visual_intents"] for s in secs)
+
+    # 2. intent_form_alignment catches mismatch + visual_monotony catches 4+ basic-idiom scenes
+    mismatched_deck = {
+        "title": "Intent Mismatch",
+        "scenes": [
+            {
+                "id": f"sc_{i}",
+                "title": f"Scene {i}",
+                "layout": "canvas",
+                "visual_intent": "profit_bridge" if i == 0 else "decay_trajectory",
+                "grid": {"columns": 12, "rows": 1},
+                "regions": [{"id": "r1", "col": 1, "row": 1, "col_span": 12, "row_span": 1}],
+                "objects": [
+                    {
+                        "id": f"card_{i}",
+                        "kind": "card",
+                        "region": "r1",
+                        "label": f"Static Card {i}",
+                    }
+                ],
+            }
+            for i in range(4)
+        ],
+    }
+    rep = audit_deck(mismatched_deck, strict=False)
+    cats = {w.category for w in rep.warnings}
+    assert "intent_form_alignment" in cats
+    assert "visual_monotony" in cats

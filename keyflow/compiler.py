@@ -411,6 +411,7 @@ def _make_comparison_matrix_objects(
                 )
             )
         if col.takeaway and col.takeaway_rect:
+            tk_txt_rgb = _readable_text_rgb(theme.takeaway_pill_rgb, theme.text_rgb)
             objs.append(
                 _make_solid_card(
                     f"{slide_prefix}_mx_tk_{col.id}",
@@ -420,7 +421,7 @@ def _make_comparison_matrix_objects(
                     text=col.takeaway,
                     font_name=theme.font_body,
                     font_size=22.0,
-                    text_color=_rgba(theme.text_rgb),
+                    text_color=_rgba(tk_txt_rgb),
                     corner_px=6.0,
                 )
             )

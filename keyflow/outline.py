@@ -43,6 +43,27 @@ class MarkdownSection:
     table_headers: list[list[str]] = field(default_factory=list)
 
 
+def _detect_section_visual_signals(sec: MarkdownSection) -> list[str]:
+    """Infer candidate visual_intent -> primitive hints from section content & tables."""
+    blob = " ".join([sec.title, *sec.subheadings, *sec.key_points, *sec.summary_lines]).lower()
+    signals: list[str] = []
+    if any(k in blob for k in ("waterfall", "毛利", "营业利润", "净利润", "成本", "ebitda", "桥接", "revenue", "operating income")):
+        signals.append("profit_bridge -> chart(waterfall)")
+    if any(k in blob for k in ("10年", "衰减", "趋势", "增长率", "cagr", "trajectory", "fade", "forecast", "y1", "y10")):
+        signals.append("decay_trajectory -> chart(line/area)")
+    if any(k in blob for k in ("估值", "对比", "方法", "比较", "versus", "vs", "matrix", "ablation", "权衡")) or len(sec.table_headers) >= 2:
+        signals.append("methodology_tradeoff -> comparison_matrix")
+    if any(k in blob for k in ("风险", "催化", "张力", "争议", "risk", "catalyst", "tension", "边界")):
+        signals.append("tension_radiation -> hub_spoke")
+    if any(k in blob for k in ("循环", "回退", "重试", "迭代", "loop", "retry", "fallback", "state")):
+        signals.append("nonlinear_loop -> sequence_timeline")
+    if any(k in blob for k in ("占比", "份额", "分布", "比例", "share", "allocation", "breakdown")):
+        signals.append("proportion_share -> proportion_bar / chart(donut)")
+    if any(k in blob for k in ("目标价", "现价", "上行", "回撤", "upside", "fair value", "target price")):
+        signals.append("price_value_gap -> textbox(>=64pt)")
+    return signals or ["whole_to_parts -> diagram(children unpack) or categorical_ranking -> chart(bar/column)"]
+
+
 def _clean_text(text: str) -> str:
     cleaned = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
     cleaned = re.sub(r"[`*_~]", "", cleaned)
@@ -478,6 +499,7 @@ def extract_markdown_outline(
                     "subheadings": sec.subheadings,
                     "key_points": sec.key_points[:6],
                     "table_count": len(sec.table_headers),
+                    "recommended_visual_intents": _detect_section_visual_signals(sec),
                 }
                 for sec in sections
             ],

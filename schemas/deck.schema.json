@@ -70,6 +70,21 @@
           "subtitle": { "type": "string" },
           "source_section": { "type": "string" },
           "claim": { "type": "string" },
+          "visual_intent": {
+            "type": "string",
+            "enum": [
+              "price_value_gap",
+              "profit_bridge",
+              "decay_trajectory",
+              "categorical_ranking",
+              "methodology_tradeoff",
+              "tension_radiation",
+              "whole_to_parts",
+              "nonlinear_loop",
+              "causal_flow",
+              "proportion_share"
+            ]
+          },
           "metric_scope": { "type": "string" },
           "evidence_refs": { "type": "array", "items": { "type": "string" } },
           "intro_note": { "type": "string", "default": "" },

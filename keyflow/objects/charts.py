@@ -741,15 +741,16 @@ def _make_vector_chart_objects(
             )
             if chart.show_value_labels:
                 upward = end_v >= start_v
-                fits_below = (by + bh + 26.0) <= (inner_y + inner_h)
+                lbl_h = max(30.0, round(val_font * 1.25, 1))
+                fits_below = (by + bh + lbl_h + 4.0) <= (inner_y + inner_h)
                 if upward or not fits_below:
-                    ly = max(inner_y - 22.0, by - 26.0)
+                    ly = max(inner_y - lbl_h, by - lbl_h - 4.0)
                 else:
-                    ly = by + bh + 2.0
+                    ly = by + bh + 4.0
                 objs.append(
                     _make_textbox(
                         f"{slide_prefix}_{chart.id}_wf_vl_{c_idx}",
-                        BoxRect(bx - 16.0, ly, bar_w + 32.0, 24.0),
+                        BoxRect(bx - 20.0, ly, bar_w + 40.0, lbl_h),
                         lbl_str,
                         font_name=theme.font_body,
                         font_size=val_font,

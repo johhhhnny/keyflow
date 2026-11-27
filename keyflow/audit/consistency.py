@@ -12,12 +12,70 @@ def _final_element_count(frame: ResolvedFrame) -> int:
     return top_boxes + len(frame.charts) + len(frame.tables) + len(frame.shapes) + len(frame.textboxes)
 
 
+def _audit_intent_form_alignment(
+    deck: DeckSpec,
+    scene_frames: list[tuple[str, int, list[ResolvedFrame]]],
+    findings: list[AuditFinding],
+) -> None:
+    """Verify declared scene.visual_intent matches the chosen layout/primitives."""
+    for sc_idx, sc in enumerate(deck.scenes):
+        intent = getattr(sc, "visual_intent", None)
+        if not intent:
+            continue
+        first_slide = scene_frames[sc_idx][1] if sc_idx < len(scene_frames) else 1
+        chart_types = {o.chart.chart_type for o in sc.objects if o.kind == "chart" and o.chart is not None}
+        diag_layouts = {o.diagram.diagram_layout for o in sc.objects if o.kind == "diagram" and o.diagram is not None}
+        has_table = any(o.kind == "table" for o in sc.objects)
+        has_hero_tb = any(o.kind == "textbox" and (o.font_size or 0.0) >= 60.0 for o in sc.objects)
+        has_borderless_metric = any(o.kind in ("card", "callout") and o.surface == "borderless" and o.metric for o in sc.objects)
+
+        mismatch_msg: str | None = None
+        suggestion = ""
+        if intent == "profit_bridge" and "waterfall" not in chart_types:
+            mismatch_msg = f"Scene '{sc.id}' declares visual_intent='profit_bridge' without a 'waterfall' chart."
+            suggestion = "Use chart_type='waterfall' to show how revenue bridges to profit."
+        elif intent == "decay_trajectory" and not ({"line", "area"} & chart_types):
+            mismatch_msg = f"Scene '{sc.id}' declares visual_intent='decay_trajectory' without a 'line' or 'area' chart."
+            suggestion = "Use chart_type='line' or 'area' to render continuous multi-year decay curves."
+        elif intent == "price_value_gap" and not (has_hero_tb or has_borderless_metric or sc.layout == "proportion_bar"):
+            mismatch_msg = f"Scene '{sc.id}' declares visual_intent='price_value_gap' without hero typography or range scale."
+            suggestion = "Use a giant textbox (>=60pt), borderless metric, or proportion_bar."
+        elif intent == "methodology_tradeoff" and sc.layout not in ("comparison_matrix", "comparison") and not has_table:
+            mismatch_msg = f"Scene '{sc.id}' declares visual_intent='methodology_tradeoff' without a matrix, comparison, or table."
+            suggestion = "Use layout='comparison_matrix' or a structured table."
+        elif intent == "tension_radiation" and sc.layout != "hub_spoke" and "hub_spoke" not in diag_layouts:
+            mismatch_msg = f"Scene '{sc.id}' declares visual_intent='tension_radiation' without a hub_spoke topology."
+            suggestion = "Use layout='hub_spoke' or inline diagram_layout='hub_spoke'."
+        elif intent == "nonlinear_loop" and sc.layout != "sequence_timeline" and "sequence" not in diag_layouts:
+            mismatch_msg = f"Scene '{sc.id}' declares visual_intent='nonlinear_loop' without a sequence_timeline/sequence diagram."
+            suggestion = "Use layout='sequence_timeline' or diagram_layout='sequence'."
+        elif intent == "proportion_share" and sc.layout != "proportion_bar" and not ({"pie", "donut", "stacked_bar", "stacked_column"} & chart_types):
+            mismatch_msg = f"Scene '{sc.id}' declares visual_intent='proportion_share' without a proportion_bar or share chart."
+            suggestion = "Use layout='proportion_bar' or chart_type='donut'/'stacked_bar'."
+
+        if mismatch_msg:
+            findings.append(
+                AuditFinding(
+                    severity="warning",
+                    category="intent_form_alignment",
+                    slide_num=first_slide,
+                    scene_id=sc.id,
+                    frame_index=0,
+                    target_id=sc.id,
+                    message=mismatch_msg,
+                    suggestion=suggestion,
+                    suggested_action="align_visual_form_to_intent",
+                )
+            )
+
+
 def _audit_cross_page_consistency(
     deck: DeckSpec,
     scene_frames: list[tuple[str, int, list[ResolvedFrame]]],
     findings: list[AuditFinding],
 ) -> None:
     """Detect abrupt cross-scene density jumps, variant drift, visual monotony, and card text bloat."""
+    _audit_intent_form_alignment(deck, scene_frames, findings)
     # 0. Card & Callout text-layer bloat check (per-object)
     for sc_idx, sc in enumerate(deck.scenes):
         if sc.layout != "canvas":
@@ -231,3 +289,51 @@ def _audit_cross_page_consistency(
                     suggested_action="reduce_filled_card_monotony",
                 )
             )
+
+        # Deck-level visual idiom diversity check (>=4 scenes with canvas relying solely on basic cards/column/table)
+        if len(deck.scenes) >= 4 and any(sc.layout == "canvas" for sc in deck.scenes):
+            idioms: set[str] = set()
+            for sc in deck.scenes:
+                if sc.layout != "canvas":
+                    idioms.add(f"layout:{sc.layout}")
+                for o in sc.objects:
+                    if o.kind == "chart" and o.chart is not None:
+                        idioms.add(f"chart:{o.chart.chart_type}")
+                    elif o.kind == "diagram" and o.diagram is not None:
+                        idioms.add(f"diagram:{o.diagram.diagram_layout}")
+                    elif o.kind == "textbox" and (o.font_size or 0.0) >= 60.0:
+                        idioms.add("hero_textbox")
+                    elif o.kind == "table":
+                        idioms.add("table")
+                    elif o.kind in ("card", "callout"):
+                        idioms.add(f"{o.kind}:{o.surface}")
+            rich_idioms = {
+                "chart:waterfall",
+                "chart:line",
+                "chart:area",
+                "chart:pie",
+                "chart:donut",
+                "chart:scatter",
+                "chart:stacked_column",
+                "chart:stacked_bar",
+                "hero_textbox",
+                "layout:proportion_bar",
+                "layout:comparison_matrix",
+                "layout:hub_spoke",
+                "layout:sequence_timeline",
+                "layout:architecture_evolution",
+                "layout:flow_dag",
+            }
+            if len(idioms) <= 2 and not (idioms & rich_idioms):
+                findings.append(
+                    AuditFinding(
+                        severity="warning",
+                        category="visual_monotony",
+                        slide_num=1,
+                        scene_id=deck.scenes[0].id,
+                        frame_index=0,
+                        message=f"Deck has {len(deck.scenes)} scenes but uses only {len(idioms)} basic visual idioms ({', '.join(sorted(idioms))}).",
+                        suggestion="Diversify visual metaphors using waterfall/line/donut charts, comparison_matrix, hub_spoke, sequence_timeline, or >=60pt hero typography.",
+                        suggested_action="diversify_visual_idioms",
+                    )
+                )

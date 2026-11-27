@@ -49,8 +49,9 @@ Before authoring any Scene Graph JSON, produce a concise **Stage 0 Narrative Bri
      - **Multi-Party Quantitative / Strategic Contrast**: `comparison_matrix` (columns, `formula`, `↑`/`↓` trends, `action_banner`, `takeaway`) or side-by-side `comparison` — label clearly if comparing actual price vs. target cost so differing accounting bases are never blurred.
      - **Sequential Evolution / Milestones**: `horizontal_flow` (3–5 pillars; unpack 2 children as `row`, 3–4 as `grid`), `architecture_evolution` (`v1 -> v2 -> v3`), or `sequence_timeline` (forward skips + backward loops).
      - **Core + Radiating Factors**: `hub_spoke` (center `variant: "accent"` + 3–6 spokes).
-3. **Design the Narrative Arc Across Scenes**:
+3. **Design the Narrative Arc Across Scenes (With `visual_intent`)**:
    For each scene in the Stage 0 brief, define:
+   - `visual_intent`: one of `price_value_gap`, `profit_bridge`, `decay_trajectory`, `categorical_ranking`, `methodology_tradeoff`, `tension_radiation`, `whole_to_parts`, `nonlinear_loop`, `causal_flow`, `proportion_share` (also declare `"visual_intent"` on the Stage 1 scene so `keyflow audit` verifies `intent_form_alignment`)
    - `claim`: the single takeaway the audience must remember from this scene
    - `metric_scope`: exact denominator/unit/era when numbers appear
    - `source_quote`: verbatim anchor from the source text backing every metric or factual claim
