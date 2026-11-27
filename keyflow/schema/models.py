@@ -361,7 +361,7 @@ class SceneSpec:
 
     id: str
     title: str
-    layout: LayoutMode = "horizontal_flow"
+    layout: LayoutMode
     subtitle: str | None = None
     source_section: str | None = None
     claim: str | None = None

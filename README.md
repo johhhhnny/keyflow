@@ -86,7 +86,7 @@ KeyFlow ships with an **Agent Skill** ([skills/keyflow/SKILL.md](skills/keyflow/
 ```
 
 Available MCP tools:
-- `extract_outline`: Extracts a section outline, Mermaid flowcharts, and a draft storyboard from Markdown.
+- `extract_outline`: Extracts a semantic seed and source relationships from Markdown without selecting visual objects.
 - `pace_storyboard`: Expands a Stage 1 full-state diagram into step-by-step presentation frames.
 - `validate_storyboard`: Validates schema structure, node/edge references, and card text-density warnings.
 - `audit_storyboard`: Runs deterministic visual self-checks (bounds, overlaps, cross-frame anchor lock across boxes/edges/`pinned_flow`/matrices, scale, overflow) with structured `target_id` and `suggested_action` fix hints.
@@ -102,7 +102,7 @@ If you prefer full control over every scene—without manually maintaining dozen
    ```bash
    uv run keyflow outline -i path/to/article.md --stage1 -o stage1.json
    ```
-   This outputs only the complete target topology per scene, keeping the file short and easy to review or edit. *(Omit `--stage1` if you want a draft with generated `frames` right away.)*
+   This extracts the narrative structure and source relationships without choosing cards or other visual objects for the agent. Canvas scenes may have an empty `objects` list until the agent selects explicit visual primitives; do that before pacing or compilation.
 
 2. **Pace into Progressive Slides (`pace`)**
    ```bash
@@ -183,7 +183,7 @@ KeyFlow's layouts and pacing rules are built around five practical presentation 
 
 ### Freeform Compositional Canvas (`layout: "canvas"`, default `use_templates: false`)
 
-When a single preset layout is too rigid for multi-part analytical storytelling, declare `layout: "canvas"` to partition the slide on a 12-column `grid` into non-overlapping `regions` (`stack`, `row`, or `grid`) and compose heterogeneous `.keyx` primitives:
+The freeform canvas is the object-first composition mode: every visible object must explicitly select `kind`. Explicitly select `layout` where possible; `canvas` may be inferred only from explicit `objects`, `grid`, `regions`, or `connectors` fields. A `nodes` list alone never implies a card flow. Partition the slide on a 12-column `grid` into non-overlapping `regions` (`stack`, `row`, or `grid`) and compose heterogeneous `.keyx` primitives:
 
 - **7 Object Types**: `card`, `callout`, `textbox`, `shape` (`rounded_rect`, `rect`, `ellipse`, `pill`, or normalized `svg_path`), `chart` (10 chart types, including `waterfall`), `table` (native `.keyx` `Table`), and inline `diagram` (reusing flow/DAG/hub solvers with node-by-node progressive pacing).
 - **Dual-Path Charts (`render_mode`: `auto` | `vector` | `native`)**: Under `auto` (default), static `reveal: "whole"` standard charts compile as editable native Keynote `Chart` objects, while progressive `by_series` / `by_category` charts and `waterfall` charts compile as pure `Shape` + `Textbox` vectors with pre-reserved series slots—keeping earlier bar widths and coordinates 100% locked for Apple Keynote **Magic Move**.
@@ -219,10 +219,10 @@ Declare a `layout` per scene and KeyFlow handles all coordinates, spacing, arrow
 
 ### Storyboard Authoring Tips
 
-1. **Keep labels short**: Aim for 1–4 words per card; never put full sentences or bulleted lists inside shapes.
-2. **Use `note` / `notes` generously**: Put nuances, evidence, and full narrative text in node/frame notes so they appear cleanly in Presenter Notes.
-3. **Set `"child_layout": "grid"` for 3–4 sub-items**: Compact 2×2 grids read far better than long single-row expansions.
-4. **Lock structure first, tune frames last**: Verify overall flow and layout choices via `outline --stage1` before running `pace`; edit `frames` manually only when custom `focus_nodes` emphasis is needed.
+1. **Choose, Don't Default, Visual Objects**: Never turn headings, chapters, or logical nodes into cards automatically. Establish the scene's argument and focal relationship first, then explicitly choose `textbox`, `shape`, `chart`, `table`, `diagram`, or `card`; use a card only when a bounded information unit benefits from a container.
+2. **Keep Intentional Card Text Concise**: When a card is deliberately selected, keep its main label to 1–4 words or ≤ 12 CJK characters; never put full prose paragraphs or bullet lists inside it.
+3. **Use Presenter Notes**: Move background context, evidence, and full explanations into object/frame `note` fields, compiled into Keynote presenter notes.
+4. **Lock Narrative First, Compose Second**: `outline --stage1` is a semantic seed, not a visual layout. Select object types and composition before running `pace`.
 
 ---
 

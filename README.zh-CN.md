@@ -86,7 +86,7 @@ KeyFlow 自带 **Agent Skill**（[skills/keyflow/SKILL.md](skills/keyflow/SKILL.
 ```
 
 提供的 MCP 工具包括：
-- `extract_outline`：从 Markdown 文档中提取结构大纲、Mermaid 流程图与分镜初稿
+- `extract_outline`：从 Markdown 文档中提取语义种子与 Mermaid 源关系，不替 Agent 选择视觉对象
 - `pace_storyboard`：将 Stage 1 完整结构图自动拆解为逐页讲解的分镜序列
 - `validate_storyboard`：校验分镜结构与节点引用，并检查卡片文字密度是否过高
 - `audit_storyboard`：运行视觉自检（越界、碰撞、跨帧坐标锁定、缩紧/溢出风险）并输出结构化修改建议
@@ -98,11 +98,11 @@ KeyFlow 自带 **Agent Skill**（[skills/keyflow/SKILL.md](skills/keyflow/SKILL.
 
 如果你希望亲自把控全局，掌握每个环节，甚至不畏惧手写繁琐的逐帧状态，可以采用“先定完整结构，再自动拆帧”的两步工作流：
 
-1. **提取 Stage 1 全量结构（`--stage1`）**
+1. **提取 Stage 1 语义种子（`--stage1`）**
    ```bash
    uv run keyflow outline -i path/to/article.md --stage1 -o stage1.json
    ```
-   这一步只产出每个场景的完整逻辑结构，文件内容精简、便于人工修改。（若无需手工调整，也可省略 `--stage1` 直接输出拆好帧的草稿）
+   这一步只提取叙事结构与来源关系，不替 Agent 选择卡片或其他视觉对象。生成的画布场景可能暂时没有 `objects`；应由 Agent 根据论点选择明确的视觉原语后再进入分页与编译。
 
 2. **自动拆解演示节奏（`pace`）**
    ```bash
@@ -183,7 +183,7 @@ KeyFlow 的版式与分页规则围绕以下几个实际体验问题而定：
 
 ### 自由组合画布（`layout: "canvas"`，默认 `use_templates: false`）
 
-当单一预设版式难以同时承载结论卡片、多维图表、表格与流程拆解时，可为场景声明 `layout: "canvas"`，基于 12 栏 `grid` 划分互不重叠的 `regions`（支持 `stack`、`row`、`grid` 排列），自由组合原生 `.keyx` 视觉对象：
+自由画布是 object-first 的构图方式：每个可见对象必须显式指定 `kind`。建议场景显式指定 `layout`；仅当已声明 `objects`、`grid`、`regions` 或 `connectors` 时，才可推断为 `canvas`。单独的 `nodes` 不会隐式生成流程卡片。基于 12 栏 `grid` 划分互不重叠的 `regions`（支持 `stack`、`row`、`grid` 排列），自由组合原生 `.keyx` 视觉对象：
 
 - **7 类自由对象**：`card`（信息卡片）、`callout`（强调结论）、`textbox`（自由文本）、`shape`（几何与自定义 `svg_path`）、`chart`（10 种数据图表，含 `waterfall` 瀑布图）、`table`（原生 `.keyx` 表格），以及支持逐节点展开的内嵌 `diagram`。
 - **图表双路径编译（`render_mode`: `auto` | `vector` | `native`）**：默认 `auto` 下，静态全量常规图（`reveal: "whole"`）编译为可编辑原生 Keynote `Chart`；逐步呈现（`by_series` / `by_category`）的图表与 `waterfall` 瀑布图编译为纯 `Shape` + `Textbox` 矢量组合并预先锁死各系列槽位宽度，确保 Keynote「神奇移动」跨页精准追踪，已有柱体绝不变窄或跳变。
@@ -219,10 +219,10 @@ KeyFlow 的版式与分页规则围绕以下几个实际体验问题而定：
 
 ### 分镜编写建议
 
-1. **精简卡片文字**：主标题尽量控制在 1–4 个词或 12 个汉字以内，避免在卡片中放置整句正文或项目符号列表。
-2. **善用备注字段（`note` / `notes`）**：将背景细节、补充依据和完整论述放入节点或帧的备注中，统一沉淀到演讲者备注区。
-3. **3–4 项子模块启用 `grid`**：为需要拆箱展开的容器设置 `"child_layout": "grid"`，用紧凑的 2×2 网格代替过长的单行排列。
-4. **先确认全局，再局部微调**：先通过 `outline --stage1` 核对主干逻辑与版式选择，再运行 `pace`；仅在需要特定高亮聚焦（`focus_nodes`）时再手工调整 `frames`。
+1. **不预设视觉对象**：不要把标题、章节或逻辑节点自动转换成卡片。先确定场景要传达的关系与视觉焦点，再显式选择 `textbox`、`shape`、`chart`、`table`、`diagram` 或 `card`；只有卡片确实有助于表达独立信息单元时才使用。
+2. **精简卡片文字**：仅当主动选择卡片时，主标题尽量控制在 1–4 个词或 12 个汉字以内，避免放置整句正文或项目符号列表。
+3. **善用备注字段（`note` / `notes`）**：将背景细节、补充依据和完整论述放入对象或帧的备注中，统一沉淀到演讲者备注区。
+4. **先确认叙事，再选择构图**：`outline --stage1` 只提供语义种子，不代表已完成视觉设计；由 Agent 确定对象类型、空间关系与版式后，再运行 `pace`。
 
 ---
 
@@ -233,7 +233,7 @@ KeyFlow 的版式与分页规则围绕以下几个实际体验问题而定：
 1. **声明式编译管线，不依赖 GUI 自动化**
    项目没有采用 AppleScript 或 UI 自动化去操控 Keynote 客户端，而是将整个流程实现为一个纯文本编译器：从剧本 JSON 出发，经过 `layout.py` 计算几何布局，再由 `compiler.py` 直接写出原生 `.keyx` 文档（基于 `creator-studio-doc-format`）。正常编译与校验全程无需启动 Keynote，仅在导出 PNG 预览时才调用本机 Keynote。
 2. **结构设计与节奏拆帧两阶段解耦**
-   无论是人工编写还是 AI 生成，同时维护最终构图与十几页中间可见状态都非常容易出错。因此 `outline`（Stage 1）只负责确定完整结构与版式选择，`pace.py`（Stage 2）再依据拓扑层级、拆箱边界与密度规则确定性地拆出逐帧序列。
+   无论是人工编写还是 AI 生成，同时维护最终构图与十几页中间可见状态都非常容易出错。因此 `outline` 只提取叙事种子与来源关系；Agent 完成视觉对象和构图选择后，`pace.py`（Stage 2）再依据拓扑层级、拆箱边界与密度规则确定性地拆出逐帧序列。
 3. **先计算全图坐标，再按帧做可见性裁切**
    为了彻底避免翻页时已有元素的位置发生抖动，布局引擎永远只按“全部元素同时出现”的最终状态计算一次坐标与防碰撞路径；`compiler.py` 生成每一页幻灯片时，只是从这份完整几何结果中截取当前帧需要显示的元素与聚焦状态。同时，所有箭头与曲线都避开容易在转场时淡出断开的 `ConnectionLine`，统一裁剪编译为开放路径 `Shape`，使线条在 Keynote 神奇移动中也能与卡片一样稳定跟踪。
 4. **用 Schema 约束边界，让 AI 专注内容与结构**

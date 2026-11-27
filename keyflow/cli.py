@@ -218,7 +218,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_out.add_argument("-o", "--output", help="Optional path to write the extracted JSON.")
     p_out.add_argument("--theme", default="slate_dark", help=f"Theme preset ({', '.join(sorted(THEMES))}) or .json theme file.")
     p_out.add_argument("--density", default="standard", choices=["standard", "compact"], help="Pacing density.")
-    p_out.add_argument("--stage1", action="store_true", help="Write compact Stage 1 full-state scene_graph without frames.")
+    p_out.add_argument("--stage1", action="store_true", help="Write a semantic scene seed without visual objects or frames.")
     p_out.set_defaults(func=_cmd_outline)
 
     p_pace = sub.add_parser("pace", help="Stage 2: expand full-state scenes into progressive step-by-step frames.")

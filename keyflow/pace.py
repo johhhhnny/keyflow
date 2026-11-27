@@ -595,8 +595,16 @@ _PACERS = {
 
 def expand_scene_frames(scene: dict[str, Any], *, density: DensityMode = "standard") -> list[dict[str, Any]]:
     """Deterministically expand a Stage 1 full-state scene dict into progressive frames."""
-    inferred = "canvas" if ("objects" in scene or "regions" in scene) else "horizontal_flow"
-    layout = str(scene.get("layout", inferred))
+    layout = scene.get("layout")
+    if layout is None and any(
+        key in scene for key in ("objects", "grid", "regions", "connectors")
+    ):
+        layout = "canvas"
+    if not isinstance(layout, str):
+        raise ValueError(
+            f"Scene {scene.get('id', '<unknown>')!r} must specify 'layout'; "
+            "layouts are never inferred from node lists."
+        )
     pacer = _PACERS.get(layout, _pace_linear_flow)
     return pacer(scene, density)
 

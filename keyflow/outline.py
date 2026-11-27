@@ -342,7 +342,7 @@ def extract_markdown_outline(
     theme: str = "slate_dark",
     density: DensityMode = "standard",
 ) -> dict[str, Any]:
-    """Parse a Markdown README/article into Stage 1 full-state scene_graph and Stage 2 paced draft_deck."""
+    """Extract a semantic seed without selecting visual objects, then return its paced placeholder deck."""
     doc_title = "Technical Overview"
     tagline = ""
     sections: list[MarkdownSection] = []
@@ -425,58 +425,59 @@ def extract_markdown_outline(
     if not pillars:
         pillars = [MarkdownSection(title=doc_title, summary_lines=[tagline] if tagline else [])]
 
-    overview_nodes: list[dict[str, Any]] = []
-    overview_edges: list[dict[str, str]] = []
-    unpacked_once = False
+    section_labels = [_short_label(sec.title, max_len=24) for sec in pillars]
+    design_constraints = [
+        "No visual objects have been selected; choose a visual form from the argument rather than defaulting to cards."
+    ]
 
-    for idx, sec in enumerate(pillars):
-        nid = f"p{idx + 1}"
-        note_text = " ".join(sec.summary_lines[:2]).strip() or f"Section: {sec.title}"
-        node_obj: dict[str, Any] = {
-            "id": nid,
-            "label": _short_label(sec.title, max_len=12),
-            "note": note_text,
-        }
-        sub_candidates = sec.subheadings or sec.key_points
-        dedup_subs: list[str] = []
-        for s in sub_candidates:
-            sl = _short_label(s, max_len=12)
-            if sl and sl != node_obj["label"] and sl not in dedup_subs:
-                dedup_subs.append(sl)
-        if not unpacked_once and 2 <= len(dedup_subs) <= 4:
-            node_obj["children"] = [
-                {"id": f"c{c_i + 1}", "label": sub}
-                for c_i, sub in enumerate(dedup_subs)
-            ]
-            if len(dedup_subs) >= 3:
-                node_obj["child_layout"] = "grid"
-            unpacked_once = True
-
-        overview_nodes.append(node_obj)
-        if idx > 0:
-            overview_edges.append({"id": f"e{idx}", "from": f"p{idx}", "to": nid})
-
-    # Stage 1: compact full-state scenes (no frames yet)
+    # Stage 1 is a semantic seed. The Agent chooses and authors visual objects.
     scenes: list[dict[str, Any]] = [
         {
             "id": "overview",
             "title": _short_label(doc_title, max_len=24),
-            "layout": "horizontal_flow",
-            "intro_note": tagline or f"Overview of {doc_title}.",
-            "nodes": overview_nodes,
-            "edges": overview_edges,
+            "layout": "canvas",
+            "objects": [],
+            "visual_intent": {
+                "audience_takeaway": tagline or doc_title,
+                "visual_focus": ", ".join(section_labels),
+                "design_constraints": design_constraints,
+            },
+            "intro_note": (
+                f"{tagline} 已提取章节结构；请先选择视觉表达，再创建对象。"
+                if tagline
+                else f"已提取《{doc_title}》的章节结构；请先选择视觉表达，再创建对象。"
+            ),
         }
     ]
 
     if mermaid_flows:
         mf = mermaid_flows[0]
+        labels: dict[str, str] = {}
+
+        def _collect_mermaid_labels(nodes: list[dict[str, Any]]) -> None:
+            for node in nodes:
+                labels[str(node["id"])] = str(node["label"])
+                _collect_mermaid_labels(node.get("children", []))
+
+        _collect_mermaid_labels(mf["nodes"])
+        relationships: list[str] = []
+        for edge in mf["edges"]:
+            source = labels.get(str(edge["from"]), str(edge["from"]))
+            target = labels.get(str(edge["to"]), str(edge["to"]))
+            connector = f" —{edge['label']}→ " if edge.get("label") else " → "
+            relationships.append(f"{source}{connector}{target}")
         scenes.append(
             {
                 "id": "workflow_dag",
                 "title": f"{_short_label(doc_title, max_len=16)} 流程图",
-                "layout": "flow_dag",
-                "nodes": mf["nodes"],
-                "edges": mf["edges"],
+                "layout": "canvas",
+                "objects": [],
+                "visual_intent": {
+                    "visual_focus": ", ".join(labels.values()),
+                    "relationships": relationships,
+                    "design_constraints": design_constraints,
+                },
+                "intro_note": "保留源 Mermaid 的节点与关系；尚未选择视觉对象或构图。",
             }
         )
 

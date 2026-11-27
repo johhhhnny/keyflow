@@ -175,6 +175,21 @@ def test_validation_rejects_bad_refs_and_warns_on_bullets_and_crowded_row() -> N
     assert any("child_layout='grid'" in w for w in res.warnings)
 
 
+def test_scene_layout_must_be_explicit_instead_of_defaulting_to_card_flow() -> None:
+    raw = {
+        "title": "No implicit layout",
+        "scenes": [{"id": "s1", "title": "Untyped scene", "nodes": [{"id": "n1", "label": "Claim"}]}],
+    }
+
+    result = validate_deck(raw)
+    assert result.valid is False
+    assert any("missing 'layout'" in error for error in result.errors)
+    with pytest.raises(ValueError, match="must specify 'layout'"):
+        parse_deck(raw)
+    with pytest.raises(ValueError, match="must specify 'layout'"):
+        expand_scene_frames(raw["scenes"][0])
+
+
 def test_validation_warns_on_single_frame_multi_node_scene() -> None:
     single = _dag_and_grid_stage1()
     single["scenes"][0]["frames"] = [
@@ -423,10 +438,13 @@ MIT
     assert extracted["draft_validation"]["valid"] is True
     assert "frames" not in extracted["scene_graph"]["scenes"][0]
     scenes = extracted["draft_deck"]["scenes"]
-    assert scenes[0]["layout"] == "horizontal_flow"
-    assert len(scenes[0]["nodes"]) == 3
-    assert scenes[1]["layout"] == "flow_dag"
-    assert len(scenes[1]["frames"]) == 3
+    assert scenes[0]["layout"] == "canvas"
+    assert scenes[0]["objects"] == []
+    assert "nodes" not in scenes[0]
+    assert scenes[1]["layout"] == "canvas"
+    assert scenes[1]["objects"] == []
+    assert len(scenes[1]["visual_intent"]["relationships"]) == 2
+    assert len(scenes[0]["frames"]) == 1
 
     out_keyx = tmp_path / "auto.keyx"
     compile_deck(extracted["draft_deck"], out_keyx)
@@ -447,7 +465,8 @@ def test_cli_two_stage_outline_pace_and_compile(tmp_path: Path, capsys: pytest.C
 
     assert cli_main(["pace", "-i", str(stage1_path), "-o", str(paced_path)]) == 0
     paced_data = json.loads(paced_path.read_text(encoding="utf-8"))
-    assert len(paced_data["scenes"][0]["frames"]) == 3
+    assert paced_data["scenes"][0]["objects"] == []
+    assert len(paced_data["scenes"][0]["frames"]) == 1
     capsys.readouterr()
 
     assert cli_main(["compile", "-i", str(paced_path), "-o", str(out_path)]) == 0
@@ -680,12 +699,10 @@ flowchart TD
     extracted = extract_markdown_outline(md)
     assert extracted["source_summary"]["tagline"] == "把价值投资研究方法，变成一套可执行的工作流。"
     dag_scene = extracted["scene_graph"]["scenes"][1]
-    assert dag_scene["layout"] == "flow_dag"
-    grid_nodes = [n for n in dag_scene["nodes"] if n.get("child_layout") == "grid"]
-    assert len(grid_nodes) == 1
-    assert grid_nodes[0]["label"] == "多角色研究"
-    assert len(grid_nodes[0]["children"]) == 4
-    assert grid_nodes[0]["children"][0]["sublabel"] == "商业模式"
+    assert dag_scene["layout"] == "canvas"
+    assert dag_scene["objects"] == []
+    assert any("多角色研究" in rel for rel in dag_scene["visual_intent"]["relationships"])
+    assert "段永平视角" in dag_scene["visual_intent"]["visual_focus"]
 
     report = audit_deck(extracted["scene_graph"], strict=True)
     assert report.passed is True
@@ -1160,7 +1177,7 @@ status: draft
     extracted = extract_markdown_outline(md)
     assert extracted["source_summary"]["title"] == "猎鹰9号谢幕倒计时"
     assert extracted["source_summary"]["tagline"] == ""
-    assert extracted["scene_graph"]["scenes"][0]["intro_note"] == "Overview of 猎鹰9号谢幕倒计时."
+    assert extracted["scene_graph"]["scenes"][0]["intro_note"] == "已提取《猎鹰9号谢幕倒计时》的章节结构；请先选择视觉表达，再创建对象。"
 
 
 def test_mcp_pace_storyboard_failure_and_workspace_root_boundary(
@@ -2257,12 +2274,15 @@ def test_pinned_flow_preserves_title_and_supports_per_frame_toggle(tmp_path: Pat
             {
                 "id": "macro",
                 "title": "全局概览标题",
+                "layout": "canvas",
+                "objects": [],
                 "show_pinned_flow": True,
-                "frames": [{"visible_nodes": [], "notes": "Centered macro overview with title."}],
+                "frames": [{"visible_objects": [], "notes": "Centered macro overview with title."}],
             },
             {
                 "id": "detail",
                 "title": "章节详情标题",
+                "layout": "horizontal_flow",
                 "active_flow_node": "step_a",
                 "show_pinned_flow": True,
                 "nodes": [
@@ -2278,6 +2298,7 @@ def test_pinned_flow_preserves_title_and_supports_per_frame_toggle(tmp_path: Pat
             {
                 "id": "no_ribbon_scene",
                 "title": "无导航条独立幕",
+                "layout": "horizontal_flow",
                 "show_pinned_flow": False,
                 "nodes": [{"id": "solo", "label": "独立主题", "note": "No ribbon here"}],
                 "frames": [{"visible_nodes": ["solo"], "notes": "No ribbon"}],
@@ -2285,6 +2306,7 @@ def test_pinned_flow_preserves_title_and_supports_per_frame_toggle(tmp_path: Pat
             {
                 "id": "custom_ribbon_scene",
                 "title": "第二套独立导航条幕",
+                "layout": "horizontal_flow",
                 "active_flow_node": "alt_b",
                 "pinned_flow": {
                     "nodes": [
@@ -2353,6 +2375,7 @@ def test_phase1_external_theme_json_style_config_and_overrides(tmp_path: Path) -
             {
                 "id": "sc1",
                 "title": "Custom Style Scene",
+                "layout": "horizontal_flow",
                 "subtitle": "Compact subtitle",
                 "style_config": {"title_max_size": 42.0},
                 "nodes": [{"id": "a", "label": "Node A", "note": "test"}],

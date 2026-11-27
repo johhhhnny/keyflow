@@ -404,12 +404,21 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
         ]
 
         default_pacing = "manual" if frames else "auto"
-        inferred_layout = "canvas" if ("objects" in s_raw or "regions" in s_raw) else "horizontal_flow"
+        layout = s_raw.get("layout")
+        if layout is None and any(
+            key in s_raw for key in ("objects", "grid", "regions", "connectors")
+        ):
+            layout = "canvas"
+        if not isinstance(layout, str):
+            raise ValueError(
+                f"Scene {s_raw.get('id', '<unknown>')!r} must specify 'layout'; "
+                "layouts are never inferred from node lists."
+            )
         scenes.append(
             SceneSpec(
                 id=str(s_raw["id"]),
                 title=str(s_raw["title"]),
-                layout=s_raw.get("layout", inferred_layout),
+                layout=layout,
                 subtitle=s_raw.get("subtitle"),
                 source_section=str(s_raw["source_section"]) if s_raw.get("source_section") else None,
                 claim=str(s_raw["claim"]) if s_raw.get("claim") is not None else None,

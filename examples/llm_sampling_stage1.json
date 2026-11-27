@@ -27,12 +27,20 @@
     {
       "id": "macro_intro",
       "title": "大模型生成主链路",
+      "layout": "canvas",
       "active_flow_node": "temp",
       "pacing": "manual",
-      "nodes": [],
+      "objects": [],
+      "visual_intent": {
+        "audience_takeaway": "生成过程由采样机制与调控参数共同决定",
+        "visual_focus": "分数 → 概率 → 采样",
+        "design_constraints": [
+          "本场景暂不选择视觉对象；由 Agent 根据论证决定如何表现。"
+        ]
+      },
       "frames": [
         {
-          "visible_nodes": [],
+          "visible_objects": [],
           "notes": "先建立全局视野：大模型每次生成 token 都要经过分数→概率→采样，再由 Temperature 与 Top-p 调控。"
         }
       ]

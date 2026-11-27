@@ -133,7 +133,7 @@
               "proportion_bar",
               "comparison_matrix"
             ],
-            "default": "horizontal_flow"
+            "description": "Select the scene composition explicitly. Canvas is inferred only when explicit canvas fields are present; node lists never imply a card layout."
           },
           "grid": {
             "type": "object",

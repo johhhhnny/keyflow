@@ -361,14 +361,30 @@ def validate_deck(
         if not isinstance(stitle, str) or not stitle:
             errors.append(f"{prefix}: missing or invalid 'title'.")
 
-        inferred_layout = "canvas" if ("objects" in s or "regions" in s) else "horizontal_flow"
-        layout = s.get("layout", inferred_layout)
-        if not isinstance(layout, str) or layout not in valid_layouts:
+        has_canvas_structure = any(
+            s.get(k) is not None for k in ("grid", "regions", "objects", "connectors")
+        )
+        layout = s.get("layout")
+        if layout is None:
+            if has_canvas_structure:
+                layout = "canvas"
+            else:
+                errors.append(f"{prefix}: missing 'layout'; choose a layout explicitly.")
+        elif not isinstance(layout, str) or layout not in valid_layouts:
             errors.append(f"{prefix}: invalid layout '{layout}'.")
 
         has_freeform_fields = any(
             s.get(k) is not None for k in ("grid", "regions", "objects", "connectors", "palette")
         )
+        if layout == "canvas" and (s.get("nodes") or s.get("edges")):
+            errors.append(
+                f"{prefix}: canvas scenes must declare visual primitives in 'objects'; "
+                "move graph topology into an explicit kind='diagram' object."
+            )
+        elif layout != "canvas" and has_canvas_structure:
+            errors.append(
+                f"{prefix}: 'grid', 'regions', 'objects', and 'connectors' require layout='canvas'."
+            )
         if eff_use_templates and (layout == "canvas" or has_freeform_fields):
             errors.append(
                 f"{prefix}: freeform 'canvas'/'regions'/'objects'/'palette' are forbidden when use_templates=true; set use_templates=false."

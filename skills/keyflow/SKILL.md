@@ -35,7 +35,7 @@ Before authoring any Scene Graph JSON, produce a concise **Stage 0 Narrative Bri
      }
      ```
    - **Full Visual Vocabulary Available When Needed**:
-     - **Freeform Compositional Canvas (`layout: "canvas"`, default `use_templates: false`)**: Supports two parallel spatial modes on the same slide:
+     - **Object-First Canvas (`layout: "canvas"`, default `use_templates: false`)**: Every visible primitive is an explicit object with an explicit `kind`. Supports two parallel spatial modes on the same slide:
        1. **Auto-Region Mode**: 12-column `grid` + non-overlapping `regions` (`stack`, `row`, `grid`) for structured cards, tables, and charts.
        2. **Agent-Directed Spatial Composition Mode**: Place any object freely via normalized `geometry` (`{"x", "y", "width", "height", "rotation"}` in `[0..1]` safe canvas), `anchor` (`{"to", "point", "offset_x", "offset_y", "width", "height"}`), `z_index` (layering order), and `group` (logical composition unit). Different `z_index` layers may overlap intentionally (e.g., background `shape` behind foreground `textbox`/callouts).
        Available primitives: `card` / `callout` (`surface`: `"filled" | "ghost" | "borderless" | "accent_bar"`, optional `gauge`: `{"type": "ring" | "range", ...}`), `textbox` (`font_size` in `10–140`), `shape` (`rounded_rect`, `rect`, `ellipse`, `pill`, or custom `svg_path`), `chart` (13 types: `column`, `bar`, `pie`, `donut`, `line`, `area`, `stacked_column`, `stacked_bar`, `scatter`, `waterfall`, `football_field`, `radar`, `progress_bars`, with `highlight_categories`, `estimate_from`, `reference_lines`), `table` (`cell_tones`, `target_rows`, `highlight_cols`, `highlight_rows`), inline `diagram`, `connectors`, and custom `palette`.
@@ -66,13 +66,14 @@ Before finalizing Stage 1 JSON, run the **Director -> Critic** loop (see `refere
 
 Translate the Stage 0 brief into clean Stage 1 scenes. Do **not** hand-write `frames` unless custom choreography is required:
 
-1. **Zero-Bullet Canvas (1-Line Card Default)**: Default cards should hold **only 1 short `label` line** (1–4 words / ≤ 12 CJK chars). Do **not** pack `badge + label + sublabel` onto every card by default—move explanations into `note` (Presenter Notes). Add extra text layers only when they serve an explicit visual purpose:
+1. **No Default Visual Primitive**: Explicitly choose `layout` and, for every visible canvas primitive, `kind`. Canvas may be inferred only from explicit canvas fields; a `nodes` list never implies a card layout. Do not turn headings, claims, or entities into cards by default. Begin with the argument and choose among typography (`textbox`), spatial geometry (`shape`), data displays (`chart`/`table`), diagrams, or a card only when a bounded information unit genuinely benefits from a container. A card is an opt-in choice, not a generic node renderer. If a composition is not yet justified, leave `objects` empty in the Stage 1 seed rather than inventing cards.
+   When a card is intentionally selected, keep it to **one short `label` line** (1–4 words / ≤ 12 CJK chars). Do **not** pack `badge + label + sublabel` onto every card—move explanations into `note` (Presenter Notes). Add extra text layers only when they serve an explicit visual purpose:
    - `children` in-place unpack (total -> parts decomposition across frames);
    - `badge`: crisp epistemic or sequence tag (e.g., `"FACT"`, `"THESIS"`, `"COUNTER"`, `"STEP 01"`);
    - `metric`: hero number/stat for KPI or single-thesis centerpiece blocks (e.g., `"75%"`, `"10×"`, `"0 依赖"`);
    - `sublabel`: brief secondary line only when needed for `callout` or `metric` context;
    - `variant`: `"primary"` | `"accent"` (yellow highlight) | `"success"` (teal-green) | `"warn"` (amber) | `"muted"`
-   - `surface`: `"filled"` (default solid card) | `"ghost"` (border-only lightweight frame) | `"borderless"` (no fill/border; prefer `"borderless"` for hero stats, core thesis statements, and open editorial typography instead of wrapping every element in a filled card)
+   - `surface`: `"filled"` (solid container) | `"ghost"` (border-only lightweight frame) | `"borderless"` (no fill/border; prefer open editorial typography for hero stats and core thesis statements instead of wrapping them in cards)
    Put all prose explanations, caveats, citations, and presenter context into each node/child's **`note`** field (and scene `intro_note`).
 2. **Structured Story Model & Evidence Grounding (Recommended for Analytical Decks)**:
    Include optional `story_model` at the deck root (`core_question`, `claims`: `id`, `type`, `claim`, `source_quote`, `metric_scope`, `confidence`), set per-scene `claim` & `metric_scope`, and link elements via `evidence_refs: [...]`. `keyflow audit` automatically enforces epistemic alignment (e.g., rejects `badge: "FACT"` pointing to an `inference` claim), flags `scope_mixing` across incompatible denominators, warns on `unsourced_fact`, and catches dropped `thesis` / `counter_evidence` claims.
@@ -84,7 +85,7 @@ Translate the Stage 0 brief into clean Stage 1 scenes. Do **not** hand-write `fr
    Run `uv run keyflow outline -i article.md --stage1 -o starter.json` (or MCP `extract_outline`) only as a mechanical starting skeleton — replace generic chapter summaries with your Stage 0 narrative plan.
 5. **Reusable Canvas Snippets (`keyflow snippets`)**:
    Instead of authoring 12-column `grid`/`regions` from scratch, inspect built-in canvas templates via `uv run keyflow snippets` (or `--show <id>` / MCP `list_snippets`): `chart_with_takeaway`, `two_column_counter`, `kpi_waterfall_breakdown`, `architecture_with_table`, `thesis_evidence_matrix`, and `unpack_breakdown`. Each snippet is pre-audited for strict Magic Move alignment and contrast.
-   - **In-Place Unpack (`children`)**: When decomposing a concept into 2–4 sub-capabilities ("whole -> parts"), prefer `node.children` inside `diagram` or `horizontal_flow`/`flow_dag` so the parent card unpacks in place into a dashed group container, rather than placing isolated cards in separate grid cells.
+   - **In-Place Unpack (`children`)**: When decomposing a concept into 2–4 sub-capabilities ("whole -> parts"), use `node.children` only when an explicit node-based diagram/layout is the best fit; otherwise compose the parent and parts as independently typed canvas objects rather than defaulting to nested cards.
    - **Nonlinear Flows (`sequence`)**: Inside `canvas` `diagram`, use `diagram_layout: "sequence"` whenever expressing forward-skip or backward-retry loops.
 
 ---

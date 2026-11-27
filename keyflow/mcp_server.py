@@ -37,7 +37,7 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "extract_outline",
-        "description": "Stage 1: Extract structural summary, compact full-state scene_graph, and Stage 2 paced draft_deck from a Markdown article or README.",
+        "description": "Extract a semantic scene seed and source relationships without choosing visual objects, plus a paced placeholder deck, from Markdown.",
         "inputSchema": {
             "type": "object",
             "properties": {
