@@ -3549,3 +3549,96 @@ def test_batch2_radar_progress_bars_gauge_and_line_estimate(tmp_path: Path) -> N
         # 4. line estimate_from shaded background & divider
         assert any("_margin_line_est_bg" in i for i in ids)
         assert any("_margin_line_est_div" in i for i in ids)
+
+
+def test_resolve_scene_layout_consistency_and_unknown_layout() -> None:
+    from keyflow.pace import expand_scene_frames
+    from keyflow.schema.parsers import parse_deck
+
+    # Explicit null 'objects' without 'layout' must fail consistently across validate, parse, and pace
+    null_objects_deck = {
+        "title": "Null Objects Test",
+        "scenes": [{"id": "s1", "title": "S1", "objects": None, "nodes": [{"id": "n1", "label": "A"}]}],
+    }
+    res = validate_deck(null_objects_deck)
+    assert res.valid is False
+    assert any("missing 'layout'" in e for e in res.errors)
+
+    with pytest.raises(ValueError, match="must specify 'layout'"):
+        parse_deck(null_objects_deck)
+
+    with pytest.raises(ValueError, match="must specify 'layout'"):
+        expand_scene_frames(null_objects_deck["scenes"][0])
+
+    # Unknown layout in expand_scene_frames must raise rather than falling back silently
+    with pytest.raises(ValueError, match="Unsupported layout"):
+        expand_scene_frames({"id": "s1", "title": "S1", "layout": "nonexistent_layout"})
+
+
+def test_show_title_false_unlocks_full_canvas_and_monotony_checks(tmp_path: Path) -> None:
+    from creator_studio_doc_format.core import KeyxDocument
+    from keyflow.layouts import resolve_scene
+    from keyflow.schema.parsers import parse_deck
+
+    deck_raw = {
+        "title": "Full Canvas Freedom",
+        "scenes": [
+            {
+                "id": "free_1",
+                "title": "Hidden Header",
+                "layout": "canvas",
+                "show_title": False,
+                "objects": [
+                    {
+                        "id": "bespoke_hero",
+                        "kind": "textbox",
+                        "text": "Visual-First Hero",
+                        "font_size": 72,
+                        "geometry": {"x": 0.1, "y": 0.1, "width": 0.8, "height": 0.2},
+                    }
+                ],
+            }
+        ],
+    }
+    assert validate_deck(deck_raw).valid is True
+    parsed = parse_deck(deck_raw)
+    frames = resolve_scene(parsed.scenes[0])
+    assert frames[0].title_rect is None
+    assert frames[0].subtitle_rect is None
+
+    out = tmp_path / "no_header.keyx"
+    compile_deck(deck_raw, out)
+    with KeyxDocument.open(out) as loaded:
+        tb_ids = {
+            obj.object.textbox.identifier
+            for obj in loaded.payload.slides[0].contents
+            if obj.object.textbox is not None
+        }
+        assert "s1_title" not in tb_ids
+        assert "s1_bespoke_hero" in tb_ids
+
+    # 3 canvas scenes all using default top header (show_title=true) and no hero textbox -> visual_monotony
+    monotone_headers = {
+        "title": "Header Monotony",
+        "scenes": [
+            {
+                "id": f"c{i}",
+                "title": f"Slide {i}",
+                "layout": "canvas",
+                "objects": [
+                    {
+                        "id": f"card_{i}",
+                        "kind": "card",
+                        "label": f"Item {i}",
+                        "geometry": {"x": 0.1 * i, "y": 0.3, "width": 0.25, "height": 0.2},
+                    }
+                ],
+            }
+            for i in range(1, 4)
+        ],
+    }
+    rep = audit_deck(monotone_headers)
+    assert any(
+        w.category == "visual_monotony" and "show_title=true" in w.message
+        for w in rep.warnings
+    )

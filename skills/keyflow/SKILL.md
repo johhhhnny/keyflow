@@ -67,15 +67,17 @@ Before finalizing Stage 1 JSON, run the **Director -> Critic** loop (see `refere
 Translate the Stage 0 brief into clean Stage 1 scenes. Do **not** hand-write `frames` unless custom choreography is required:
 
 1. **No Default Visual Primitive**: Explicitly choose `layout` and, for every visible canvas primitive, `kind`. Canvas may be inferred only from explicit canvas fields; a `nodes` list never implies a card layout. Do not turn headings, claims, or entities into cards by default. Begin with the argument and choose among typography (`textbox`), spatial geometry (`shape`), data displays (`chart`/`table`), diagrams, or a card only when a bounded information unit genuinely benefits from a container. A card is an opt-in choice, not a generic node renderer. If a composition is not yet justified, leave `objects` empty in the Stage 1 seed rather than inventing cards.
-   When a card is intentionally selected, keep it to **one short `label` line** (1–4 words / ≤ 12 CJK chars). Do **not** pack `badge + label + sublabel` onto every card—move explanations into `note` (Presenter Notes). Add extra text layers only when they serve an explicit visual purpose:
+   When a card is intentionally selected, keep it to **one short `label` line** (1–4 words / ≤ 12 CJK chars). Do **not** pack `badge + label + sublabel` onto cards, and do **not** add epistemic badges (`"FACT"`, `"INFERENCE"`, `"THESIS"`, `"COUNTER"`)—express the author's intent through visual hierarchy, contrast, and spatial relationships, and move all explanations into `note` (Presenter Notes). Add extra layers only when they serve an explicit visual purpose:
    - `children` in-place unpack (total -> parts decomposition across frames);
-   - `badge`: crisp epistemic or sequence tag (e.g., `"FACT"`, `"THESIS"`, `"COUNTER"`, `"STEP 01"`);
    - `metric`: hero number/stat for KPI or single-thesis centerpiece blocks (e.g., `"75%"`, `"10×"`, `"0 依赖"`);
-   - `sublabel`: brief secondary line only when needed for `callout` or `metric` context;
    - `variant`: `"primary"` | `"accent"` (yellow highlight) | `"success"` (teal-green) | `"warn"` (amber) | `"muted"`
    - `surface`: `"filled"` (solid container) | `"ghost"` (border-only lightweight frame) | `"borderless"` (no fill/border; prefer open editorial typography for hero stats and core thesis statements instead of wrapping them in cards)
    Put all prose explanations, caveats, citations, and presenter context into each node/child's **`note`** field (and scene `intro_note`).
-2. **Structured Story Model & Evidence Grounding (Recommended for Analytical Decks)**:
+2. **Break Out of the Fixed Top-Header & 12-Col Grid Skeleton**:
+   - **Full-Canvas Freedom (`show_title: false`)**: Set `"show_title": false` on `canvas` scenes whenever a centered hero statement, asymmetric split, or full-bleed visual should own the top of the slide instead of the fixed `y=86` header bar.
+   - **Spatial `geometry` / `anchor` / `z_index` First**: Prefer normalized `[0..1]` `geometry` (`{x, y, w, h, rotation}`) and relative `anchor` (`object_id`, `point`, `offset`) over `12-col grid + regions` so slides do not collapse into identical rectangular grid boxes.
+   - **Break Component & Color Uniformity**: Vary `style_config.card_corner_px`, `surface` (`borderless`, `accent_bar`, `ghost`), custom SVG `shape` paths, and custom `palette` / `fill_hex` / `color_hex` instead of leaving every deck in identical rounded-rect theme defaults.
+3. **Structured Story Model & Evidence Grounding (Recommended for Analytical Decks)**:
    Include optional `story_model` at the deck root (`core_question`, `claims`: `id`, `type`, `claim`, `source_quote`, `metric_scope`, `confidence`), set per-scene `claim` & `metric_scope`, and link elements via `evidence_refs: [...]`. `keyflow audit` automatically enforces epistemic alignment (e.g., rejects `badge: "FACT"` pointing to an `inference` claim), flags `scope_mixing` across incompatible denominators, warns on `unsourced_fact`, and catches dropped `thesis` / `counter_evidence` claims.
 3. **Optional Cover Slide (`cover`)**:
    Set root `"cover": true` or `"cover": {"kicker": "...", "title": "...", "subtitle": "...", "meta": "...", "align": "left" | "center", "accent_bar": true}` to generate an editorial cover slide as Slide 1 (omitted by default).
@@ -83,8 +85,8 @@ Translate the Stage 0 brief into clean Stage 1 scenes. Do **not** hand-write `fr
    `use_templates` defaults to `false`, enabling `layout: "canvas"`, `palette`, native/vector `chart`, native `table`, and inline `diagram`. Pass `--use-templates` (CLI) or `use_templates: true` only when validating strict preset-only decks.
 4. **Optional Structural Seed for Long Articles**:
    Run `uv run keyflow outline -i article.md --stage1 -o starter.json` (or MCP `extract_outline`) only as a mechanical starting skeleton — replace generic chapter summaries with your Stage 0 narrative plan.
-5. **Reusable Canvas Snippets (`keyflow snippets`)**:
-   Instead of authoring 12-column `grid`/`regions` from scratch, inspect built-in canvas templates via `uv run keyflow snippets` (or `--show <id>` / MCP `list_snippets`): `chart_with_takeaway`, `two_column_counter`, `kpi_waterfall_breakdown`, `architecture_with_table`, `thesis_evidence_matrix`, and `unpack_breakdown`. Each snippet is pre-audited for strict Magic Move alignment and contrast.
+5. **Optional Reference Snippets (`keyflow snippets`)**:
+   `uv run keyflow snippets` (or `--show <id>` / MCP `list_snippets`) provides **optional structural reference examples only** (`chart_with_takeaway`, `two_column_counter`, `kpi_waterfall_breakdown`, `architecture_with_table`, `thesis_evidence_matrix`, `unpack_breakdown`)—do **not** reuse them as a default skeleton across slides.
    - **In-Place Unpack (`children`)**: When decomposing a concept into 2–4 sub-capabilities ("whole -> parts"), use `node.children` only when an explicit node-based diagram/layout is the best fit; otherwise compose the parent and parts as independently typed canvas objects rather than defaulting to nested cards.
    - **Nonlinear Flows (`sequence`)**: Inside `canvas` `diagram`, use `diagram_layout: "sequence"` whenever expressing forward-skip or backward-retry loops.
 

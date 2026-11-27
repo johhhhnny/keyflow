@@ -110,6 +110,7 @@
           "intro_note": { "type": "string", "default": "" },
           "active_flow_node": { "type": "string" },
           "show_pinned_flow": { "type": "boolean", "default": true },
+          "show_title": { "type": "boolean", "default": true },
           "pinned_flow": { "$ref": "#/$defs/pinned_flow" },
           "palette": { "$ref": "#/$defs/palette" },
           "style_config": { "$ref": "#/$defs/style_config" },

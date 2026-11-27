@@ -34,10 +34,10 @@
         "kind": "callout",
         "region": "takeaway_top",
         "step": 2,
+        "surface": "borderless",
         "variant": "accent",
-        "badge": "INSIGHT",
         "label": "关键拐点出现在下半年",
-        "sublabel": "Q4 较 Q1 提升近 3 倍，结构性优势已经确立"
+        "note": "Q4 较 Q1 提升近 3 倍，结构性优势已经确立"
       },
       {
         "id": "support_card",
@@ -47,7 +47,7 @@
         "variant": "primary",
         "metric": "+44 pct",
         "label": "全年累计增幅",
-        "sublabel": "需同步关注高基数下的边际放缓风险"
+        "note": "需同步关注高基数下的边际放缓风险"
       }
     ]
   }

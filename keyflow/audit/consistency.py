@@ -294,8 +294,18 @@ def _audit_cross_page_consistency(
             prev_sc = deck.scenes[i - 1]
             same_layout = cur_sc.layout == prev_sc.layout
             if same_layout and cur_sc.layout == "canvas":
-                cur_sig = tuple(sorted(o.kind for o in cur_sc.objects))
-                prev_sig = tuple(sorted(o.kind for o in prev_sc.objects))
+                cur_regions = tuple((r.col, r.row, r.col_span, r.row_span) for r in cur_sc.regions)
+                prev_regions = tuple((r.col, r.row, r.col_span, r.row_span) for r in prev_sc.regions)
+                cur_sig = (
+                    cur_regions,
+                    tuple(sorted(o.kind for o in cur_sc.objects)),
+                    getattr(cur_sc, "show_title", True),
+                )
+                prev_sig = (
+                    prev_regions,
+                    tuple(sorted(o.kind for o in prev_sc.objects)),
+                    getattr(prev_sc, "show_title", True),
+                )
                 same_layout = cur_sig == prev_sig
             elif same_layout:
                 cur_sig = (bool(cur_sc.nodes), bool(cur_sc.edges), cur_sc.show_pinned_flow, cur_sc.pinned_flow is not None)
@@ -373,6 +383,32 @@ def _audit_cross_page_consistency(
                     suggested_action="reduce_filled_card_monotony",
                 )
             )
+
+        # Deck-level header-skeleton monotony check: all >=3 canvas scenes locking to top header
+        canvas_scenes = [sc for sc in deck.scenes if sc.layout == "canvas"]
+        if len(canvas_scenes) >= 3 and all(getattr(sc, "show_title", True) for sc in canvas_scenes):
+            has_hero_tb = any(
+                o.kind == "textbox" and (o.font_size or 0.0) >= 60.0
+                for sc in canvas_scenes
+                for o in sc.objects
+            )
+            if not has_hero_tb:
+                findings.append(
+                    AuditFinding(
+                        severity="warning",
+                        tier="critique",
+                        category="visual_monotony",
+                        slide_num=1,
+                        scene_id=canvas_scenes[0].id,
+                        frame_index=0,
+                        message=(
+                            f"All {len(canvas_scenes)} canvas scenes use the default top header bar (show_title=true) "
+                            "with no bespoke full-canvas or hero-typography composition."
+                        ),
+                        suggestion="Use show_title=false with geometry/anchor spatial composition or hero textbox (>=60pt) on key slides.",
+                        suggested_action="vary_header_composition",
+                    )
+                )
 
         # Deck-level visual idiom diversity check (>=4 scenes with canvas relying solely on basic cards/column/table)
         if len(deck.scenes) >= 4 and any(sc.layout == "canvas" for sc in deck.scenes):

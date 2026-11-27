@@ -5,7 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from keyflow.schema.models import ValidationResult
+from keyflow.schema.models import (
+    CANVAS_STRUCTURE_KEYS,
+    ValidationResult,
+    resolve_scene_layout,
+)
 from keyflow.schema.references import (
     _as_float,
     _as_int,
@@ -361,17 +365,15 @@ def validate_deck(
         if not isinstance(stitle, str) or not stitle:
             errors.append(f"{prefix}: missing or invalid 'title'.")
 
-        has_canvas_structure = any(
-            s.get(k) is not None for k in ("grid", "regions", "objects", "connectors")
-        )
-        layout = s.get("layout")
-        if layout is None:
-            if has_canvas_structure:
-                layout = "canvas"
-            else:
-                errors.append(f"{prefix}: missing 'layout'; choose a layout explicitly.")
-        elif not isinstance(layout, str) or layout not in valid_layouts:
-            errors.append(f"{prefix}: invalid layout '{layout}'.")
+        has_canvas_structure = any(s.get(k) is not None for k in CANVAS_STRUCTURE_KEYS)
+        try:
+            layout = resolve_scene_layout(s)
+        except ValueError:
+            layout = None
+            errors.append(f"{prefix}: missing 'layout'; choose a layout explicitly.")
+        else:
+            if layout not in valid_layouts:
+                errors.append(f"{prefix}: invalid layout '{layout}'.")
 
         has_freeform_fields = any(
             s.get(k) is not None for k in ("grid", "regions", "objects", "connectors", "palette")
@@ -408,6 +410,9 @@ def validate_deck(
                     errors.append(f"{prefix}: 'active_flow_node' set to '{active_fn}' without 'pinned_flow'.")
                 elif active_fn not in scene_pf_node_ids:
                     errors.append(f"{prefix}: unknown active_flow_node '{active_fn}'.")
+
+        if s.get("show_title") is not None and not isinstance(s["show_title"], bool):
+            errors.append(f"{prefix}.show_title: must be a boolean.")
 
         has_frames = "frames" in s and s["frames"] is not None
         pacing = s.get("pacing", "manual" if has_frames else "auto")

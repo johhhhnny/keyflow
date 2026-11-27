@@ -22,9 +22,9 @@
         "diagram": {
           "diagram_layout": "horizontal",
           "nodes": [
-            { "id": "ingest", "label": "数据接入", "sublabel": "校验与清洗", "variant": "primary" },
-            { "id": "solve", "label": "约束求解", "sublabel": "终态锚定", "variant": "accent" },
-            { "id": "emit", "label": "原生输出", "sublabel": "零抖动编译", "variant": "success" }
+            { "id": "ingest", "label": "数据接入", "variant": "primary", "note": "校验与清洗" },
+            { "id": "solve", "label": "约束求解", "variant": "accent", "note": "终态锚定" },
+            { "id": "emit", "label": "原生输出", "variant": "success", "note": "零抖动编译" }
           ],
           "edges": [
             { "id": "e1", "from": "ingest", "to": "solve" },

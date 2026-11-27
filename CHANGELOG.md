@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [Unreleased]
+
+### Changed (Breaking)
+- **Object-First Scene Generation**: `SceneSpec.layout` is now required unless explicit non-null canvas keys (`objects`, `grid`, `regions`, `connectors`) are present; scenes no longer implicitly default to `horizontal_flow`.
+- **`outline` Semantic Seed**: `extract_markdown_outline()` now emits an empty-canvas seed (`objects: []`) with `design_constraints` instead of pre-generating `horizontal_flow` cards.
+
+---
+
 ## [0.3.3] - 2026-11-27
 
 ### Added

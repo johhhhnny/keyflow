@@ -24,13 +24,11 @@
           "nodes": [
             {
               "id": "entry",
-              "badge": "CORE",
               "label": "核心能力入口",
               "variant": "primary"
             },
             {
               "id": "group_mod",
-              "badge": "MODULE",
               "label": "数据与检索",
               "variant": "accent",
               "child_layout": "row",
@@ -52,9 +50,8 @@
         "step": 2,
         "surface": "borderless",
         "variant": "primary",
-        "badge": "IN-PLACE UNPACK",
         "label": "先总后分：父节点原地拆解为虚线子系统",
-        "sublabel": "无需手动切格子摆孤立卡片，Magic Move 自动呈现容器展开效果"
+        "note": "无需手动切格子摆孤立卡片，Magic Move 自动呈现容器展开效果"
       }
     ]
   }

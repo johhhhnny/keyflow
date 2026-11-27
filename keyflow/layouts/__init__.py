@@ -93,11 +93,17 @@ def resolve_scene(
         and scene.matrix is None
     )
 
-    has_any_subtitle = bool(scene.subtitle or any(f.subtitle for f in scene.frames))
-    title_rect = BoxRect(TITLE_MARGIN_X, 86.0, canvas_w - 2 * TITLE_MARGIN_X, 112.0)
+    show_title = getattr(scene, "show_title", True)
+    has_any_subtitle = show_title and bool(scene.subtitle or any(f.subtitle for f in scene.frames))
+    title_rect = BoxRect(TITLE_MARGIN_X, 86.0, canvas_w - 2 * TITLE_MARGIN_X, 112.0) if show_title else None
     subtitle_rect = BoxRect(SUBTITLE_MARGIN_X, 198.0, canvas_w - 2 * SUBTITLE_MARGIN_X, 50.0) if has_any_subtitle else None
 
-    if is_macro_only:
+    if not show_title:
+        ribbon_title_rect = None
+        ribbon_subtitle_rect = None
+        has_groups = bool(effective_pf and effective_pf.groups)
+        docked_cy = 100.0 + (42.0 if has_groups else 0.0)
+    elif is_macro_only:
         ribbon_title_rect = BoxRect(TITLE_MARGIN_X, 72.0, canvas_w - 2 * TITLE_MARGIN_X, 92.0)
         ribbon_subtitle_rect = BoxRect(SUBTITLE_MARGIN_X, 168.0, canvas_w - 2 * SUBTITLE_MARGIN_X, 44.0) if has_any_subtitle else None
         docked_cy = 160.0
@@ -131,7 +137,7 @@ def resolve_scene(
         )
         area_top = pf_bottom + PINNED_FLOW_GAP_BELOW
     else:
-        area_top = 262.0 if has_any_subtitle else 225.0
+        area_top = (262.0 if has_any_subtitle else 225.0) if show_title else 60.0
 
     area_bottom = float(canvas_h) - SAFE_AREA_BOTTOM_MARGIN
 

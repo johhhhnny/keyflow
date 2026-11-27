@@ -25,6 +25,21 @@ LayoutMode = Literal[
     "proportion_bar",
     "comparison_matrix",
 ]
+
+CANVAS_STRUCTURE_KEYS = ("objects", "grid", "regions", "connectors")
+
+
+def resolve_scene_layout(scene: dict[str, Any]) -> str:
+    """Resolve explicit scene layout or infer 'canvas' only from non-null canvas keys."""
+    layout = scene.get("layout")
+    if layout is None and any(scene.get(k) is not None for k in CANVAS_STRUCTURE_KEYS):
+        return "canvas"
+    if not isinstance(layout, str):
+        raise ValueError(
+            f"Scene {scene.get('id', '<unknown>')!r} must specify 'layout'; "
+            "layouts are never inferred from node lists."
+        )
+    return layout
 NodeKind = Literal["card", "group_dashed"]
 NodeVariant = Literal["primary", "accent", "muted", "success", "warn"]
 SurfaceStyle = Literal["filled", "ghost", "borderless", "accent_bar"]
@@ -372,6 +387,7 @@ class SceneSpec:
     intro_note: str = ""
     active_flow_node: str | None = None
     show_pinned_flow: bool = True
+    show_title: bool = True
     pinned_flow: PinnedFlowSpec | None = None
     palette: dict[str, Any] | None = None
     style_config: StyleConfigSpec | None = None

@@ -213,7 +213,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_prev.add_argument("-o", "--output-dir", required=True, help="Directory to write PNG slides.")
     p_prev.set_defaults(func=_cmd_preview)
 
-    p_out = sub.add_parser("outline", help="Extract structure and starter scene graph / storyboard from a Markdown article.")
+    p_out = sub.add_parser(
+        "outline",
+        help="Extract a semantic scene seed and paced empty-canvas placeholder deck from Markdown.",
+    )
     p_out.add_argument("-i", "--input", required=True, help="Path to Markdown README or article.")
     p_out.add_argument("-o", "--output", help="Optional path to write the extracted JSON.")
     p_out.add_argument("--theme", default="slate_dark", help=f"Theme preset ({', '.join(sorted(THEMES))}) or .json theme file.")

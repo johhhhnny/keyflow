@@ -593,19 +593,15 @@ _PACERS = {
 }
 
 
+from keyflow.schema.models import resolve_scene_layout
+
+
 def expand_scene_frames(scene: dict[str, Any], *, density: DensityMode = "standard") -> list[dict[str, Any]]:
     """Deterministically expand a Stage 1 full-state scene dict into progressive frames."""
-    layout = scene.get("layout")
-    if layout is None and any(
-        key in scene for key in ("objects", "grid", "regions", "connectors")
-    ):
-        layout = "canvas"
-    if not isinstance(layout, str):
-        raise ValueError(
-            f"Scene {scene.get('id', '<unknown>')!r} must specify 'layout'; "
-            "layouts are never inferred from node lists."
-        )
-    pacer = _PACERS.get(layout, _pace_linear_flow)
+    layout = resolve_scene_layout(scene)
+    pacer = _PACERS.get(layout)
+    if pacer is None:
+        raise ValueError(f"Unsupported layout {layout!r} in scene {scene.get('id', '<unknown>')!r}.")
     return pacer(scene, density)
 
 

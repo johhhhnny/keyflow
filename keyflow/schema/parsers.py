@@ -28,6 +28,7 @@ from keyflow.schema.models import (
     SceneSpec,
     SpatialGeometrySpec,
     StoryClaimSpec,
+    resolve_scene_layout,
     StoryModelSpec,
     StyleConfigSpec,
     TableSpec,
@@ -272,11 +273,11 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
                 title=str(r["title"]) if r.get("title") else None,
                 frame=bool(r.get("frame", False)),
             )
-            for r in s_raw.get("regions", [])
+            for r in s_raw.get("regions") or []
         ]
 
         objects: list[CanvasObjectSpec] = []
-        for obj_raw in s_raw.get("objects", []):
+        for obj_raw in s_raw.get("objects") or []:
             chart_spec: ChartSpec | None = None
             if obj_raw.get("chart"):
                 ch_raw = obj_raw["chart"]
@@ -404,16 +405,7 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
         ]
 
         default_pacing = "manual" if frames else "auto"
-        layout = s_raw.get("layout")
-        if layout is None and any(
-            key in s_raw for key in ("objects", "grid", "regions", "connectors")
-        ):
-            layout = "canvas"
-        if not isinstance(layout, str):
-            raise ValueError(
-                f"Scene {s_raw.get('id', '<unknown>')!r} must specify 'layout'; "
-                "layouts are never inferred from node lists."
-            )
+        layout = resolve_scene_layout(s_raw)
         scenes.append(
             SceneSpec(
                 id=str(s_raw["id"]),
@@ -433,6 +425,7 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
                 intro_note=str(s_raw.get("intro_note", "")),
                 active_flow_node=str(s_raw["active_flow_node"]) if s_raw.get("active_flow_node") else None,
                 show_pinned_flow=bool(s_raw.get("show_pinned_flow", True)),
+                show_title=bool(s_raw.get("show_title", True)),
                 pinned_flow=_parse_pinned_flow(s_raw["pinned_flow"]) if isinstance(s_raw.get("pinned_flow"), dict) else None,
                 palette=dict(s_raw["palette"]) if isinstance(s_raw.get("palette"), dict) else None,
                 style_config=_parse_style_config(s_raw.get("style_config")),

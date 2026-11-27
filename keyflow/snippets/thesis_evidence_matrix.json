@@ -22,10 +22,10 @@
         "kind": "callout",
         "region": "thesis_bar",
         "step": 1,
+        "surface": "borderless",
         "variant": "accent",
-        "badge": "THESIS",
         "label": "系统性耦合构成核心壁垒",
-        "sublabel": "竞争优势来自全链路协同而非单点领先"
+        "note": "竞争优势来自全链路协同而非单点领先"
       },
       {
         "id": "pillar_1",
@@ -33,7 +33,6 @@
         "region": "ev_1",
         "step": 2,
         "variant": "primary",
-        "badge": "01",
         "label": "供给侧锁定",
         "note": "关键产能与供应链排他协议"
       },
@@ -43,7 +42,6 @@
         "region": "ev_2",
         "step": 2,
         "variant": "primary",
-        "badge": "02",
         "label": "生态标准控制",
         "note": "工具链与开发者迁移壁垒"
       },
@@ -53,7 +51,6 @@
         "region": "ev_3",
         "step": 3,
         "variant": "primary",
-        "badge": "03",
         "label": "定价权传导",
         "note": "高毛利反哺下一代研发投入"
       },
@@ -63,7 +60,6 @@
         "region": "ev_4",
         "step": 3,
         "variant": "primary",
-        "badge": "04",
         "label": "客户替换成本",
         "note": "全栈绑定下的高昂切换代价"
       }

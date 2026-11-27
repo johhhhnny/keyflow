@@ -21,10 +21,10 @@
         "kind": "callout",
         "region": "pro_top",
         "step": 1,
+        "surface": "borderless",
         "variant": "primary",
-        "badge": "THESIS",
         "label": "主流叙事：规模效应持续放大",
-        "sublabel": "单位成本随体量增长呈线性下降"
+        "note": "单位成本随体量增长呈线性下降"
       },
       {
         "id": "pro_evidence",
@@ -32,7 +32,6 @@
         "region": "pro_bot",
         "step": 1,
         "variant": "muted",
-        "badge": "FACT",
         "label": "历史毛利率维持高位",
         "note": "过去四个季度均高于行业均值"
       },
@@ -41,10 +40,10 @@
         "kind": "callout",
         "region": "con_top",
         "step": 2,
+        "surface": "borderless",
         "variant": "warn",
-        "badge": "COUNTER",
         "label": "反证视角：增量边际正在恶化",
-        "sublabel": "新客户获客成本与履约复杂度同步抬头"
+        "note": "新客户获客成本与履约复杂度同步抬头"
       },
       {
         "id": "counter_boundary",
@@ -52,7 +51,6 @@
         "region": "con_bot",
         "step": 2,
         "variant": "muted",
-        "badge": "LIMIT",
         "label": "仅在核心区域成立",
         "note": "下沉市场尚未验证相同回收周期"
       }
