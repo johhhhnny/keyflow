@@ -86,7 +86,7 @@ from keyflow.layouts.types import (
     _text_units,
 )
 from keyflow.schema import NodeVariant
-from keyflow.themes import ThemePreset, contrast_ratio
+from keyflow.themes import ThemePreset, contrast_ratio, hex_to_rgb_float
 from keyflow.tokens import LINE_HEIGHT_RATIO, MIN_READABLE_SCALE, MUTED_CARD_ALPHA
 
 _BG_PRESET_ID = "keyflow_bg_fill"
@@ -759,6 +759,96 @@ def _make_box_objects(
                 alignment=para_align,
             )
         )
+
+    gauge = getattr(box, "gauge", None)
+    if isinstance(gauge, dict) and gauge.get("type") in ("ring", "range"):
+        g_type = gauge["type"]
+        g_val = float(gauge.get("value", 0.0))
+        g_min = float(gauge.get("min", 0.0))
+        g_max = float(gauge.get("max", 100.0))
+        g_span = g_max - g_min if g_max > g_min else 1.0
+        g_frac = max(0.0, min(1.0, (g_val - g_min) / g_span))
+        g_rgb = hex_to_rgb_float(gauge["color_hex"]) if gauge.get("color_hex") else theme.accent_border_rgb
+        if g_type == "ring":
+            sz = min(44.0, max(28.0, box.rect.h * 0.28))
+            gx = box.rect.x + box.rect.w - sz - 16.0
+            gy = box.rect.y + 14.0
+            ring_d = "M 0.5000,0.0000 A 0.5,0.5 0 1 1 0.4999,0.0000 Z"
+            objs.append(
+                SlideObject(
+                    object=CanvasObject(
+                        shape=Shape(
+                            identifier=f"{obj_id}_gauge_bg",
+                            geometry=Geometry(position=Position(x=gx, y=gy), size=Size(width=sz, height=sz)),
+                            path=ShapePath(bezier=BezierPath(path=ring_d)),
+                            fill=None,
+                            stroke=Stroke(line=Line(color=Color(rgba=_rgba(theme.card_border_rgb, 0.55)), width=4.5, pattern=Pattern.SOLID)),
+                            opacity=box.opacity,
+                        )
+                    )
+                )
+            )
+            sweep = max(0.02, min(0.999, g_frac)) * 2.0 * math.pi
+            a0 = -math.pi / 2.0
+            a1 = a0 + sweep
+            x0u, y0u = 0.5 + 0.5 * math.cos(a0), 0.5 + 0.5 * math.sin(a0)
+            x1u, y1u = 0.5 + 0.5 * math.cos(a1), 0.5 + 0.5 * math.sin(a1)
+            large = 1 if sweep > math.pi else 0
+            arc_d = f"M {x0u:.4f},{y0u:.4f} A 0.5,0.5 0 {large} 1 {x1u:.4f},{y1u:.4f}"
+            objs.append(
+                SlideObject(
+                    object=CanvasObject(
+                        shape=Shape(
+                            identifier=f"{obj_id}_gauge_arc",
+                            geometry=Geometry(position=Position(x=gx, y=gy), size=Size(width=sz, height=sz)),
+                            path=ShapePath(bezier=BezierPath(path=arc_d)),
+                            fill=None,
+                            stroke=Stroke(line=Line(color=Color(rgba=_rgba(g_rgb)), width=4.5, pattern=Pattern.SOLID)),
+                            opacity=box.opacity,
+                        )
+                    )
+                )
+            )
+        else:
+            trk_x = box.rect.x + 20.0
+            trk_w = max(40.0, box.rect.w - 40.0)
+            trk_y = box.rect.y + box.rect.h - 20.0
+            objs.append(
+                _make_solid_card(
+                    f"{obj_id}_gauge_trk",
+                    BoxRect(trk_x, trk_y, trk_w, 5.0),
+                    fill_rgb=_rgba(theme.card_border_rgb, 0.55),
+                    stroke=Stroke(empty=True),
+                    corner_px=2.5,
+                    opacity=box.opacity,
+                )
+            )
+            objs.append(
+                _make_solid_card(
+                    f"{obj_id}_gauge_fill",
+                    BoxRect(trk_x, trk_y, max(6.0, trk_w * g_frac), 5.0),
+                    fill_rgb=_rgba(g_rgb),
+                    stroke=Stroke(empty=True),
+                    corner_px=2.5,
+                    opacity=box.opacity,
+                )
+            )
+            dot_x = trk_x + trk_w * g_frac
+            dot_d = 13.0
+            objs.append(
+                SlideObject(
+                    object=CanvasObject(
+                        shape=Shape(
+                            identifier=f"{obj_id}_gauge_dot",
+                            geometry=Geometry(position=Position(x=dot_x - dot_d / 2.0, y=trk_y + 2.5 - dot_d / 2.0), size=Size(width=dot_d, height=dot_d)),
+                            path=ShapePath(bezier=BezierPath(path="M 0.5,0 A 0.5,0.5 0 1 1 0.4999,0 Z")),
+                            fill=Fill(color=Color(rgba=_rgba(g_rgb))),
+                            stroke=Stroke(line=Line(color=Color(rgba=_rgba(bg_rgb)), width=1.5, pattern=Pattern.SOLID)),
+                            opacity=box.opacity,
+                        )
+                    )
+                )
+            )
 
     return objs, obj_id
 

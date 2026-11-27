@@ -37,7 +37,7 @@ EvidenceType = Literal["thesis", "fact", "relation", "inference", "counter_evide
 ConfidenceLevel = Literal["high", "medium", "low"]
 RegionArrange = Literal["stack", "row", "grid"]
 CanvasObjectKind = Literal["chart", "table", "card", "textbox", "shape", "callout", "diagram"]
-ChartType = Literal["column", "bar", "pie", "donut", "line", "area", "stacked_column", "stacked_bar", "scatter", "waterfall", "football_field"]
+ChartType = Literal["column", "bar", "pie", "donut", "line", "area", "stacked_column", "stacked_bar", "scatter", "waterfall", "football_field", "radar", "progress_bars"]
 ChartReveal = Literal["whole", "by_series", "by_category"]
 ChartRenderMode = Literal["auto", "vector", "native"]
 TableReveal = Literal["whole", "by_row", "by_column"]
@@ -293,6 +293,7 @@ class CanvasObjectSpec:
     shape_type: ShapeType = "rounded_rect"
     svg_path: str | None = None
     dashed: bool = False
+    gauge: dict[str, Any] | None = None
     chart: ChartSpec | None = None
     table: TableSpec | None = None
     diagram: DiagramSpec | None = None

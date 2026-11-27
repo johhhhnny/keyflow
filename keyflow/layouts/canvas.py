@@ -428,6 +428,7 @@ def _resolve_canvas_scene(
                         color_hex=obj.color_hex,
                         surface=obj.surface,
                         align=obj.align,
+                        gauge=obj.gauge,
                     )
                 )
             elif obj.kind == "textbox":
@@ -479,7 +480,7 @@ def _resolve_canvas_scene(
                     for s_idx, sr in enumerate(ch.series)
                 ]
                 use_vector = (
-                    (ch.chart_type in ("waterfall", "football_field"))
+                    (ch.chart_type in ("waterfall", "football_field", "radar", "progress_bars"))
                     or bool(ch.highlight_categories or ch.estimate_from is not None or ch.reference_lines)
                     or (ch.render_mode == "vector")
                     or (ch.render_mode == "auto" and ch.reveal != "whole")
@@ -487,7 +488,7 @@ def _resolve_canvas_scene(
                 show_leg = (
                     ch.show_legend
                     if ch.show_legend is not None
-                    else (ch.chart_type not in ("waterfall", "football_field") and (len(ch.series) > 1 or ch.chart_type in ("pie", "donut")))
+                    else (ch.chart_type not in ("waterfall", "football_field", "progress_bars") and (len(ch.series) > 1 or ch.chart_type in ("pie", "donut")))
                 )
                 placed_charts.append(
                     PlacedChart(

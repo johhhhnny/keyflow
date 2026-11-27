@@ -76,6 +76,7 @@ class PlacedBox:
     font_scale: float | None = None
     surface: SurfaceStyle = "filled"
     align: TextAlign = "center"
+    gauge: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -269,6 +270,7 @@ class PlacedShape:
     font_scale: float | None = None
     surface: SurfaceStyle = "filled"
     align: TextAlign = "center"
+    gauge: dict[str, Any] | None = None
     dashed: bool = False
     variant: NodeVariant = "primary"
     opacity: float = 1.0

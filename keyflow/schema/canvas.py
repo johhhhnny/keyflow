@@ -118,7 +118,7 @@ def _validate_canvas_scene(
     valid_kinds = {"chart", "table", "card", "textbox", "shape", "callout", "diagram"}
     valid_variants = {"primary", "accent", "muted", "success", "warn"}
     valid_surfaces = {"filled", "ghost", "borderless", "accent_bar"}
-    valid_chart_types = {"column", "bar", "pie", "donut", "line", "area", "stacked_column", "stacked_bar", "scatter", "waterfall", "football_field"}
+    valid_chart_types = {"column", "bar", "pie", "donut", "line", "area", "stacked_column", "stacked_bar", "scatter", "waterfall", "football_field", "radar", "progress_bars"}
     valid_chart_reveals = {"whole", "by_series", "by_category"}
     valid_chart_render_modes = {"auto", "vector", "native"}
     valid_table_reveals = {"whole", "by_row", "by_column"}

@@ -333,6 +333,246 @@ def _make_vector_chart_objects(
             )
         )
 
+    if chart.chart_type == "radar":
+        n_axes = max(3, len(chart.categories))
+        plot_top = chart.rect.y + header_h + (24.0 if chart.unit else 8.0) + 26.0
+        plot_h = max(120.0, (chart.rect.y + chart.rect.h) - plot_top - 34.0)
+        plot_w = max(120.0, chart.rect.w - 140.0)
+        r_max = max(48.0, min(plot_w, plot_h) * 0.44)
+        cx = chart.rect.x + chart.rect.w / 2.0
+        cy = plot_top + plot_h / 2.0
+        sq = BoxRect(cx - r_max, cy - r_max, 2.0 * r_max, 2.0 * r_max)
+
+        # Concentric polygon grid rings (4 levels)
+        for lvl in (0.25, 0.5, 0.75, 1.0):
+            pts_u: list[tuple[float, float]] = []
+            for a_i in range(n_axes):
+                ang = -math.pi / 2.0 + 2.0 * math.pi * (a_i / n_axes)
+                pts_u.append((0.5 + 0.5 * lvl * math.cos(ang), 0.5 + 0.5 * lvl * math.sin(ang)))
+            d_ring = "M " + " L ".join(f"{px:.4f},{py:.4f}" for px, py in pts_u) + " Z"
+            objs.append(
+                _make_bezier_shape(
+                    f"{slide_prefix}_{chart.id}_radar_ring_{int(lvl * 100)}",
+                    sq,
+                    d_ring,
+                    fill_rgba=None,
+                    stroke=Stroke(
+                        line=Line(
+                            color=Color(rgba=_rgba(theme.card_border_rgb, 0.55 if lvl < 1.0 else 0.75)),
+                            width=1.0,
+                            pattern=Pattern.SOLID,
+                        )
+                    ),
+                    opacity=chart.opacity,
+                )
+            )
+            tv = ax_min + ax_span * lvl
+            objs.append(
+                _make_textbox(
+                    f"{slide_prefix}_{chart.id}_radar_tick_{int(lvl * 100)}",
+                    BoxRect(cx + 4.0, cy - r_max * lvl - 10.0, 56.0, 20.0),
+                    _format_chart_num(tv),
+                    font_name=theme.font_body,
+                    font_size=12.0,
+                    color=_rgba(theme.subtitle_rgb),
+                    bold=False,
+                    opacity=chart.opacity,
+                    alignment=AlignmentType.LEFT,
+                )
+            )
+
+        # Radial spokes and axis labels
+        for a_i in range(n_axes):
+            ang = -math.pi / 2.0 + 2.0 * math.pi * (a_i / n_axes)
+            vx = cx + r_max * math.cos(ang)
+            vy = cy + r_max * math.sin(ang)
+            objs.append(
+                _make_open_line_shape(
+                    f"{slide_prefix}_{chart.id}_radar_spoke_{a_i}",
+                    (cx, cy),
+                    (vx, vy),
+                    color=_rgba(theme.card_border_rgb, 0.45),
+                    width=1.0,
+                    pattern=Pattern.SOLID,
+                    head=LineEnd.NONE,
+                    opacity=chart.opacity,
+                )
+            )
+            cat_lbl = chart.categories[a_i] if a_i < len(chart.categories) else f"A{a_i + 1}"
+            is_hl = bool(chart.highlight_categories) and (cat_lbl in chart.highlight_categories)
+            lbl_r = r_max + 22.0
+            lx = cx + lbl_r * math.cos(ang)
+            ly = cy + lbl_r * math.sin(ang)
+            cos_a = math.cos(ang)
+            if cos_a > 0.25:
+                align = AlignmentType.LEFT
+                box_x = lx - 4.0
+            elif cos_a < -0.25:
+                align = AlignmentType.RIGHT
+                box_x = lx - 116.0
+            else:
+                align = AlignmentType.CENTER
+                box_x = lx - 60.0
+            objs.append(
+                _make_textbox(
+                    f"{slide_prefix}_{chart.id}_radar_cat_{a_i}",
+                    BoxRect(box_x, ly - 13.0, 120.0, 26.0),
+                    cat_lbl,
+                    font_name=theme.font_body,
+                    font_size=15.0,
+                    color=_rgba(theme.accent_border_rgb if is_hl else theme.text_rgb),
+                    bold=is_hl,
+                    opacity=chart.opacity,
+                    alignment=align,
+                )
+            )
+
+        # Series polygons
+        for s_idx, sr in enumerate(chart.series):
+            if not sr.active:
+                continue
+            s_rgb = series_colors[s_idx]
+            is_bench = (
+                len(chart.series) > 1
+                and any(k in sr.name.lower() for k in ("基准", "中位", "benchmark", "median", "peer"))
+            )
+            poly_u: list[tuple[float, float]] = []
+            poly_abs: list[tuple[float, float]] = []
+            for a_i in range(n_axes):
+                ang = -math.pi / 2.0 + 2.0 * math.pi * (a_i / n_axes)
+                raw_v = sr.values[a_i] if a_i < len(sr.values) and sr.values[a_i] is not None else ax_min
+                frac = max(0.0, min(1.15, (float(raw_v) - ax_min) / ax_span))
+                poly_u.append((0.5 + 0.5 * frac * math.cos(ang), 0.5 + 0.5 * frac * math.sin(ang)))
+                poly_abs.append((cx + r_max * frac * math.cos(ang), cy + r_max * frac * math.sin(ang)))
+            d_poly = "M " + " L ".join(f"{px:.4f},{py:.4f}" for px, py in poly_u) + " Z"
+            objs.append(
+                _make_bezier_shape(
+                    f"{slide_prefix}_{chart.id}_radar_poly_{s_idx}",
+                    sq,
+                    d_poly,
+                    fill_rgba=_rgba(s_rgb, 0.08 if is_bench else 0.24),
+                    stroke=Stroke(
+                        line=Line(
+                            color=Color(rgba=_rgba(s_rgb, 0.9)),
+                            width=2.0 if is_bench else 2.8,
+                            pattern=Pattern.MEDIUM_DASH if is_bench else Pattern.SOLID,
+                        )
+                    ),
+                    opacity=chart.opacity,
+                )
+            )
+            if not is_bench:
+                for a_i, (px, py) in enumerate(poly_abs):
+                    objs.append(
+                        _make_bezier_shape(
+                            f"{slide_prefix}_{chart.id}_radar_dot_{s_idx}_{a_i}",
+                            BoxRect(px - 4.5, py - 4.5, 9.0, 9.0),
+                            _ellipse_unit_path(),
+                            fill_rgba=_rgba(s_rgb),
+                            stroke=Stroke(line=Line(color=Color(rgba=_rgba_int(theme.bg_rgb)), width=1.2, pattern=Pattern.SOLID)),
+                            opacity=chart.opacity,
+                        )
+                    )
+        return objs
+
+    if chart.chart_type == "progress_bars":
+        inner_x = chart.rect.x + 12.0
+        inner_y = chart.rect.y + header_h + (24.0 if chart.unit else 8.0)
+        inner_w = max(140.0, chart.rect.w - 24.0)
+        inner_h = max(80.0, (chart.rect.y + chart.rect.h) - inner_y - 12.0)
+        sr0 = chart.series[0] if chart.series else None
+        vals = [float(v) if v is not None else 0.0 for v in (sr0.values if sr0 else [])]
+        max_ref = max([1.0, *vals])
+        row_h = inner_h / cat_count
+        track_h = min(38.0, max(18.0, row_h * 0.42))
+
+        for c_idx, cat in enumerate(chart.categories):
+            ry = inner_y + c_idx * row_h
+            val = vals[c_idx] if c_idx < len(vals) else 0.0
+            frac = max(0.02, min(1.0, val / max_ref))
+            pct = (val / max_ref) * 100.0
+            bar_rgb = palette[c_idx % len(palette)]
+            if sr0 and sr0.color_hex and c_idx == 0:
+                bar_rgb = hex_to_rgb_float(sr0.color_hex)
+
+            # Dot + label on top-left, value on top-right
+            lbl_y = ry + max(0.0, (row_h - track_h - 30.0) * 0.35)
+            objs.append(
+                _make_solid_card(
+                    f"{slide_prefix}_{chart.id}_pb_dot_{c_idx}",
+                    BoxRect(inner_x, lbl_y + 7.0, 12.0, 12.0),
+                    fill_rgb=_rgba(bar_rgb),
+                    stroke=Stroke(empty=True),
+                    corner_px=3.0,
+                    opacity=chart.opacity,
+                )
+            )
+            objs.append(
+                _make_textbox(
+                    f"{slide_prefix}_{chart.id}_pb_lbl_{c_idx}",
+                    BoxRect(inner_x + 20.0, lbl_y, inner_w * 0.58, 26.0),
+                    cat,
+                    font_name=theme.font_body,
+                    font_size=18.0,
+                    color=_rgba(theme.text_rgb),
+                    bold=True,
+                    opacity=chart.opacity,
+                    alignment=AlignmentType.LEFT,
+                )
+            )
+            val_str = f"{_format_chart_num(val)} {chart.unit}" if chart.unit else _format_chart_num(val)
+            objs.append(
+                _make_textbox(
+                    f"{slide_prefix}_{chart.id}_pb_val_{c_idx}",
+                    BoxRect(inner_x + inner_w * 0.58, lbl_y, inner_w * 0.42, 26.0),
+                    val_str,
+                    font_name=theme.font_body,
+                    font_size=20.0,
+                    color=_rgba(theme.text_rgb),
+                    bold=True,
+                    opacity=chart.opacity,
+                    alignment=AlignmentType.RIGHT,
+                )
+            )
+
+            track_y = lbl_y + 30.0
+            objs.append(
+                _make_solid_card(
+                    f"{slide_prefix}_{chart.id}_pb_trk_{c_idx}",
+                    BoxRect(inner_x, track_y, inner_w, track_h),
+                    fill_rgb=_rgba(theme.card_fill_rgb, 0.75),
+                    stroke=Stroke(line=Line(color=Color(rgba=_rgba(theme.card_border_rgb, 0.5)), width=1.0, pattern=Pattern.SOLID)),
+                    corner_px=8.0,
+                    opacity=chart.opacity,
+                )
+            )
+            objs.append(
+                _make_solid_card(
+                    f"{slide_prefix}_{chart.id}_pb_bar_{c_idx}",
+                    BoxRect(inner_x, track_y, max(16.0, inner_w * frac), track_h),
+                    fill_rgb=_rgba(bar_rgb, 0.88),
+                    stroke=Stroke(empty=True),
+                    corner_px=8.0,
+                    opacity=chart.opacity,
+                )
+            )
+            pct_str = f"{pct:.1f}%"
+            pct_txt_rgb = _readable_text_rgb(bar_rgb, (1.0, 1.0, 1.0), min_ratio=4.5) if frac > 0.85 else theme.subtitle_rgb
+            objs.append(
+                _make_textbox(
+                    f"{slide_prefix}_{chart.id}_pb_pct_{c_idx}",
+                    BoxRect(inner_x + inner_w - 110.0, track_y, 98.0, track_h),
+                    pct_str,
+                    font_name=theme.font_body,
+                    font_size=15.0,
+                    color=_rgba(pct_txt_rgb),
+                    bold=True,
+                    opacity=chart.opacity,
+                    alignment=AlignmentType.RIGHT,
+                )
+            )
+        return objs
+
     if chart.chart_type == "football_field":
         cat_label_w = min(
             chart.rect.w * 0.34,
@@ -954,6 +1194,31 @@ def _make_vector_chart_objects(
             prev_end_xy = (bx + bar_w, y_end)
     else:
         # line, area, scatter
+        if chart.estimate_from is not None and 0 < chart.estimate_from < cat_count:
+            est_x = inner_x + chart.estimate_from * cat_slot_w
+            est_w = max(8.0, (inner_x + inner_w) - est_x)
+            objs.append(
+                _make_solid_card(
+                    f"{slide_prefix}_{chart.id}_est_bg",
+                    BoxRect(est_x, inner_y, est_w, inner_h),
+                    fill_rgb=_rgba(theme.card_border_rgb, 0.14),
+                    stroke=Stroke(empty=True),
+                    corner_px=0.0,
+                    opacity=chart.opacity,
+                )
+            )
+            objs.append(
+                _make_open_line_shape(
+                    f"{slide_prefix}_{chart.id}_est_div",
+                    (est_x, inner_y),
+                    (est_x, inner_y + inner_h),
+                    color=_rgba(theme.subtitle_rgb, 0.55),
+                    width=1.4,
+                    pattern=Pattern.MEDIUM_DASH,
+                    head=LineEnd.NONE,
+                    opacity=chart.opacity,
+                )
+            )
         for s_idx, sr in enumerate(chart.series):
             s_rgb = series_colors[s_idx]
             pts: list[tuple[int, float, float, float]] = []
@@ -969,6 +1234,8 @@ def _make_vector_chart_objects(
                 for p_i in range(len(pts) - 1):
                     c0, x0, y0, _ = pts[p_i]
                     c1, x1, y1, _ = pts[p_i + 1]
+                    seg_est = chart.estimate_from is not None and c1 >= chart.estimate_from
+                    seg_op = chart.opacity * (0.72 if seg_est else 1.0)
                     if chart.chart_type == "area":
                         bx = min(x0, x1)
                         bw = max(2.0, abs(x1 - x0))
@@ -983,8 +1250,8 @@ def _make_vector_chart_objects(
                                 f"{slide_prefix}_{chart.id}_area_{s_idx}_{c0}",
                                 BoxRect(bx, by, bw, bh),
                                 d_area,
-                                fill_rgba=_rgba(s_rgb, 0.22),
-                                opacity=chart.opacity,
+                                fill_rgba=_rgba(s_rgb, 0.14 if seg_est else 0.22),
+                                opacity=seg_op,
                             )
                         )
                     objs.append(
@@ -994,14 +1261,16 @@ def _make_vector_chart_objects(
                             (x1, y1),
                             color=_rgba(s_rgb),
                             width=3.5,
-                            pattern=Pattern.SOLID,
+                            pattern=Pattern.MEDIUM_DASH if seg_est else Pattern.SOLID,
                             head=LineEnd.NONE,
-                            opacity=chart.opacity,
+                            opacity=seg_op,
                         )
                     )
 
             dot_r = 6.0 if chart.chart_type != "scatter" else 8.0
             for c_idx, px, py, v in pts:
+                pt_est = chart.estimate_from is not None and c_idx >= chart.estimate_from
+                pt_op = chart.opacity * (0.72 if pt_est else 1.0)
                 objs.append(
                     _make_bezier_shape(
                         f"{slide_prefix}_{chart.id}_dot_{s_idx}_{c_idx}",
@@ -1009,7 +1278,7 @@ def _make_vector_chart_objects(
                         _ellipse_unit_path(),
                         fill_rgba=_rgba(s_rgb),
                         stroke=Stroke(line=Line(color=Color(rgba=_rgba_int(theme.bg_rgb)), width=1.5, pattern=Pattern.SOLID)),
-                        opacity=chart.opacity,
+                        opacity=pt_op,
                     )
                 )
                 if chart.show_value_labels:

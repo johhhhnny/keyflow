@@ -357,6 +357,7 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
                     shape_type=obj_raw.get("shape_type", "rounded_rect"),
                     svg_path=str(obj_raw["svg_path"]) if obj_raw.get("svg_path") else None,
                     dashed=bool(obj_raw.get("dashed", False)),
+                    gauge=obj_raw.get("gauge") if isinstance(obj_raw.get("gauge"), dict) else None,
                     chart=chart_spec,
                     table=table_spec,
                     diagram=diagram_spec,

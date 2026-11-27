@@ -3167,3 +3167,111 @@ def test_batch1_visual_building_blocks(tmp_path: Path) -> None:
         assert any("_val_ff_ff_mid_0" in i for i in ids)
         assert any("_val_ff_ff_ref_0" in i for i in ids)
         assert any("_val_ff_ff_ref_1" in i for i in ids)
+
+
+def test_batch2_radar_progress_bars_gauge_and_line_estimate(tmp_path: Path) -> None:
+    from creator_studio_doc_format.core import KeyxDocument
+
+    raw = {
+        "title": "Batch 2 Visual Blocks",
+        "theme": "midnight_indigo",
+        "scenes": [
+            {
+                "id": "batch2_demo",
+                "title": "NVDA Batch 2 Building Blocks",
+                "layout": "canvas",
+                "grid": {"columns": 12, "rows": 2, "gap": 24},
+                "regions": [
+                    {"id": "kpi1", "col": 1, "row": 1, "col_span": 3, "row_span": 1},
+                    {"id": "kpi2", "col": 4, "row": 1, "col_span": 3, "row_span": 1},
+                    {"id": "pb_zone", "col": 7, "row": 1, "col_span": 6, "row_span": 1},
+                    {"id": "radar_zone", "col": 1, "row": 2, "col_span": 6, "row_span": 1},
+                    {"id": "line_zone", "col": 7, "row": 2, "col_span": 6, "row_span": 1},
+                ],
+                "objects": [
+                    {
+                        "id": "gm_card",
+                        "kind": "card",
+                        "region": "kpi1",
+                        "metric": "74.7%",
+                        "label": "毛利率",
+                        "gauge": {"type": "ring", "value": 74.7, "max": 100},
+                    },
+                    {
+                        "id": "beta_card",
+                        "kind": "card",
+                        "region": "kpi2",
+                        "metric": "2.22",
+                        "label": "BETA",
+                        "gauge": {"type": "range", "value": 2.22, "min": 0.0, "max": 2.3},
+                    },
+                    {
+                        "id": "profit_pb",
+                        "kind": "chart",
+                        "region": "pb_zone",
+                        "chart": {
+                            "chart_type": "progress_bars",
+                            "title": "利润结构漏斗",
+                            "unit": "亿美元",
+                            "categories": ["营收 (基期)", "EBITDA", "净利润"],
+                            "series": [{"name": "Amount", "values": [3029.7, 2012.7, 1928.8]}],
+                        },
+                    },
+                    {
+                        "id": "multi_radar",
+                        "kind": "chart",
+                        "region": "radar_zone",
+                        "chart": {
+                            "chart_type": "radar",
+                            "title": "多维画像对比",
+                            "categories": ["市盈率", "EV/EBITDA", "EV/营收", "毛利率", "营业利润率"],
+                            "series": [
+                                {"name": "同业基准", "values": [100, 100, 100, 100, 100]},
+                                {"name": "本公司", "values": [165, 118, 125, 138, 185]},
+                            ],
+                        },
+                    },
+                    {
+                        "id": "margin_line",
+                        "kind": "chart",
+                        "region": "line_zone",
+                        "chart": {
+                            "chart_type": "line",
+                            "title": "利润率趋势 (历史 + 预测)",
+                            "unit": "%",
+                            "categories": ["2024", "2025", "2026", "2027E", "2028E"],
+                            "series": [{"name": "营业利润率", "values": [54.2, 62.4, 65.2, 61.8, 61.8]}],
+                            "estimate_from": 3,
+                        },
+                    },
+                ],
+            }
+        ],
+    }
+
+    val = validate_deck(raw)
+    assert val.valid is True, val.errors
+
+    out = tmp_path / "batch2.keyx"
+    compile_deck(raw, out)
+    assert out.exists()
+
+    with KeyxDocument.open(out) as loaded:
+        shapes = [
+            obj.object.shape
+            for obj in loaded.payload.slides[0].contents
+            if obj.object.shape is not None
+        ]
+        ids = {s.identifier for s in shapes}
+        # 1. KPI ring & range gauges
+        assert any(i.endswith("_gm_card_gauge_arc") for i in ids)
+        assert any(i.endswith("_beta_card_gauge_dot") for i in ids)
+        # 2. progress_bars tracks & bars
+        assert any("_profit_pb_pb_trk_0" in i for i in ids)
+        assert any("_profit_pb_pb_bar_2" in i for i in ids)
+        # 3. radar grid rings & series polygons
+        assert any("_multi_radar_radar_ring_100" in i for i in ids)
+        assert any("_multi_radar_radar_poly_1" in i for i in ids)
+        # 4. line estimate_from shaded background & divider
+        assert any("_margin_line_est_bg" in i for i in ids)
+        assert any("_margin_line_est_div" in i for i in ids)
