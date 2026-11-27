@@ -1,477 +1,366 @@
-"""Minimal stdio JSON-RPC 2.0 MCP server for KeyFlow."""
+"""Minimal stdio JSON-RPC MCP server for KeyFlow v0.4.
+
+Exposes both one-shot compilation/rendering tools and stateful iterative
+design-session tools so an agent can create, compose, modify, render,
+observe, and redesign slides in a tight feedback loop.
+"""
 
 from __future__ import annotations
 
-import argparse
 import json
-import os
 import sys
+import uuid
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any
 
-from keyflow import __version__
-from keyflow.audit import audit_deck
 from keyflow.compiler import compile_deck
-from keyflow.exporter import export_slide_pngs
-from keyflow.outline import extract_markdown_outline, extract_outline_from_file
-from keyflow.pace import pace_deck
-from keyflow.schema import validate_deck
-from keyflow.snippets import list_snippets, load_builtin_snippet
-from keyflow.themes import THEMES
+from keyflow.renderer import is_render_enabled, render_keyx_to_pngs
+from keyflow.session import DesignSession
+from keyflow.spec import DeckSpec
+
+_SESSIONS: dict[str, DesignSession] = {}
+
+
+def _get_session(session_id: str) -> DesignSession:
+    if session_id not in _SESSIONS:
+        raise KeyError(f"Unknown design session: {session_id}")
+    return _SESSIONS[session_id]
+
 
 TOOLS: list[dict[str, Any]] = [
     {
-        "name": "list_themes",
-        "description": "List available KeyFlow visual theme presets for .keyx presentations.",
+        "name": "get_design_schema",
+        "description": "Return the JSON Schema for DeckSpec (native Keynote visual objects).",
         "inputSchema": {"type": "object", "properties": {}},
     },
     {
-        "name": "list_snippets",
-        "description": "List built-in freeform canvas scene snippets, or return a specific snippet's starter scene JSON when 'name' is provided.",
+        "name": "compile_design",
+        "description": "Compile a complete DeckSpec or SlideSpec JSON into a validated .keyx file, with optional PNG rendering.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "name": {"type": "string", "description": "Optional snippet ID (e.g. 'chart_with_takeaway') to inspect its full scene JSON."}
+                "spec": {"type": "object", "description": "DeckSpec or SlideSpec object"},
+                "output_path": {"type": "string", "description": "Output .keyx file path"},
+                "render_png": {"type": "boolean", "description": "Override KEYFLOW_RENDER_PNG switch"},
+                "png_dir": {"type": "string", "description": "Optional PNG output directory"},
             },
+            "required": ["spec", "output_path"],
         },
     },
     {
-        "name": "extract_outline",
-        "description": "Stage 1: Extract structural summary, compact full-state scene_graph, and Stage 2 paced draft_deck from a Markdown article or README.",
+        "name": "render_keyx",
+        "description": "Render a .keyx file to per-slide PNGs via Apple Keynote for visual inspection.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "markdown": {"type": "string", "description": "Inline Markdown article text."},
-                "input_path": {"type": "string", "description": "Path to a Markdown README/article file."},
-                "theme": {"type": "string", "default": "slate_dark", "description": "Built-in theme name or workspace .json theme path."},
-                "density": {"type": "string", "enum": ["standard", "compact"], "default": "standard"},
-            },
-        },
-    },
-    {
-        "name": "pace_storyboard",
-        "description": "Stage 2: Deterministically expand Stage 1 full-state scenes (without frames) into progressive step-by-step frames across all layouts.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "storyboard": {"type": "object", "description": "Inline Stage 1 scene graph or storyboard JSON."},
-                "input_path": {"type": "string", "description": "Path to a JSON file."},
-                "output_path": {"type": "string", "description": "Optional path to save the paced storyboard JSON."},
-                "density": {"type": "string", "enum": ["standard", "compact"], "default": "standard"},
-                "overwrite": {"type": "boolean", "default": False},
-                "use_templates": {"type": "boolean", "description": "Optional override: true enforces preset template-only mode; false (default) enables freeform canvas."},
-            },
-        },
-    },
-    {
-        "name": "validate_storyboard",
-        "description": "Validate a KeyFlow Stage 1 scene graph or Stage 2 storyboard JSON and return structured errors and density warnings.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "storyboard": {"type": "object", "description": "Inline storyboard JSON object."},
-                "input_path": {"type": "string", "description": "Path to a storyboard JSON file."},
-                "use_templates": {"type": "boolean", "description": "Optional override: true enforces preset template-only mode; false (default) enables freeform canvas."},
-            },
-        },
-    },
-    {
-        "name": "audit_storyboard",
-        "description": "Run deterministic visual self-checks (bounds, overlaps, cross-frame anchor stability, contrast, scale, overflow) with JSON fix hints.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "storyboard": {"type": "object", "description": "Inline storyboard JSON object."},
-                "input_path": {"type": "string", "description": "Path to a storyboard JSON file."},
-                "strict": {"type": "boolean", "default": False, "description": "Treat visual warnings as errors."},
-                "use_templates": {"type": "boolean", "description": "Optional override: true enforces preset template-only mode; false (default) enables freeform canvas."},
-            },
-        },
-    },
-    {
-        "name": "compile_keyx",
-        "description": "Compile a validated KeyFlow Stage 1 scene graph (auto-paced) or Stage 2 storyboard into a native .keyx file, returning visual audit summary and optional review_pngs.",
-        "inputSchema": {
-            "type": "object",
-            "required": ["output_path"],
-            "properties": {
-                "storyboard": {"type": "object", "description": "Inline storyboard JSON object."},
-                "input_path": {"type": "string", "description": "Path to a storyboard JSON file."},
-                "output_path": {"type": "string", "description": "Destination .keyx file path."},
-                "theme": {"type": "string", "description": "Optional built-in theme name or workspace .json theme path."},
-                "overrides": {
-                    "oneOf": [{"type": "object"}, {"type": "string"}],
-                    "description": "Optional per-object override patch dict or workspace .json path.",
-                },
-                "use_templates": {"type": "boolean", "description": "Optional override: true enforces preset template-only mode; false (default) enables freeform canvas."},
-                "preview_dir": {"type": "string", "description": "Optional directory to export PNG previews via Keynote."},
-                "fail_on_audit": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Abort compilation (compiled: false) when Tier 1 visual audit reports errors.",
-                },
-                "strict": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Treat visual warnings as errors and block compilation if audit fails.",
-                },
-            },
-        },
-    },
-    {
-        "name": "preview_keyx",
-        "description": "Export PNG slide previews from an existing .keyx file using macOS Keynote.",
-        "inputSchema": {
-            "type": "object",
-            "required": ["input_path", "output_dir"],
-            "properties": {
-                "input_path": {"type": "string"},
+                "keyx_path": {"type": "string"},
                 "output_dir": {"type": "string"},
             },
+            "required": ["keyx_path", "output_dir"],
+        },
+    },
+    {
+        "name": "design_create",
+        "description": "Create a new iterative slide design session.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "width": {"type": "number", "default": 1920},
+                "height": {"type": "number", "default": 1080},
+                "background": {"default": "#0F172A"},
+                "note": {"type": "string"},
+            },
+        },
+    },
+    {
+        "name": "design_add_object",
+        "description": "Add a native visual object (textbox, shape, connection, image, table, chart, group) to a slide.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string"},
+                "slide_index": {"type": "integer", "default": 0},
+                "object": {"type": "object"},
+                "index": {"type": "integer"},
+                "group_id": {"type": "string"},
+            },
+            "required": ["session_id", "object"],
+        },
+    },
+    {
+        "name": "design_update_object",
+        "description": "Patch an existing visual object by ID (position, size, color, text, path, etc.).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string"},
+                "slide_index": {"type": "integer", "default": 0},
+                "object_id": {"type": "string"},
+                "patch": {"type": "object"},
+            },
+            "required": ["session_id", "object_id", "patch"],
+        },
+    },
+    {
+        "name": "design_remove_object",
+        "description": "Remove a visual object by ID.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string"},
+                "slide_index": {"type": "integer", "default": 0},
+                "object_id": {"type": "string"},
+            },
+            "required": ["session_id", "object_id"],
+        },
+    },
+    {
+        "name": "design_reorder_object",
+        "description": "Change z-order of a top-level object ('front', 'back', 'forward', 'backward', or integer index).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string"},
+                "slide_index": {"type": "integer", "default": 0},
+                "object_id": {"type": "string"},
+                "position": {},
+            },
+            "required": ["session_id", "object_id", "position"],
+        },
+    },
+    {
+        "name": "design_group_objects",
+        "description": "Group multiple top-level objects into a native Group.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string"},
+                "slide_index": {"type": "integer", "default": 0},
+                "object_ids": {"type": "array", "items": {"type": "string"}},
+                "group_id": {"type": "string"},
+                "title": {"type": "string"},
+            },
+            "required": ["session_id", "object_ids"],
+        },
+    },
+    {
+        "name": "design_set_background",
+        "description": "Set slide background (hex color, gradient, or image fill).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string"},
+                "slide_index": {"type": "integer", "default": 0},
+                "background": {},
+            },
+            "required": ["session_id", "background"],
+        },
+    },
+    {
+        "name": "design_inspect",
+        "description": "Inspect the current scene graph, object IDs, and bounding boxes.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string"},
+                "slide_index": {"type": "integer"},
+            },
+            "required": ["session_id"],
+        },
+    },
+    {
+        "name": "design_compile_and_render",
+        "description": "Compile the session design to .keyx and optionally render PNGs (controlled by render_png or KEYFLOW_RENDER_PNG).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string"},
+                "output_path": {"type": "string"},
+                "png_dir": {"type": "string"},
+                "render_png": {"type": "boolean"},
+            },
+            "required": ["session_id", "output_path"],
         },
     },
 ]
 
 
-MAX_INPUT_BYTES: int = 2 * 1024 * 1024
-MAX_JSON_DEPTH: int = 32
-MAX_JSON_NODES: int = 20_000
+def handle_tool_call(name: str, args: dict[str, Any]) -> dict[str, Any]:
+    if name == "get_design_schema":
+        return DeckSpec.model_json_schema()
 
-
-def _resolve_workspace_root(workspace_root: str | Path | None = None) -> Path | None:
-    raw = workspace_root if workspace_root is not None else os.environ.get("KEYFLOW_MCP_WORKSPACE")
-    if not raw:
-        return None
-    return Path(raw).expanduser().resolve()
-
-
-def _check_path(raw_path: str | Path, workspace_root: Path | None) -> Path:
-    """Resolve a path consistently within workspace_root (rejecting traversal and symlink escapes)."""
-    candidate = Path(raw_path).expanduser()
-    if workspace_root is not None and not candidate.is_absolute():
-        candidate = workspace_root / candidate
-    resolved = candidate.resolve()
-    if workspace_root is not None and not resolved.is_relative_to(workspace_root):
-        raise ValueError(f"Path '{raw_path}' is outside allowed workspace root '{workspace_root}'.")
-    return resolved
-
-
-def _validate_json_limits(
-    obj: Any,
-    *,
-    max_depth: int = MAX_JSON_DEPTH,
-    max_nodes: int = MAX_JSON_NODES,
-) -> Any:
-    """Guard against deeply nested or oversized JSON payloads before validation/compilation."""
-    stack: list[tuple[Any, int]] = [(obj, 1)]
-    seen_nodes = 0
-    while stack:
-        cur, depth = stack.pop()
-        if depth > max_depth:
-            raise ValueError(f"JSON nesting depth exceeds maximum allowed ({max_depth}).")
-        seen_nodes += 1
-        if seen_nodes > max_nodes:
-            raise ValueError(f"JSON node count exceeds maximum allowed ({max_nodes}).")
-        if isinstance(cur, dict):
-            for v in cur.values():
-                stack.append((v, depth + 1))
-        elif isinstance(cur, list):
-            for v in cur:
-                stack.append((v, depth + 1))
-    return obj
-
-
-def _read_text_safe(raw_path: str | Path, workspace_root: Path | None) -> tuple[Path, str]:
-    path = _check_path(raw_path, workspace_root)
-    if not path.is_file():
-        raise FileNotFoundError(f"File not found: {path}")
-    size = path.stat().st_size
-    if size > MAX_INPUT_BYTES:
-        raise ValueError(f"Input file '{path.name}' ({size} bytes) exceeds {MAX_INPUT_BYTES} byte limit.")
-    return path, path.read_text(encoding="utf-8")
-
-
-def _read_json_safe(raw_path: str | Path, workspace_root: Path | None) -> dict[str, Any]:
-    path, text = _read_text_safe(raw_path, workspace_root)
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid JSON in '{path.name}': {exc}") from exc
-    if not isinstance(data, dict):
-        raise ValueError(f"Expected top-level JSON object in '{path.name}'.")
-    return _validate_json_limits(data)
-
-
-def _check_theme_ref(theme_ref: Any, workspace_root: Path | None) -> None:
-    """Ensure external .json theme references stay inside workspace_root in MCP calls."""
-    if not isinstance(theme_ref, str) or not theme_ref.strip() or theme_ref in THEMES:
-        return
-    _check_path(theme_ref, workspace_root)
-
-
-def _load_storyboard(args: dict[str, Any], workspace_root: Path | None = None) -> dict[str, Any]:
-    if "storyboard" in args and isinstance(args["storyboard"], dict):
-        data = _validate_json_limits(args["storyboard"])
-        _check_theme_ref(data.get("theme"), workspace_root)
-        return data
-    if "input_path" in args and args["input_path"]:
-        data = _read_json_safe(args["input_path"], workspace_root)
-        _check_theme_ref(data.get("theme"), workspace_root)
-        return data
-    raise ValueError("Provide either 'storyboard' or 'input_path'.")
-
-
-def dispatch_tool(
-    name: str,
-    args: dict[str, Any],
-    *,
-    workspace_root: str | Path | None = None,
-) -> dict[str, Any]:
-    """Execute one MCP tool call and return a JSON-serializable result."""
-    root = _resolve_workspace_root(workspace_root)
-
-    if name == "list_themes":
-        return {
-            "themes": {
-                k: {"description": v.description, "font_title": v.font_title, "font_body": v.font_body}
-                for k, v in THEMES.items()
-            }
+    if name == "compile_design":
+        res = compile_deck(args["spec"], args["output_path"])
+        out: dict[str, Any] = {
+            "keyx_path": str(res.keyx_path),
+            "slide_count": res.slide_count,
+            "object_count": res.object_count,
+            "geometry_notes": res.geometry_notes,
+            "pngs": [],
         }
+        render_flag = args.get("render_png")
+        if render_flag is None and args.get("png_dir"):
+            render_flag = True
+        if is_render_enabled(render_flag):
+            png_dir = Path(args["png_dir"]) if args.get("png_dir") else res.keyx_path.with_name(f"{res.keyx_path.stem}_previews")
+            try:
+                out["pngs"] = [str(p) for p in render_keyx_to_pngs(res.keyx_path, png_dir)]
+            except RuntimeError as exc:
+                out["render_skipped"] = str(exc)
+        return out
 
-    if name == "list_snippets":
-        snippet_name = args.get("name")
-        if snippet_name is not None and str(snippet_name) != "":
-            return {"snippet": str(snippet_name), "scene": load_builtin_snippet(str(snippet_name))}
-        return {"snippets": list_snippets()}
+    if name == "render_keyx":
+        pngs = render_keyx_to_pngs(args["keyx_path"], args["output_dir"])
+        return {"pngs": [str(p) for p in pngs]}
 
-    if name == "extract_outline":
-        theme = args.get("theme", "slate_dark")
-        _check_theme_ref(theme, root)
-        density = args.get("density", "standard")
-        if "markdown" in args and isinstance(args["markdown"], str):
-            md_text = args["markdown"]
-            if len(md_text.encode("utf-8")) > MAX_INPUT_BYTES:
-                raise ValueError(f"Inline markdown exceeds {MAX_INPUT_BYTES} byte limit.")
-            return extract_markdown_outline(md_text, theme=theme, density=density)
-        if "input_path" in args and args["input_path"]:
-            _, md_text = _read_text_safe(args["input_path"], root)
-            return extract_markdown_outline(md_text, theme=theme, density=density)
-        raise ValueError("Provide either 'markdown' or 'input_path'.")
-
-    if name == "pace_storyboard":
-        raw = _load_storyboard(args, root)
-        use_templates = args.get("use_templates")
-        val = validate_deck(raw, use_templates=use_templates)
-        if not val.valid:
-            return {"paced": False, **val.to_dict()}
-        paced = pace_deck(
-            raw,
-            density=args.get("density", "standard"),
-            overwrite_existing=bool(args.get("overwrite", False)),
+    if name == "design_create":
+        sid = uuid.uuid4().hex[:10]
+        _SESSIONS[sid] = DesignSession.create(
+            width=args.get("width", 1920.0),
+            height=args.get("height", 1080.0),
+            background=args.get("background", "#0F172A"),
+            note=args.get("note"),
         )
-        paced_val = validate_deck(paced, use_templates=use_templates)
-        if not paced_val.valid:
-            return {
-                "paced": False,
-                "storyboard": paced,
-                "validation": paced_val.to_dict(),
-                **paced_val.to_dict(),
-            }
-        if args.get("output_path"):
-            out_path = _check_path(args["output_path"], root)
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-            out_path.write_text(json.dumps(paced, ensure_ascii=False, indent=2), encoding="utf-8")
-        return {
-            "paced": True,
-            "storyboard": paced,
-            "validation": paced_val.to_dict(),
-        }
+        return {"session_id": sid}
 
-    if name == "validate_storyboard":
-        raw = _load_storyboard(args, root)
-        return validate_deck(raw, use_templates=args.get("use_templates")).to_dict()
-
-    if name == "audit_storyboard":
-        raw = _load_storyboard(args, root)
-        return audit_deck(
-            raw,
-            strict=bool(args.get("strict", False)),
-            use_templates=args.get("use_templates"),
-        ).to_dict()
-
-    if name == "compile_keyx":
-        raw = _load_storyboard(args, root)
-        use_templates = args.get("use_templates")
-        val = validate_deck(raw, use_templates=use_templates)
-        if not val.valid:
-            return {"compiled": False, **val.to_dict()}
-        strict = bool(args.get("strict", False))
-        fail_on_audit = bool(args.get("fail_on_audit", False)) or strict
-        report = audit_deck(raw, strict=strict, use_templates=use_templates)
-        if fail_on_audit and not report.passed:
-            return {
-                "compiled": False,
-                "error": "Visual audit failed.",
-                "audit": report.to_dict(),
-            }
-        out_dest = _check_path(args["output_path"], root)
-        preview_dest = _check_path(args["preview_dir"], root) if args.get("preview_dir") else None
-        theme_override = args.get("theme")
-        _check_theme_ref(theme_override, root)
-        raw_overrides = args.get("overrides")
-        eff_overrides: dict[str, Any] | None = None
-        if isinstance(raw_overrides, dict):
-            eff_overrides = _validate_json_limits(raw_overrides)
-        elif isinstance(raw_overrides, str) and raw_overrides.strip():
-            eff_overrides = _read_json_safe(raw_overrides, root)
-        out = compile_deck(
-            raw,
-            out_dest,
-            theme_override=theme_override,
-            use_templates=use_templates,
-            overrides=eff_overrides,
+    if name == "design_add_object":
+        sess = _get_session(args["session_id"])
+        oid = sess.add_object(
+            args.get("slide_index", 0),
+            args["object"],
+            index=args.get("index"),
+            group_id=args.get("group_id"),
         )
-        pngs: list[Path] | None = None
-        if preview_dest is not None:
-            pngs = export_slide_pngs(out, preview_dest)
-        result: dict[str, Any] = {
-            "compiled": True,
-            "output_path": str(out),
-            "warnings": val.warnings,
-            "audit": report.to_dict(preview_paths=pngs),
-        }
-        if pngs is not None:
-            result["previews"] = [str(p) for p in pngs]
-        return result
+        return {"object_id": oid}
 
-    if name == "preview_keyx":
-        in_path = _check_path(args["input_path"], root)
-        out_dir = _check_path(args["output_dir"], root)
-        pngs = export_slide_pngs(in_path, out_dir)
-        return {"previews": [str(p) for p in pngs]}
+    if name == "design_update_object":
+        sess = _get_session(args["session_id"])
+        sess.update_object(
+            args.get("slide_index", 0),
+            args["object_id"],
+            args["patch"],
+        )
+        return {"updated": args["object_id"]}
+
+    if name == "design_remove_object":
+        sess = _get_session(args["session_id"])
+        sess.remove_object(args.get("slide_index", 0), args["object_id"])
+        return {"removed": args["object_id"]}
+
+    if name == "design_reorder_object":
+        sess = _get_session(args["session_id"])
+        sess.reorder_object(
+            args.get("slide_index", 0),
+            args["object_id"],
+            args["position"],
+        )
+        return {"reordered": args["object_id"]}
+
+    if name == "design_group_objects":
+        sess = _get_session(args["session_id"])
+        gid = sess.group_objects(
+            args.get("slide_index", 0),
+            args["object_ids"],
+            group_id=args.get("group_id"),
+            title=args.get("title"),
+        )
+        return {"group_id": gid}
+
+    if name == "design_set_background":
+        sess = _get_session(args["session_id"])
+        sess.set_background(args.get("slide_index", 0), args["background"])
+        return {"ok": True}
+
+    if name == "design_inspect":
+        sess = _get_session(args["session_id"])
+        return sess.inspect(args.get("slide_index"))
+
+    if name == "design_compile_and_render":
+        sess = _get_session(args["session_id"])
+        render_flag = args.get("render_png")
+        if render_flag is None and args.get("png_dir"):
+            render_flag = True
+        res, pngs = sess.compile_and_render(
+            args["output_path"],
+            args.get("png_dir"),
+            render_png=render_flag,
+        )
+        return {
+            "keyx_path": str(res.keyx_path),
+            "slide_count": res.slide_count,
+            "object_count": res.object_count,
+            "geometry_notes": res.geometry_notes,
+            "pngs": [str(p) for p in pngs],
+        }
 
     raise ValueError(f"Unknown tool: {name}")
 
 
-def handle_request(
-    req: dict[str, Any],
-    *,
-    workspace_root: str | Path | None = None,
-) -> dict[str, Any] | None:
-    """Handle one JSON-RPC 2.0 request line."""
-    method = req.get("method")
-    req_id = req.get("id")
-
-    if method == "initialize":
-        return {
-            "jsonrpc": "2.0",
-            "id": req_id,
-            "result": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {"tools": {}, "resources": {}, "prompts": {}},
-                "serverInfo": {"name": "keyflow-mcp", "version": __version__},
-            },
-        }
-    if method == "ping":
-        return {"jsonrpc": "2.0", "id": req_id, "result": {}}
-    if method and method.startswith("notifications/"):
-        return None
-    if method == "resources/list":
-        return {"jsonrpc": "2.0", "id": req_id, "result": {"resources": []}}
-    if method == "resources/templates/list":
-        return {"jsonrpc": "2.0", "id": req_id, "result": {"resourceTemplates": []}}
-    if method == "prompts/list":
-        return {"jsonrpc": "2.0", "id": req_id, "result": {"prompts": []}}
-    if method == "tools/list":
-        return {"jsonrpc": "2.0", "id": req_id, "result": {"tools": TOOLS}}
-    if method == "tools/call":
-        params = req.get("params", {})
-        tool_name = params.get("name", "")
-        tool_args = params.get("arguments", {}) or {}
-        try:
-            payload = dispatch_tool(tool_name, tool_args, workspace_root=workspace_root)
-            is_error = (
-                payload.get("compiled") is False
-                or payload.get("paced") is False
-                or payload.get("valid") is False
-            )
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {
-                    "content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False, indent=2)}],
-                    "isError": is_error,
-                },
-            }
-        except Exception as exc:
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {
-                    "content": [{"type": "text", "text": str(exc)}],
-                    "isError": True,
-                },
-            }
-
-    if req_id is None:
-        return None
-    return {
-        "jsonrpc": "2.0",
-        "id": req_id,
-        "error": {"code": -32601, "message": f"Method not found: {method}"},
-    }
+def _respond(req_id: Any, result: Any) -> None:
+    msg = {"jsonrpc": "2.0", "id": req_id, "result": result}
+    sys.stdout.write(json.dumps(msg) + "\n")
+    sys.stdout.flush()
 
 
-def main(
-    stdin: TextIO | None = None,
-    stdout: TextIO | None = None,
-    *,
-    argv: list[str] | None = None,
-) -> int:
-    parser = argparse.ArgumentParser(prog="keyflow-mcp", add_help=True)
-    parser.add_argument(
-        "--workspace",
-        default=None,
-        help="Optional root directory restricting file read/write paths for MCP calls.",
-    )
-    parsed_args, _ = parser.parse_known_args(argv if argv is not None else ([] if stdin is not None else None))
-    in_stream = stdin or sys.stdin
-    out_stream = stdout or sys.stdout
-    for line in in_stream:
+def _respond_error(req_id: Any, code: int, message: str) -> None:
+    msg = {"jsonrpc": "2.0", "id": req_id, "error": {"code": code, "message": message}}
+    sys.stdout.write(json.dumps(msg) + "\n")
+    sys.stdout.flush()
+
+
+def main() -> None:
+    for line in sys.stdin:
         line = line.strip()
         if not line:
-            continue
-        if len(line.encode("utf-8")) > MAX_INPUT_BYTES:
-            resp = {
-                "jsonrpc": "2.0",
-                "id": None,
-                "error": {"code": -32600, "message": f"Invalid Request: line exceeds {MAX_INPUT_BYTES} byte limit"},
-            }
-            out_stream.write(json.dumps(resp, ensure_ascii=False) + "\n")
-            out_stream.flush()
             continue
         try:
             req = json.loads(line)
         except json.JSONDecodeError as exc:
-            resp: dict[str, Any] | None = {
-                "jsonrpc": "2.0",
-                "id": None,
-                "error": {"code": -32700, "message": f"Parse error: {exc.msg}"},
-            }
+            _respond_error(None, -32700, f"Parse error: {exc}")
+            continue
+
+        req_id = req.get("id")
+        method = req.get("method")
+        params = req.get("params") or {}
+
+        if method == "initialize":
+            _respond(
+                req_id,
+                {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {"tools": {}},
+                    "serverInfo": {"name": "keyflow", "version": "0.4.0"},
+                },
+            )
+        elif method == "notifications/initialized":
+            continue
+        elif method == "tools/list":
+            _respond(req_id, {"tools": TOOLS})
+        elif method == "tools/call":
+            tool_name = params.get("name", "")
+            tool_args = params.get("arguments") or {}
+            try:
+                res = handle_tool_call(tool_name, tool_args)
+                _respond(
+                    req_id,
+                    {
+                        "content": [
+                            {"type": "text", "text": json.dumps(res, ensure_ascii=False)}
+                        ]
+                    },
+                )
+            except Exception as exc:
+                _respond(
+                    req_id,
+                    {
+                        "isError": True,
+                        "content": [{"type": "text", "text": str(exc)}],
+                    },
+                )
         else:
-            if not isinstance(req, dict):
-                resp = {
-                    "jsonrpc": "2.0",
-                    "id": None,
-                    "error": {"code": -32600, "message": "Invalid Request: expected JSON object"},
-                }
-            else:
-                resp = handle_request(req, workspace_root=parsed_args.workspace)
-        if resp is not None:
-            out_stream.write(json.dumps(resp, ensure_ascii=False) + "\n")
-            out_stream.flush()
-    return 0
+            if req_id is not None:
+                _respond_error(req_id, -32601, f"Method not found: {method}")
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()
