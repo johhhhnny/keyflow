@@ -886,6 +886,167 @@ def _apply_slide_overrides(slides: list[Slide], overrides: Mapping[str, Any]) ->
                             para.style.character_properties.font_size = fs
 
 
+def _render_cover_slide(
+    deck: DeckSpec,
+    theme: ThemePreset,
+    bg: SlideBackground,
+    *,
+    style_config: StyleConfigSpec | None = None,
+) -> Slide:
+    """Render an editorial cover slide with generous whitespace, optional kicker, accent bar, and meta footer."""
+    cover = deck.cover
+    assert cover is not None
+    w = float(deck.slide_width)
+    h = float(deck.slide_height)
+    is_center = cover.align == "center"
+    para_align = AlignmentType.CENTER if is_center else AlignmentType.LEFT
+    margin_x = 140.0
+    content_w = w - 2.0 * margin_x if is_center else min(1320.0, w - 2.0 * margin_x)
+    content_x = (w - content_w) / 2.0 if is_center else margin_x
+
+    title_txt = (cover.title or deck.title).strip()
+    subtitle_txt = (
+        cover.subtitle.strip()
+        if cover.subtitle
+        else (deck.story_model.core_question.strip() if (deck.story_model and deck.story_model.core_question) else "")
+    )
+    kicker_txt = cover.kicker.strip() if cover.kicker else ""
+    meta_txt = cover.meta.strip() if cover.meta else ""
+
+    max_title_sz = float(style_config.title_max_size) if (style_config and style_config.title_max_size is not None) else 72.0
+    title_sz = min(max_title_sz, 72.0) if len(title_txt) <= 22 else (60.0 if len(title_txt) <= 38 else 50.0)
+    title_lines = max(1, int((len(title_txt) * title_sz * 0.72) // max(content_w, 400.0)) + 1)
+    title_h = max(96.0, title_lines * title_sz * 1.24)
+
+    block_y = round(h * 0.30, 1)
+    contents: list[SlideObject] = []
+
+    # Subtle decorative background geometric ring on the right for asymmetrical editorial balance
+    if not is_center:
+        ring_sz = round(h * 0.54, 1)
+        contents.append(
+            SlideObject(
+                object=CanvasObject(
+                    shape=Shape(
+                        identifier="cover_deco_ring",
+                        geometry=Geometry(
+                            position=Position(x=w - ring_sz * 0.62, y=(h - ring_sz) / 2.0),
+                            size=Size(width=ring_sz, height=ring_sz),
+                        ),
+                        path=ShapePath(bezier=BezierPath(path="M 0.5,0 A 0.5,0.5 0 1 1 0.4999,0 Z")),
+                        fill=Fill(color=Color(rgba=_rgba(theme.accent_border_rgb, 0.05))),
+                        stroke=Stroke(line=Line(color=Color(rgba=_rgba(theme.accent_border_rgb, 0.22)), width=1.5, pattern=Pattern.SOLID)),
+                        opacity=1.0,
+                    )
+                )
+            )
+        )
+
+    cur_y = block_y
+    if kicker_txt:
+        contents.append(
+            _make_textbox(
+                "cover_kicker",
+                BoxRect(content_x, cur_y, content_w, 34.0),
+                kicker_txt,
+                font_name=theme.font_body,
+                font_size=20.0,
+                color=_rgba(theme.accent_text_rgb),
+                bold=True,
+                alignment=para_align,
+            )
+        )
+        cur_y += 46.0
+
+    title_y = cur_y
+    contents.append(
+        _make_textbox(
+            "cover_title",
+            BoxRect(content_x, cur_y, content_w, title_h),
+            title_txt,
+            font_name=theme.font_title,
+            font_size=title_sz,
+            color=_rgba(theme.title_rgb),
+            bold=True,
+            alignment=para_align,
+        )
+    )
+    cur_y += title_h + 22.0
+
+    if subtitle_txt:
+        sub_h = 84.0 if len(subtitle_txt) > 45 else 48.0
+        contents.append(
+            _make_textbox(
+                "cover_subtitle",
+                BoxRect(content_x, cur_y, content_w, sub_h),
+                subtitle_txt,
+                font_name=theme.font_body,
+                font_size=28.0,
+                color=_rgba(theme.subtitle_rgb),
+                bold=False,
+                alignment=para_align,
+            )
+        )
+        cur_y += sub_h + 12.0
+
+    if cover.accent_bar:
+        if is_center:
+            bar_w = 120.0
+            contents.append(
+                _make_solid_card(
+                    "cover_accent_bar",
+                    BoxRect((w - bar_w) / 2.0, block_y - 24.0, bar_w, 5.0),
+                    fill_rgb=_rgba(theme.accent_border_rgb),
+                    stroke=Stroke(empty=True),
+                    corner_px=2.5,
+                )
+            )
+        else:
+            bar_h = max(80.0, cur_y - block_y - 12.0)
+            contents.append(
+                _make_solid_card(
+                    "cover_accent_bar",
+                    BoxRect(content_x - 28.0, block_y + 4.0, 6.0, bar_h),
+                    fill_rgb=_rgba(theme.accent_border_rgb),
+                    stroke=Stroke(empty=True),
+                    corner_px=3.0,
+                )
+            )
+
+    if meta_txt:
+        footer_y = h - 130.0
+        contents.append(
+            _make_open_line_shape(
+                "cover_divider",
+                (content_x, footer_y - 16.0),
+                (content_x + min(content_w, 520.0), footer_y - 16.0),
+                color=_rgba(theme.card_border_rgb, 0.5),
+                width=1.2,
+                pattern=Pattern.SOLID,
+                head=LineEnd.NONE,
+            )
+        )
+        contents.append(
+            _make_textbox(
+                "cover_meta",
+                BoxRect(content_x, footer_y, content_w, 34.0),
+                meta_txt,
+                font_name=theme.font_body,
+                font_size=18.0,
+                color=_rgba(theme.sublabel_rgb),
+                bold=False,
+                alignment=para_align,
+            )
+        )
+
+    return Slide(
+        background=bg,
+        contents=contents,
+        depth=0,
+        note=Text(string=subtitle_txt or title_txt),
+    )
+
+
 def compile_deck(
     deck_or_raw: DeckSpec | dict[str, Any],
     output_path: str | Path,
@@ -911,6 +1072,9 @@ def compile_deck(
 
     slides: list[Slide] = []
     slide_counter = 1
+    if deck.cover is not None and deck.cover.enabled:
+        slides.append(_render_cover_slide(deck, base_theme, default_bg, style_config=deck.style_config))
+        slide_counter = 2
     for scene in deck.scenes:
         scene_theme = apply_palette_overrides(base_theme, scene.palette)
         if scene.palette and any(k in scene.palette for k in ("bg_hex", "bg_gradient_end_hex")):

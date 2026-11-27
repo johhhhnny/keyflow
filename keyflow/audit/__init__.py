@@ -63,7 +63,8 @@ def audit_deck(
     all_frames: list[ResolvedFrame] = []
     scene_ranges: list[tuple[str, int, int]] = []
     scene_frames_meta: list[tuple[str, int, list[ResolvedFrame]]] = []
-    slide_num = 1
+    has_cover = bool(deck.cover is not None and deck.cover.enabled)
+    slide_num = 2 if has_cover else 1
     min_scale = 1.0
 
     for scene in deck.scenes:

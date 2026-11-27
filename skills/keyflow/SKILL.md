@@ -76,7 +76,9 @@ Translate the Stage 0 brief into clean Stage 1 scenes. Do **not** hand-write `fr
    Put all prose explanations, caveats, citations, and presenter context into each node/child's **`note`** field (and scene `intro_note`).
 2. **Structured Story Model & Evidence Grounding (Recommended for Analytical Decks)**:
    Include optional `story_model` at the deck root (`core_question`, `claims`: `id`, `type`, `claim`, `source_quote`, `metric_scope`, `confidence`), set per-scene `claim` & `metric_scope`, and link elements via `evidence_refs: [...]`. `keyflow audit` automatically enforces epistemic alignment (e.g., rejects `badge: "FACT"` pointing to an `inference` claim), flags `scope_mixing` across incompatible denominators, warns on `unsourced_fact`, and catches dropped `thesis` / `counter_evidence` claims.
-3. **Freeform vs. Template Mode (`use_templates`)**:
+3. **Optional Cover Slide (`cover`)**:
+   Set root `"cover": true` or `"cover": {"kicker": "...", "title": "...", "subtitle": "...", "meta": "...", "align": "left" | "center", "accent_bar": true}` to generate an editorial cover slide as Slide 1 (omitted by default).
+4. **Freeform vs. Template Mode (`use_templates`)**:
    `use_templates` defaults to `false`, enabling `layout: "canvas"`, `palette`, native/vector `chart`, native `table`, and inline `diagram`. Pass `--use-templates` (CLI) or `use_templates: true` only when validating strict preset-only decks.
 4. **Optional Structural Seed for Long Articles**:
    Run `uv run keyflow outline -i article.md --stage1 -o starter.json` (or MCP `extract_outline`) only as a mechanical starting skeleton — replace generic chapter summaries with your Stage 0 narrative plan.

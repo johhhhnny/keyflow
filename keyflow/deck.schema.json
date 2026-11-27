@@ -19,6 +19,24 @@
     "style_config": {
       "$ref": "#/$defs/style_config"
     },
+    "cover": {
+      "oneOf": [
+        { "type": "boolean" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "kicker": { "type": "string" },
+            "title": { "type": "string" },
+            "subtitle": { "type": "string" },
+            "meta": { "type": "string" },
+            "align": { "type": "string", "enum": ["left", "center"], "default": "left" },
+            "accent_bar": { "type": "boolean", "default": true }
+          }
+        }
+      ]
+    },
     "slide_size": {
       "type": "object",
       "additionalProperties": false,

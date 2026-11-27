@@ -11,6 +11,7 @@ from keyflow.schema.models import (
     ChartSpec,
     ChildNodeSpec,
     ComparisonMatrixSpec,
+    CoverSpec,
     DeckSpec,
     DiagramSpec,
     EdgeSpec,
@@ -438,6 +439,21 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
             )
         )
 
+    raw_cover = raw.get("cover")
+    cover_spec: CoverSpec | None = None
+    if raw_cover is True:
+        cover_spec = CoverSpec(enabled=True)
+    elif isinstance(raw_cover, dict):
+        cover_spec = CoverSpec(
+            enabled=bool(raw_cover.get("enabled", True)),
+            kicker=str(raw_cover["kicker"]) if raw_cover.get("kicker") else None,
+            title=str(raw_cover["title"]) if raw_cover.get("title") else None,
+            subtitle=str(raw_cover["subtitle"]) if raw_cover.get("subtitle") else None,
+            meta=str(raw_cover["meta"]) if raw_cover.get("meta") else None,
+            align=raw_cover.get("align", "left"),
+            accent_bar=bool(raw_cover.get("accent_bar", True)),
+        )
+
     slide_size = raw.get("slide_size", {})
     return DeckSpec(
         title=str(raw.get("title", "Untitled Deck")),
@@ -446,6 +462,7 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
         palette=dict(raw["palette"]) if isinstance(raw.get("palette"), dict) else None,
         slide_width=int(slide_size.get("width", 1920)),
         slide_height=int(slide_size.get("height", 1080)),
+        cover=cover_spec,
         pinned_flow=pinned_flow,
         story_model=story_model,
         style_config=_parse_style_config(raw.get("style_config")),

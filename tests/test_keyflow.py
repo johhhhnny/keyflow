@@ -3259,6 +3259,53 @@ def test_p2_visual_critic_diagnostics_non_blocking() -> None:
     assert all(w.tier == "critique" for w in rep.warnings if w.category == "design_critique")
 
 
+def test_cover_slide_bool_and_custom_object(tmp_path: Path) -> None:
+    from creator_studio_doc_format.core import KeyxDocument
+
+    raw = {
+        "title": "NVIDIA Equity Research",
+        "theme": "midnight_indigo",
+        "cover": {
+            "kicker": "EQUITY RESEARCH · NASDAQ: NVDA",
+            "subtitle": "DCF Valuation & AI Infrastructure Margin Analysis",
+            "meta": "2026-11-14 · KeyFlow",
+            "align": "left",
+        },
+        "scenes": [
+            {
+                "id": "sc1",
+                "title": "Overview",
+                "layout": "canvas",
+                "grid": {"columns": 12, "rows": 1},
+                "regions": [{"id": "r1", "col": 1, "row": 1, "col_span": 12, "row_span": 1}],
+                "objects": [{"id": "c1", "kind": "card", "region": "r1", "label": "Core Thesis"}],
+            }
+        ],
+    }
+    val = validate_deck(raw)
+    assert val.valid is True, val.errors
+
+    rep = audit_deck(raw, strict=True)
+    assert rep.passed is True
+    assert rep.slide_count == 2  # Slide 1 = cover, Slide 2 = sc1
+
+    out = tmp_path / "cover.keyx"
+    compile_deck(raw, out)
+    with KeyxDocument.open(out) as loaded:
+        slides = loaded.payload.slides
+        assert len(slides) == 2
+        cover_ids = {
+            (c.object.textbox.identifier if c.object.textbox else c.object.shape.identifier)
+            for c in slides[0].contents
+            if c.object.textbox or c.object.shape
+        }
+        assert "cover_title" in cover_ids
+        assert "cover_kicker" in cover_ids
+        assert "cover_subtitle" in cover_ids
+        assert "cover_meta" in cover_ids
+        assert "cover_accent_bar" in cover_ids
+
+
 def test_batch1_visual_building_blocks(tmp_path: Path) -> None:
     from creator_studio_doc_format.core import KeyxDocument
 

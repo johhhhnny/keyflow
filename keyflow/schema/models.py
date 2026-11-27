@@ -387,6 +387,19 @@ class SceneSpec:
 
 
 @dataclass(slots=True)
+class CoverSpec:
+    """Optional editorial cover slide configuration."""
+
+    enabled: bool = True
+    kicker: str | None = None
+    title: str | None = None
+    subtitle: str | None = None
+    meta: str | None = None
+    align: TextAlign = "left"
+    accent_bar: bool = True
+
+
+@dataclass(slots=True)
 class DeckSpec:
     """Complete presentation specification compiled into a .keyx bundle."""
 
@@ -396,6 +409,7 @@ class DeckSpec:
     palette: dict[str, Any] | None = None
     slide_width: int = 1920
     slide_height: int = 1080
+    cover: CoverSpec | None = None
     pinned_flow: PinnedFlowSpec | None = None
     story_model: StoryModelSpec | None = None
     style_config: StyleConfigSpec | None = None
