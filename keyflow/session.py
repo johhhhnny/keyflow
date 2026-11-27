@@ -12,6 +12,7 @@ from pydantic import TypeAdapter
 from keyflow.compiler import CompileResult, compile_deck
 from keyflow.geometry import audit_slide_geometry
 from keyflow.renderer import is_render_enabled, render_keyx_to_pngs
+from keyflow.theme import load_theme
 from keyflow.spec import (
     CompositionSpec,
     DeckSpec,
@@ -156,16 +157,20 @@ class DesignSession:
     def create(
         cls,
         *,
-        width: float = 1920.0,
-        height: float = 1080.0,
-        background: FillValue = "#0F172A",
+        width: float | None = None,
+        height: float | None = None,
+        background: FillValue = None,
         note: str | None = None,
-        theme: str = "White",
+        theme: str = "midnight_indigo",
     ) -> "DesignSession":
+        theme_spec = load_theme(theme)
+        w = width if width is not None else (theme_spec.canvas.default_size.w if theme_spec else 1920.0)
+        h = height if height is not None else (theme_spec.canvas.default_size.h if theme_spec else 1080.0)
+        bg = background if background is not None else (theme_spec.background if theme_spec else "#0F172A")
         deck = DeckSpec(
-            slide_size=SizeSpec(w=width, h=height),
+            slide_size=SizeSpec(w=w, h=h),
             theme=theme,
-            slides=[SlideSpec(background=background, objects=[], note=note)],
+            slides=[SlideSpec(background=bg, objects=[], note=note)],
         )
         return cls(deck)
 

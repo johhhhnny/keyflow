@@ -29,3 +29,6 @@ keyflow-mcp = "keyflow.mcp_server:main"
 
 [tool.setuptools.packages.find]
 include = ["keyflow*"]
+
+[tool.setuptools.package-data]
+keyflow = ["themes/*.json"]

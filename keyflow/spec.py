@@ -35,6 +35,8 @@ def parse_color(value: ColorValue) -> tuple[float, float, float, float]:
     if isinstance(value, RGBASpec):
         return (value.r, value.g, value.b, value.a)
     s = value.strip()
+    if s.lower() == "transparent":
+        return (0.0, 0.0, 0.0, 0.0)
     if not s.startswith("#"):
         raise ValueError(f"Color string must start with '#', got {value!r}")
     hex_part = s[1:]
@@ -149,16 +151,16 @@ class InsetsSpec(BaseModel):
 
 
 class TextStyleSpec(BaseModel):
-    """Character-level typography properties."""
+    """Character-level typography properties (supports '$token' references)."""
 
     font: str = "Helvetica Neue"
-    size: float = Field(default=24.0, gt=0.0)
+    size: Union[float, str] = 24.0
     color: ColorValue = "#FFFFFF"
     bold: bool = False
     italic: bool = False
     underline: bool = False
     strikethrough: bool = False
-    tracking: float = 0.0  # Fraction of em (e.g. 0.05 = subtle letter spacing)
+    tracking: Union[float, str] = 0.0  # Fraction of em (e.g. 0.05 = subtle letter spacing)
     baseline: Literal["normal", "superscript", "subscript"] = "normal"
     hyperlink: str | None = None
 
@@ -529,7 +531,7 @@ class SlideSpec(BaseModel):
     id: str | None = None
     brief: SemanticBriefSpec | None = None
     composition: CompositionSpec | None = None
-    background: FillValue = "#0F172A"
+    background: FillValue = None
     objects: list[VisualObjectSpec] = Field(default_factory=list)
     note: str | None = None
 
@@ -538,6 +540,6 @@ class DeckSpec(BaseModel):
     """A complete presentation design specification."""
 
     slide_size: SizeSpec = Field(default_factory=lambda: SizeSpec(w=1920.0, h=1080.0))
-    theme: str = "White"
+    theme: str = "midnight_indigo"
     locale: str = "en_US"
     slides: list[SlideSpec] = Field(min_length=1)

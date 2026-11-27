@@ -114,6 +114,7 @@ from creator_studio_doc_format.core import Path as ShapePath
 from creator_studio_doc_format.validation import validate_document
 
 from keyflow.geometry import audit_slide_geometry
+from keyflow.theme import ThemeSpec, build_token_map, load_theme, resolve_tokens
 from keyflow.spec import (
     AnchorSpec,
     ChartAxisSpec,
@@ -219,6 +220,8 @@ def _to_color(value: ColorValue) -> Color:
 
 def _to_fill(value: FillValue, resources: _ResourceCollector) -> Fill | None:
     if value is None:
+        return None
+    if isinstance(value, str) and value.strip().lower() in {"", "none", "null"}:
         return None
     if isinstance(value, GradientFillSpec):
         stops = [
@@ -437,7 +440,7 @@ def _to_char_props(style: TextStyleSpec) -> CharacterProperties:
     }
     return CharacterProperties(
         font_name=style.font,
-        font_size=style.size,
+        font_size=float(style.size),
         character_fill=Fill(color=_to_color(style.color)),
         bold=style.bold,
         italic=style.italic,
@@ -445,7 +448,7 @@ def _to_char_props(style: TextStyleSpec) -> CharacterProperties:
         strikethrough=(
             StrikethroughType.SINGLE if style.strikethrough else StrikethroughType.NONE
         ),
-        tracking=style.tracking,
+        tracking=float(style.tracking),
         baseline=baseline_map[style.baseline],
     )
 
@@ -804,8 +807,8 @@ def _to_axis_style(axis: ChartAxisSpec) -> ParagraphProperties:
     )
 
 
-def _compile_chart(spec: ChartSpec) -> CanvasObject:
-    palette = spec.colors or _DEFAULT_CHART_PALETTE
+def _compile_chart(spec: ChartSpec, theme: ThemeSpec | None = None) -> CanvasObject:
+    palette = spec.colors or (theme.charts.palette if theme else _DEFAULT_CHART_PALETTE)
     chart_colors = [
         ChartColor(fill=Fill(color=_to_color(palette[i % len(palette)])))
         for i in range(max(len(spec.series), len(palette)))
@@ -843,6 +846,11 @@ def _compile_chart(spec: ChartSpec) -> CanvasObject:
             )
         )
 
+    title_color = (
+        theme.charts.title_color
+        if theme and "title_color" not in spec.model_fields_set
+        else spec.title_color
+    )
     title_label = (
         Label(
             text=Text(string=spec.title),
@@ -850,7 +858,7 @@ def _compile_chart(spec: ChartSpec) -> CanvasObject:
                 character_properties=CharacterProperties(
                     font_size=spec.title_size,
                     bold=True,
-                    character_fill=Fill(color=_to_color(spec.title_color)),
+                    character_fill=Fill(color=_to_color(title_color)),
                 )
             ),
         )
@@ -858,12 +866,17 @@ def _compile_chart(spec: ChartSpec) -> CanvasObject:
         else None
     )
 
+    legend_color = (
+        theme.charts.legend_color
+        if theme and "legend_color" not in spec.model_fields_set
+        else spec.legend_color
+    )
     legend_obj = (
         ChartLegend(
             label_text_style=ParagraphProperties(
                 character_properties=CharacterProperties(
                     font_size=spec.legend_size,
-                    character_fill=Fill(color=_to_color(spec.legend_color)),
+                    character_fill=Fill(color=_to_color(legend_color)),
                 )
             )
         )
@@ -871,23 +884,35 @@ def _compile_chart(spec: ChartSpec) -> CanvasObject:
         else None
     )
 
+    cat_axis_spec = spec.category_axis
+    val_axis_spec = spec.value_axis
+    if theme:
+        if "label_color" not in cat_axis_spec.model_fields_set:
+            cat_axis_spec = cat_axis_spec.model_copy(
+                update={"label_color": theme.charts.axis_label_color}
+            )
+        if "label_color" not in val_axis_spec.model_fields_set:
+            val_axis_spec = val_axis_spec.model_copy(
+                update={"label_color": theme.charts.axis_label_color}
+            )
+
     cat_axis = ChartCategoryAxis(
-        title=spec.category_axis.title,
-        show_title=bool(spec.category_axis.title),
-        title_text_style=_to_axis_style(spec.category_axis),
-        show_gridlines=spec.category_axis.show_gridlines,
-        show_labels=spec.category_axis.show_labels,
-        label_text_style=_to_axis_style(spec.category_axis),
+        title=cat_axis_spec.title,
+        show_title=bool(cat_axis_spec.title),
+        title_text_style=_to_axis_style(cat_axis_spec),
+        show_gridlines=cat_axis_spec.show_gridlines,
+        show_labels=cat_axis_spec.show_labels,
+        label_text_style=_to_axis_style(cat_axis_spec),
     )
     val_axis = ChartValueAxis(
-        title=spec.value_axis.title,
-        show_title=bool(spec.value_axis.title),
-        title_text_style=_to_axis_style(spec.value_axis),
-        show_gridlines=spec.value_axis.show_gridlines,
-        show_labels=spec.value_axis.show_labels,
-        label_text_style=_to_axis_style(spec.value_axis),
-        minimum=spec.value_axis.min_value,
-        maximum=spec.value_axis.max_value,
+        title=val_axis_spec.title,
+        show_title=bool(val_axis_spec.title),
+        title_text_style=_to_axis_style(val_axis_spec),
+        show_gridlines=val_axis_spec.show_gridlines,
+        show_labels=val_axis_spec.show_labels,
+        label_text_style=_to_axis_style(val_axis_spec),
+        minimum=val_axis_spec.min_value,
+        maximum=val_axis_spec.max_value,
     )
 
     common_kwargs: dict[str, Any] = {
@@ -981,10 +1006,11 @@ def _compile_object(
     resources: _ResourceCollector,
     slide_index: int,
     bounds_out: list[ObjectBounds],
+    theme: ThemeSpec | None = None,
 ) -> CanvasObject:
     if isinstance(spec, GroupSpec):
         children = [
-            _compile_object(child, resources, slide_index, bounds_out)
+            _compile_object(child, resources, slide_index, bounds_out, theme)
             for child in spec.children
         ]
         title_label = Label(text=Text(string=spec.title)) if spec.title else None
@@ -1034,7 +1060,7 @@ def _compile_object(
         bounds_out.append(ObjectBounds(spec.id, "table", slide_index, g.x, g.y, g.w, g.h))
         return obj
     if isinstance(spec, ChartSpec):
-        obj = _compile_chart(spec)
+        obj = _compile_chart(spec, theme)
         g = spec.geometry
         bounds_out.append(ObjectBounds(spec.id, "chart", slide_index, g.x, g.y, g.w, g.h))
         return obj
@@ -1062,16 +1088,25 @@ def compile_deck(
     else:
         deck = spec
 
+    theme_spec = load_theme(deck.theme)
+    if theme_spec is not None:
+        token_map = build_token_map(theme_spec)
+        resolved_raw = resolve_tokens(deck.model_dump(by_alias=True), token_map)
+        deck = DeckSpec.model_validate(resolved_raw)
+
     resources = _ResourceCollector()
     all_bounds: list[ObjectBounds] = []
     compiled_slides: list[Slide] = []
 
     for idx, slide_spec in enumerate(deck.slides):
-        bg_fill = _to_fill(slide_spec.background, resources)
+        effective_bg = slide_spec.background
+        if effective_bg is None and theme_spec is not None:
+            effective_bg = theme_spec.background
+        bg_fill = _to_fill(effective_bg, resources)
         slide_bg = SlideBackground(standard=bg_fill) if bg_fill else None
         contents = [
             SlideObject(
-                object=_compile_object(obj, resources, idx, all_bounds)
+                object=_compile_object(obj, resources, idx, all_bounds, theme_spec)
             )
             for obj in slide_spec.objects
         ]
@@ -1083,9 +1118,10 @@ def compile_deck(
             )
         )
 
+    keynote_theme_name = theme_spec.keynote_theme if theme_spec else deck.theme
     doc = KeyxDocument(
         payload=Presentation(
-            theme=KeynoteTheme(name=deck.theme, locale=deck.locale),
+            theme=KeynoteTheme(name=keynote_theme_name, locale=deck.locale),
             slide_size=Size(width=deck.slide_size.w, height=deck.slide_size.h),
             slides=compiled_slides,
         ),

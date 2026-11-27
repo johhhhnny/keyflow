@@ -17,6 +17,7 @@ from keyflow.compiler import compile_deck
 from keyflow.renderer import is_render_enabled, render_keyx_to_pngs
 from keyflow.session import DesignSession
 from keyflow.spec import DeckSpec
+from keyflow.theme import list_themes, load_theme
 
 _SESSIONS: dict[str, DesignSession] = {}
 
@@ -60,14 +61,25 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "get_theme",
+        "description": "List available themes or return the full global config of a specific theme (colors, typography, canvas, charts).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Theme name (e.g. 'midnight_indigo') or JSON path; omit to list themes."}
+            },
+        },
+    },
+    {
         "name": "design_create",
         "description": "Create a new iterative slide design session.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "width": {"type": "number", "default": 1920},
-                "height": {"type": "number", "default": 1080},
-                "background": {"default": "#0F172A"},
+                "theme": {"type": "string", "default": "midnight_indigo"},
+                "width": {"type": "number"},
+                "height": {"type": "number"},
+                "background": {},
                 "note": {"type": "string"},
             },
         },
@@ -239,12 +251,22 @@ def handle_tool_call(name: str, args: dict[str, Any]) -> dict[str, Any]:
         pngs = render_keyx_to_pngs(args["keyx_path"], args["output_dir"])
         return {"pngs": [str(p) for p in pngs]}
 
+    if name == "get_theme":
+        tname = args.get("name")
+        if not tname:
+            return {"themes": list_themes()}
+        theme = load_theme(tname)
+        if theme is None:
+            raise FileNotFoundError(f"Theme not found: {tname}")
+        return theme.model_dump(mode="json")
+
     if name == "design_create":
         sid = uuid.uuid4().hex[:10]
         _SESSIONS[sid] = DesignSession.create(
-            width=args.get("width", 1920.0),
-            height=args.get("height", 1080.0),
-            background=args.get("background", "#0F172A"),
+            theme=args.get("theme", "midnight_indigo"),
+            width=args.get("width"),
+            height=args.get("height"),
+            background=args.get("background"),
             note=args.get("note"),
         )
         return {"session_id": sid}

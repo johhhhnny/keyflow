@@ -403,3 +403,64 @@ def test_semantic_identity_composition_and_geometry_audit(tmp_path: Path) -> Non
     res = sess.compile(tmp_path / "semantic_audit.keyx")
     assert res.keyx_path.exists()
     assert len(res.geometry_notes) >= 2
+
+
+def test_theme_config_and_token_resolution(tmp_path: Path) -> None:
+    from keyflow.theme import list_themes, load_theme
+
+    assert "midnight_indigo" in list_themes()
+    theme = load_theme("midnight_indigo")
+    assert theme is not None
+    assert theme.mode == "dark"
+    assert theme.colors.accent_primary == "#FAC23D"
+
+    # Session using default midnight_indigo theme + $token references
+    sess = DesignSession.create(theme="midnight_indigo")
+    sess.add_object(
+        0,
+        {
+            "type": "textbox",
+            "id": "themed_title",
+            "geometry": {"x": 80, "y": 60, "w": 900, "h": 80},
+            "text": {
+                "string": "Themed Headline",
+                "style": {"font": "$font_display", "size": "$hero", "color": "$accent_primary", "bold": True},
+            },
+        },
+    )
+    sess.add_object(
+        0,
+        {
+            "type": "shape",
+            "id": "hollow_ring",
+            "geometry": {"x": 80, "y": 200, "w": 200, "h": 80},
+            "shape": "pill",
+            "fill": "none",
+            "stroke": {"color": "$accent_secondary", "width": 2.0},
+            "text": {"string": "Token Pill", "style": {"size": "$body", "color": "$text_primary"}},
+        },
+    )
+    sess.add_object(
+        0,
+        {
+            "type": "chart",
+            "id": "themed_chart",
+            "geometry": {"x": 400, "y": 200, "w": 700, "h": 400},
+            "chart_type": "column",
+            "title": "Themed Chart",
+            "categories": ["A", "B"],
+            "series": [{"name": "S1", "values": [10, 20]}],
+        },
+    )
+    out = tmp_path / "themed.keyx"
+    res = sess.compile(out)
+    assert res.keyx_path.exists()
+    assert res.object_count == 3
+
+    loaded = KeyxDocument.open(out)
+    assert validate_document(loaded) is None
+
+    # MCP get_theme
+    t_resp = handle_tool_call("get_theme", {"name": "midnight_indigo"})
+    assert t_resp["name"] == "midnight_indigo"
+    assert handle_tool_call("get_theme", {})["themes"] == ["midnight_indigo"]

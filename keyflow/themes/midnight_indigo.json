@@ -1,0 +1,85 @@
+{
+  "name": "midnight_indigo",
+  "description": "Cinematic tech storytelling: deep midnight navy canvas, focused amber gold & ice cyan highlights, high-contrast typography.",
+  "mode": "dark",
+  "keynote_theme": "White",
+  "background": {
+    "type": "linear",
+    "angle": 135,
+    "stops": [
+      { "color": "#101524", "position": 0.0 },
+      { "color": "#090D18", "position": 1.0 }
+    ]
+  },
+  "colors": {
+    "text_primary": "#FAFBFD",
+    "text_secondary": "#B8CBE8",
+    "text_muted": "#7A8FA8",
+    "accent_primary": "#FAC23D",
+    "accent_secondary": "#38BDF8",
+    "surface_1": "#141E33",
+    "surface_2": "#1B2845",
+    "border_subtle": "#2D426B",
+    "positive": "#3DC7A3",
+    "warning": "#F08F38",
+    "danger": "#EF4444"
+  },
+  "typography": {
+    "font_display": "PingFang SC",
+    "font_body": "PingFang SC",
+    "font_numeric": "Helvetica Neue",
+    "scale": {
+      "hero": 48.0,
+      "title": 36.0,
+      "heading": 24.0,
+      "body": 18.0,
+      "caption": 14.0
+    },
+    "tracking": {
+      "kicker": 0.12,
+      "display": 0.02,
+      "body": 0.0
+    },
+    "line_spacing": 1.25,
+    "min_font_size": 14.0
+  },
+  "canvas": {
+    "default_size": { "w": 1920.0, "h": 1080.0 },
+    "safe_margin": { "x": 80.0, "y": 60.0 },
+    "spacing_unit": 8.0
+  },
+  "surface_defaults": {
+    "default_corner_radius": 0.1,
+    "default_stroke_width": 1.5,
+    "shadow": {
+      "type": "drop",
+      "color": "#000000",
+      "angle": 270.0,
+      "offset": 8.0,
+      "radius": 20.0,
+      "opacity": 0.35
+    }
+  },
+  "connectors": {
+    "primary_width": 3.0,
+    "secondary_width": 1.5,
+    "default_color": "#B8CBE8"
+  },
+  "charts": {
+    "palette": [
+      "#FAC23D",
+      "#38BDF8",
+      "#3DC7A3",
+      "#F08F38",
+      "#A78BFA",
+      "#F472B6"
+    ],
+    "title_color": "#FAFBFD",
+    "axis_label_color": "#B8CBE8",
+    "legend_color": "#B8CBE8",
+    "gridline_color": "#2D426B"
+  },
+  "constraints": {
+    "min_contrast_ratio": 4.5
+  }
+}

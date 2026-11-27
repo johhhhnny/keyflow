@@ -11,6 +11,7 @@ from keyflow.compiler import compile_deck
 from keyflow.renderer import is_render_enabled, render_keyx_to_pngs
 from keyflow.session import DesignSession
 from keyflow.spec import DeckSpec
+from keyflow.theme import list_themes, load_theme
 
 
 def _cmd_compile(args: argparse.Namespace) -> int:
@@ -50,6 +51,17 @@ def _cmd_schema(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_themes(args: argparse.Namespace) -> int:
+    if args.name:
+        theme = load_theme(args.name)
+        if theme is None:
+            raise FileNotFoundError(f"Theme not found: {args.name}")
+        print(theme.model_dump_json(indent=2))
+    else:
+        print(json.dumps({"themes": list_themes()}, indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="keyflow",
@@ -75,6 +87,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_schema = sub.add_parser("schema", help="Print the JSON Schema for DeckSpec")
     p_schema.set_defaults(func=_cmd_schema)
+
+    p_themes = sub.add_parser("themes", help="List built-in themes or inspect a theme config")
+    p_themes.add_argument("name", nargs="?", default=None, help="Optional theme name or JSON path")
+    p_themes.set_defaults(func=_cmd_themes)
 
     return parser
 

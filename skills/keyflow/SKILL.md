@@ -13,6 +13,8 @@ Multi-slide pacing and animations are intentionally deferred. The architecture p
 
 - **Creativity-Driven (Route B at the core, Route A as infrastructure)**: You are a visual designer, not a template-filling machine. Design principles, typography, and geometry checks support your decisions—they never dictate a fixed layout.
 - **Anti-Card-Templating**: Never default to `title + 3 cards + icon` when a diagram, asymmetric hero visual, chart, comparison axis, typographic statement, or minimal whitespace composition expresses the idea better.
+- **Visual-First Compression (能用视觉语言表达的，绝不用文字)**: Keep on-slide text to distilled concepts and conclusions; move all explanatory prose into `SlideSpec.note` (presenter notes), with zero synonymous repetition.
+- **Global Theme Infrastructure (`midnight_indigo`)**: Use `keyflow themes` / `get_theme` for contrast-checked color tokens (`$text_primary`, `$accent_primary`, etc.), modular type scale (`$hero`, `$title`, `$body`), and chart defaults—override freely whenever a visual concept demands it.
 - **Native Primitives as Building Blocks**: `textbox`, `shape` (including custom SVG `BezierPath`), `connection`, `image`, `table`, `chart`, and `group` are raw expressive primitives—combine them freely.
 
 ## The 6-Stage Decoupled Workflow
@@ -34,6 +36,7 @@ Each stage has its own input, output, and evaluation standard:
 2. **Semantic Identity (`semantic`)**: Optional metadata on every object (`role`, `meaning`, `hierarchy`, `source_claim`) explaining *why* it exists.
 3. **Composition Model (`composition`)**: Slide-level record of `visual_concept`, `central_tension`, `expression_form`, `focal_point`, and `reading_order`.
 
-## Evaluation Reference
+## References
 
-See [eval_rubric.md](references/eval_rubric.md) for the 8 single-slide design test archetypes and 5 quality metrics.
+- [visual_craft.md](references/visual_craft.md) — Visual design knowledge base (hierarchy, `.keyx` native material craft, typography, and anti-patterns).
+- [eval_rubric.md](references/eval_rubric.md) — The 8 single-slide design test archetypes and 5 quality metrics.
