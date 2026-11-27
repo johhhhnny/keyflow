@@ -359,9 +359,13 @@ def _resolve_canvas_scene(
 
     default_reg_id = regions[0].id
     objs_by_region: dict[str, list[CanvasObjectSpec]] = {r.id: [] for r in regions}
+    spatial_objs: list[CanvasObjectSpec] = []
     for obj in scene.objects:
-        target_reg = obj.region if (obj.region and obj.region in objs_by_region) else default_reg_id
-        objs_by_region[target_reg].append(obj)
+        if obj.geometry is not None or obj.anchor is not None:
+            spatial_objs.append(obj)
+        else:
+            target_reg = obj.region if (obj.region and obj.region in objs_by_region) else default_reg_id
+            objs_by_region[target_reg].append(obj)
 
     obj_rects: dict[str, BoxRect] = {}
     for reg in regions:
@@ -373,6 +377,61 @@ def _resolve_canvas_scene(
         )
         for obj, rect in slots:
             obj_rects[obj.id] = rect
+
+    # Resolve freeform normalized geometry objects
+    for obj in spatial_objs:
+        if obj.geometry is not None:
+            g = obj.geometry
+            obj_rects[obj.id] = BoxRect(
+                safe_x + g.x * safe_w,
+                safe_y + g.y * safe_h,
+                max(20.0, g.width * safe_w),
+                max(20.0, g.height * safe_h),
+            )
+
+    # Resolve anchor-positioned objects topologically
+    pending_anchors = [o for o in spatial_objs if o.geometry is None and o.anchor is not None]
+    for _ in range(len(pending_anchors) + 1):
+        if not pending_anchors:
+            break
+        still_pending: list[CanvasObjectSpec] = []
+        for obj in pending_anchors:
+            anc = obj.anchor
+            if anc is None or anc.to not in obj_rects:
+                still_pending.append(obj)
+                continue
+            t_rect = obj_rects[anc.to]
+            w = max(20.0, (anc.width * safe_w) if anc.width is not None else min(t_rect.w, 240.0))
+            h = max(20.0, (anc.height * safe_h) if anc.height is not None else min(t_rect.h, 80.0))
+            dx = anc.offset_x * safe_w
+            dy = anc.offset_y * safe_h
+            pt = anc.point
+            t_right = t_rect.x + t_rect.w
+            t_bottom = t_rect.y + t_rect.h
+            if pt == "top":
+                rx, ry = t_rect.cx + dx - w / 2.0, t_rect.y + dy - h
+            elif pt == "bottom":
+                rx, ry = t_rect.cx + dx - w / 2.0, t_bottom + dy
+            elif pt == "left":
+                rx, ry = t_rect.x + dx - w, t_rect.cy + dy - h / 2.0
+            elif pt == "right":
+                rx, ry = t_right + dx, t_rect.cy + dy - h / 2.0
+            elif pt == "top_left":
+                rx, ry = t_rect.x + dx - w / 2.0, t_rect.y + dy - h / 2.0
+            elif pt == "top_right":
+                rx, ry = t_right + dx - w / 2.0, t_rect.y + dy - h / 2.0
+            elif pt == "bottom_left":
+                rx, ry = t_rect.x + dx - w / 2.0, t_bottom + dy - h / 2.0
+            elif pt == "bottom_right":
+                rx, ry = t_right + dx - w / 2.0, t_bottom + dy - h / 2.0
+            else:
+                rx, ry = t_rect.cx + dx - w / 2.0, t_rect.cy + dy - h / 2.0
+            obj_rects[obj.id] = BoxRect(rx, ry, w, h)
+        if len(still_pending) == len(pending_anchors):
+            for obj in still_pending:
+                obj_rects[obj.id] = BoxRect(safe_x, safe_y, 240.0, 80.0)
+            break
+        pending_anchors = still_pending
 
     chart_bounds: dict[str, tuple[float | None, float | None]] = {}
     for obj in scene.objects:
@@ -404,12 +463,14 @@ def _resolve_canvas_scene(
         for obj in scene.objects:
             if obj.id not in vis_ids:
                 continue
-            target_reg = obj.region if (obj.region and obj.region in objs_by_region) else default_reg_id
-            active_regions.add(target_reg)
+            if obj.geometry is None and obj.anchor is None:
+                target_reg = obj.region if (obj.region and obj.region in objs_by_region) else default_reg_id
+                active_regions.add(target_reg)
             rect = obj_rects[obj.id]
             opacity = 1.0 if (focus_ids is None or obj.id in focus_ids) else 0.42
             state = frame.object_states.get(obj.id, {})
             connector_rects[obj.id] = rect
+            rot = obj.geometry.rotation if obj.geometry is not None else 0.0
 
             if obj.kind in ("card", "callout"):
                 placed_boxes.append(
@@ -429,6 +490,9 @@ def _resolve_canvas_scene(
                         surface=obj.surface,
                         align=obj.align,
                         gauge=obj.gauge,
+                        z_index=obj.z_index,
+                        group=obj.group,
+                        rotation=rot,
                     )
                 )
             elif obj.kind == "textbox":
@@ -443,6 +507,9 @@ def _resolve_canvas_scene(
                         color_hex=obj.color_hex,
                         fill_hex=obj.fill_hex,
                         opacity=opacity,
+                        z_index=obj.z_index,
+                        group=obj.group,
+                        rotation=rot,
                     )
                 )
             elif obj.kind == "shape":
@@ -459,6 +526,9 @@ def _resolve_canvas_scene(
                         dashed=obj.dashed,
                         variant=obj.variant,
                         opacity=opacity,
+                        z_index=obj.z_index,
+                        group=obj.group,
+                        rotation=rot,
                     )
                 )
             elif obj.kind == "chart" and obj.chart is not None:
@@ -510,6 +580,9 @@ def _resolve_canvas_scene(
                         highlight_categories=tuple(ch.highlight_categories),
                         estimate_from=ch.estimate_from,
                         reference_lines=tuple(ch.reference_lines),
+                        z_index=obj.z_index,
+                        group=obj.group,
+                        rotation=rot,
                     )
                 )
             elif obj.kind == "table" and obj.table is not None:
@@ -530,6 +603,9 @@ def _resolve_canvas_scene(
                         target_rows=tuple(tb.target_rows),
                         cell_tones=tuple(tuple(r) for r in tb.cell_tones),
                         opacity=opacity,
+                        z_index=obj.z_index,
+                        group=obj.group,
+                        rotation=rot,
                     )
                 )
             elif obj.kind == "diagram":

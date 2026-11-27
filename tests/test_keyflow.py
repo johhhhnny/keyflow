@@ -3019,14 +3019,15 @@ def test_design_system_elevation_modular_scale_and_theme_aesthetics() -> None:
 def test_visual_intent_alignment_idiom_monotony_and_outline_signals() -> None:
     from keyflow.outline import extract_markdown_outline
 
-    # 1. outline emits recommended_visual_intents
+    # 1. outline emits objective content_signals without prescribing components
     md = "# Report\n## 盈利拆解\n营收 300B 扣除成本与研发后营业利润 197B。\n## 风险与催化\n核心风险与上行催化。\n"
     res = extract_markdown_outline(md)
     secs = res["source_summary"]["sections"]
-    assert any("profit_bridge -> chart(waterfall)" in s["recommended_visual_intents"] for s in secs)
-    assert any("tension_radiation -> hub_spoke" in s["recommended_visual_intents"] for s in secs)
+    assert any("has_profit_or_cost_breakdown" in s["content_signals"] for s in secs)
+    assert any("has_tension_or_risk_factors" in s["content_signals"] for s in secs)
+    assert all("->" not in sig for s in secs for sig in s["content_signals"])
 
-    # 2. intent_form_alignment catches mismatch + visual_monotony catches 4+ basic-idiom scenes
+    # 2. critique-tier findings (visual_monotony, intent_form_alignment) do NOT block strict=True
     mismatched_deck = {
         "title": "Intent Mismatch",
         "scenes": [
@@ -3049,10 +3050,213 @@ def test_visual_intent_alignment_idiom_monotony_and_outline_signals() -> None:
             for i in range(4)
         ],
     }
-    rep = audit_deck(mismatched_deck, strict=False)
+    rep = audit_deck(mismatched_deck, strict=True)
+    assert rep.passed is True
     cats = {w.category for w in rep.warnings}
     assert "intent_form_alignment" in cats
     assert "visual_monotony" in cats
+    assert all(w.tier == "critique" for w in rep.warnings if w.category in ("intent_form_alignment", "visual_monotony"))
+
+    # 3. Open-ended dict visual_intent validates cleanly without triggering intent_form_alignment
+    open_intent_deck = {
+        "title": "Open Visual Intent",
+        "scenes": [
+            {
+                "id": "sc_open",
+                "title": "AI Value Chain",
+                "layout": "canvas",
+                "visual_intent": {
+                    "audience_takeaway": "Profit concentrates at the platform layer while cloud hyperscalers push back.",
+                    "visual_metaphor": "Center platform surrounded by upstream suppliers and downstream squeeze",
+                    "visual_focus": "NVIDIA platform margin",
+                    "relationships": ["Upstream feeds capacity", "Hyperscalers build custom silicon"],
+                    "emotional_tone": "Investigative, restrained",
+                },
+                "grid": {"columns": 12, "rows": 1},
+                "regions": [{"id": "r1", "col": 1, "row": 1, "col_span": 12, "row_span": 1}],
+                "objects": [
+                    {"id": "center_card", "kind": "card", "region": "r1", "label": "NVIDIA Platform"}
+                ],
+            }
+        ],
+    }
+    assert validate_deck(open_intent_deck).valid is True
+    open_rep = audit_deck(open_intent_deck, strict=True)
+    assert open_rep.passed is True
+    assert not any(w.category == "intent_form_alignment" for w in open_rep.warnings)
+
+
+def test_p1_freeform_spatial_composition_z_index_anchor_and_rotation(tmp_path: Path) -> None:
+    from creator_studio_doc_format.core import KeyxDocument
+
+    # 1. Cyclic anchor dependency must be rejected
+    cyclic_deck = {
+        "title": "Cyclic Anchor",
+        "scenes": [
+            {
+                "id": "cyc",
+                "title": "Cycle",
+                "layout": "canvas",
+                "objects": [
+                    {"id": "a", "kind": "card", "label": "A", "anchor": {"to": "b", "point": "left"}},
+                    {"id": "b", "kind": "card", "label": "B", "anchor": {"to": "a", "point": "right"}},
+                ],
+            }
+        ],
+    }
+    cyc_val = validate_deck(cyclic_deck)
+    assert cyc_val.valid is False
+    assert any("cyclic anchor" in e for e in cyc_val.errors)
+
+    # 2. Intentional z_index layering, normalized geometry, rotation, and anchor placement
+    spatial_deck = {
+        "title": "Spatial Composition",
+        "theme": "midnight_indigo",
+        "scenes": [
+            {
+                "id": "ai_chain",
+                "title": "AI 产业链利润中心与上下游博弈",
+                "layout": "canvas",
+                "visual_intent": {
+                    "audience_takeaway": "NVIDIA commands the profit center while upstream and downstream push back.",
+                    "visual_metaphor": "Asymmetric center gravity with background profit pool",
+                },
+                "objects": [
+                    {
+                        "id": "bg_pool",
+                        "kind": "shape",
+                        "shape_type": "ellipse",
+                        "z_index": -1,
+                        "group": "center_hub",
+                        "geometry": {"x": 0.32, "y": 0.14, "width": 0.36, "height": 0.72, "rotation": 6.0},
+                        "fill_hex": "#1E293B",
+                        "border_hex": "#F59E0B",
+                        "dashed": True,
+                    },
+                    {
+                        "id": "nvda_core",
+                        "kind": "callout",
+                        "z_index": 1,
+                        "group": "center_hub",
+                        "geometry": {"x": 0.37, "y": 0.32, "width": 0.26, "height": 0.36},
+                        "badge": "PROFIT CENTER",
+                        "metric": "65.2%",
+                        "label": "NVIDIA 算力平台",
+                    },
+                    {
+                        "id": "core_note",
+                        "kind": "textbox",
+                        "z_index": 2,
+                        "group": "center_hub",
+                        "anchor": {"to": "nvda_core", "point": "bottom", "offset_y": 0.02, "width": 0.28, "height": 0.10},
+                        "text": "CUDA 生态锁定高毛利",
+                        "font_size": 18,
+                    },
+                    {
+                        "id": "upstream",
+                        "kind": "card",
+                        "z_index": 1,
+                        "surface": "accent_bar",
+                        "variant": "success",
+                        "geometry": {"x": 0.02, "y": 0.22, "width": 0.24, "height": 0.50},
+                        "label": "上游：ASML / TSMC / HBM",
+                    },
+                    {
+                        "id": "downstream",
+                        "kind": "card",
+                        "z_index": 1,
+                        "surface": "accent_bar",
+                        "variant": "warn",
+                        "geometry": {"x": 0.74, "y": 0.22, "width": 0.24, "height": 0.50},
+                        "label": "下游：云厂商自研芯片挤压",
+                    },
+                ],
+                "connectors": [
+                    {"id": "c_up", "from": "upstream", "to": "nvda_core", "label": "产能供给"},
+                    {"id": "c_dn", "from": "nvda_core", "to": "downstream", "label": "算力定价", "style": "dashed"},
+                ],
+            }
+        ],
+    }
+
+    rep = audit_deck(spatial_deck, strict=True)
+    assert rep.passed is True, [e.to_dict() for e in rep.errors]
+
+    out = tmp_path / "spatial.keyx"
+    compile_deck(spatial_deck, out)
+    assert out.exists()
+
+    with KeyxDocument.open(out) as loaded:
+        contents = loaded.payload.slides[0].contents
+        shape_ids = [c.object.shape.identifier for c in contents if c.object.shape is not None]
+        bg_idx = next(i for i, c in enumerate(contents) if c.object.shape and c.object.shape.identifier.endswith("_bg_pool"))
+        core_idx = next(i for i, c in enumerate(contents) if c.object.shape and c.object.shape.identifier.endswith("_nvda_core"))
+        assert bg_idx < core_idx  # z_index=-1 emitted before z_index=1
+        bg_shape = contents[bg_idx].object.shape
+        assert bg_shape is not None and bg_shape.geometry.angle == pytest.approx(6.0, abs=0.01)
+        assert any("nvda_core" in sid for sid in shape_ids)
+
+
+def test_p2_visual_critic_diagnostics_non_blocking() -> None:
+    raw = {
+        "title": "Visual Critic Signals",
+        "scenes": [
+            {
+                "id": "uncrafted_stack",
+                "title": "Fallback Stack + Unmarked Forecast + Flat Table",
+                "layout": "canvas",
+                "objects": [
+                    {"id": "c1", "kind": "card", "label": "Point 1"},
+                    {"id": "c2", "kind": "card", "label": "Point 2"},
+                    {"id": "c3", "kind": "card", "label": "Point 3"},
+                    {"id": "c4", "kind": "card", "label": "Point 4"},
+                ],
+            },
+            {
+                "id": "chart_and_tbl",
+                "title": "Unmarked Forecast + Flat Table",
+                "layout": "canvas",
+                "grid": {"columns": 12, "rows": 1},
+                "regions": [
+                    {"id": "left", "col": 1, "row": 1, "col_span": 6, "row_span": 1},
+                    {"id": "right", "col": 7, "row": 1, "col_span": 6, "row_span": 1},
+                ],
+                "objects": [
+                    {
+                        "id": "rev_ch",
+                        "kind": "chart",
+                        "region": "left",
+                        "chart": {
+                            "chart_type": "column",
+                            "categories": ["2024", "2025", "2026E", "2027E"],
+                            "series": [{"name": "Rev", "values": [60, 130, 215, 414]}],
+                        },
+                    },
+                    {
+                        "id": "flat_tbl",
+                        "kind": "table",
+                        "region": "right",
+                        "table": {
+                            "headers": ["A", "B", "C", "D"],
+                            "rows": [
+                                ["1", "2", "3", "4"],
+                                ["5", "6", "7", "8"],
+                                ["9", "10", "11", "12"],
+                                ["13", "14", "15", "16"],
+                            ],
+                        },
+                    },
+                ],
+            },
+        ],
+    }
+    rep = audit_deck(raw, strict=True)
+    assert rep.passed is True
+    crit_actions = {w.suggested_action for w in rep.warnings if w.category == "design_critique"}
+    assert "design_spatial_composition" in crit_actions
+    assert "consider_estimate_from" in crit_actions
+    assert "consider_table_hierarchy" in crit_actions
+    assert all(w.tier == "critique" for w in rep.warnings if w.category == "design_critique")
 
 
 def test_batch1_visual_building_blocks(tmp_path: Path) -> None:

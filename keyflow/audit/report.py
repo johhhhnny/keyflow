@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Literal, Sequence
 
 Severity = Literal["error", "warning"]
+AuditTier = Literal["engineering", "content", "critique"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,10 +23,12 @@ class AuditFinding:
     suggestion: str
     target_id: str | None = None
     suggested_action: str | None = None
+    tier: AuditTier = "engineering"
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "severity": self.severity,
+            "tier": self.tier,
             "category": self.category,
             "slide_num": self.slide_num,
             "scene_id": self.scene_id,

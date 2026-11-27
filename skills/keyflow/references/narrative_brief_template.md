@@ -27,16 +27,13 @@ Distill the article into atomic semantic units, binding every number or factual 
 
 ---
 
-## 2. Visual Form Selection Matrix (Logic First)
+## 2. Design Questions (Before Choosing Any Visual Form)
 
-| Logical Pattern | Preferred KeyFlow Layout | Anti-Pattern to Avoid |
-| :--- | :--- | :--- |
-| Single startling stat or core conclusion | `metrics_cards` (`1–2` cards) | Forcing 3–4 filler boxes to make a diagram look busy |
-| Resource fork / capacity crowding / causal split | Branching `flow_dag` (fork & merge paths) | Flattening a capacity split into a generic 4-step linear row |
-| Value chain / persistent context + deep dives | Deck `pinned_flow` + scene `active_flow_node` | Repeating the full chain diagram from scratch on every slide |
-| Single-denominator share or cost breakdown | `proportion_bar` (strictly one `metric_scope`) | Mixing revenue share and mission share on the same chart |
-| Multi-company / baseline vs. target contrast | `comparison_matrix` (`≤ 3` columns) or `comparison` | Mixing actual price and long-term target cost without labels |
-| Chronological eras or protocol rounds | `architecture_evolution` or `sequence_timeline` | Static timeline bullets without forward/backward transitions |
+Ask these questions for each scene instead of looking up a fixed layout table:
+- **What is the viewer's 3-second takeaway?** (`audience_takeaway`)
+- **What visual metaphor makes the tension, gap, or mechanism obvious without reading prose?** (`visual_metaphor`)
+- **What single element deserves primary visual weight, and what should recede?** (`visual_focus`)
+- **If repeating the same layout across consecutive scenes, does it serve deliberate horizontal comparison?** (If yes, keep it intentionally; if not, rethink the composition.)
 
 ---
 

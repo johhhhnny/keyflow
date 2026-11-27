@@ -21,42 +21,33 @@ Before authoring any Scene Graph JSON, produce a concise **Stage 0 Narrative Bri
    - `inference`: author interpretation or hypothesis — **never flatten inferences into settled facts**; mark them in `badge` (e.g., `"THESIS"`, `"CLAIM"`, `"INFERENCE"`) or `note`
    - `counter_evidence`: caveats, bottlenecks, or competing explanations
    - `conclusion`: synthesized takeaway conditioned strictly on the stated qualifiers
-2. **Define Scene `Visual Intent` Before Picking Objects (Anti-Component-Templating)**:
-   Never default to a cookie-cutter "KPI strip + column chart + diagram/table + 2-column callout" recipe across different documents. First ask **"What visual metaphor lets the audience *see* this scene's logic without reading?"**, then pick the native primitive that embodies it:
-   - **Price / Value Gap or Headline Verdict**: Giant standalone `textbox` (`64–110pt`) + `proportion_bar` range marker (e.g., 52-week position), rather than 3 identical KPI cards.
-   - **Earnings / Cash / Cost Bridge**: `waterfall` chart (`chart_type: "waterfall"`) showing how revenue turns into operating/net profit, rather than a static table.
-   - **Multi-Year Fade / Trajectory**: `line` or `area` chart for continuous 5–10 year curves (reserve `column`/`bar` for discrete categorical comparisons).
-   - **Methodology / Multi-Variable Trade-off**: `comparison_matrix` with `formula`, `↑`/`↓` trends, and `takeaway`, rather than two prose callouts.
-   - **Multi-Perspective / Risk-Catalyst Tension**: `hub_spoke` (center verdict + radiating catalysts/risks) or `flow_dag` (causal fork-join), rather than side-by-side boxes.
-   - **In-Place Whole-to-Parts Decomposition**: `node.children` (`child_layout: "grid"`) inside `diagram` or `horizontal_flow`, only when a concept genuinely decomposes into sub-capabilities.
-   - **Nonlinear Process / Retry Loops**: `sequence_timeline` (or `diagram_layout: "sequence"`).
-   Use `snippets` (`keyflow snippets`) only as structural scaffolding when helpful—never as a rigid template that forces every article into the same 4–5 slide molds.
-
-   You have **two complementary modes** controlled by top-level `use_templates` (defaults to `false`):
-   - **Freeform Compositional Canvas (`layout: "canvas"`, default `use_templates: false`) — Preferred for Heterogeneous / Analytical Scenes**:
-     Combine heterogeneous visual objects on a 12-column `grid` partitioned into non-overlapping `regions` (`col`, `row`, `col_span`, `row_span`, `arrange`: `"stack" | "row" | "grid"`, `title`, `frame`), keeping **<= 3–4 regions** and **<= 5–6 top-level objects** per slide for generous breathing room:
-     - `card` / `callout`: concise structural anchors or highlighted conclusions (`label`, optional `badge`, `metric`, `sublabel`, `variant`, `weight`)
-     - `textbox` / `shape`: typography blocks (`align`, `font_size` in `10–140`) and geometric shapes (`rounded_rect`, `rect`, `ellipse`, `pill`, or custom normalized `svg_path`)
-     - `chart`: 10 data-driven chart types (`column`, `bar`, `pie`, `donut`, `line`, `area`, `stacked_column`, `stacked_bar`, `scatter`, `waterfall`) with `reveal`: `"whole" | "by_series" | "by_category"` and `render_mode`: `"auto" | "vector" | "native"`. Under `render_mode: "auto"` (recommended), progressive charts (`reveal != "whole"`) and `waterfall` charts compile into pure `.keyx` `Shape` + `Textbox` vectors with locked cluster widths so Keynote Magic Move keeps earlier bars rock-solid; static `reveal: "whole"` charts compile as editable native `.keyx` `Chart` objects.
-     - `table`: native `.keyx` `Table` (`headers`, `rows`, `reveal`: `"whole" | "by_row" | "by_column"`, `highlight_cols`, `highlight_rows`)
-     - `diagram`: inline node-and-edge subgraph (`diagram_layout`: `"horizontal" | "vertical" | "dag" | "hub_spoke"`) embedded inside a region; `pace` automatically decomposes multi-node diagrams node-by-node / layer-by-layer with locked coordinates.
-     - `connectors`: cross-object arrows (`from`, `to`, `label`, `style`) across objects on the canvas; `step` controls object appearance order, and deck/scene `palette` lets you customize visual colors (`bg_hex`, `title_hex`, `accent_fill_hex`, `series_colors`, etc.).
-   - **10 Built-in Preset Layouts (also enforceable via `use_templates: true` / `--use-templates`)**:
-     - **Single Hero Stat / Core Thesis**: `metrics_cards` with **1–2** bold centerpiece cards (`metric` + crisp `label`, generous whitespace). Never invent dummy cards just to fill a 4-node row.
-     - **Causal Split / Resource Contention / Bottleneck**: `flow_dag` with explicit **fork/merge branches** (e.g., shared scarce capacity splitting between internal demand and external clients), labeled edges, and `FACT` vs `INFERENCE` badges.
-     - **Value Chain / Persistent Chapter Spine**: deck-level `pinned_flow` (centered macro overview -> docked top ribbon via `active_flow_node`) paired with focused deep-dive scenes.
-     - **Single-Denominator Share / Allocation**: `proportion_bar` — **enforce single `metric_scope` per chart** (never put revenue share in the subtitle of a launch-count share chart; split incompatible scopes across scenes).
-     - **Multi-Party Quantitative / Strategic Contrast**: `comparison_matrix` (columns, `formula`, `↑`/`↓` trends, `action_banner`, `takeaway`) or side-by-side `comparison` — label clearly if comparing actual price vs. target cost so differing accounting bases are never blurred.
-     - **Sequential Evolution / Milestones**: `horizontal_flow` (3–5 pillars; unpack 2 children as `row`, 3–4 as `grid`), `architecture_evolution` (`v1 -> v2 -> v3`), or `sequence_timeline` (forward skips + backward loops).
-     - **Core + Radiating Factors**: `hub_spoke` (center `variant: "accent"` + 3–6 spokes).
-3. **Design the Narrative Arc Across Scenes (With `visual_intent`)**:
+2. **Direct Like a Documentary Visual Designer (Open `visual_intent`, Not Component Lookup)**:
+   Think like a commercial documentary director: understand the author's core conflict, causal mechanism, or surprising contrast, then **invent the visual language** that makes the audience *see* it immediately.
+   - **Never map logic types mechanically to fixed templates**: Do not treat "profit -> waterfall" or "risks -> hub_spoke" as rules. You have full agency to **reject every preset layout and snippet** and compose freely with raw typography, shapes, charts, tables, and connectors.
+   - **Express `visual_intent` as an open design brief** on each scene (instead of picking from a closed enum):
+     ```json
+     "visual_intent": {
+       "audience_takeaway": "What the viewer must grasp in 3 seconds",
+       "visual_metaphor": "Spatial or visual analogy (e.g. profit pool vs upstream/downstream squeeze)",
+       "visual_focus": "What commands primary visual weight",
+       "relationships": ["Entity A -> Entity B tension or flow"],
+       "emotional_tone": "Investigative, restrained, high-contrast"
+     }
+     ```
+   - **Full Visual Vocabulary Available When Needed**:
+     - **Freeform Compositional Canvas (`layout: "canvas"`, default `use_templates: false`)**: Supports two parallel spatial modes on the same slide:
+       1. **Auto-Region Mode**: 12-column `grid` + non-overlapping `regions` (`stack`, `row`, `grid`) for structured cards, tables, and charts.
+       2. **Agent-Directed Spatial Composition Mode**: Place any object freely via normalized `geometry` (`{"x", "y", "width", "height", "rotation"}` in `[0..1]` safe canvas), `anchor` (`{"to", "point", "offset_x", "offset_y", "width", "height"}`), `z_index` (layering order), and `group` (logical composition unit). Different `z_index` layers may overlap intentionally (e.g., background `shape` behind foreground `textbox`/callouts).
+       Available primitives: `card` / `callout` (`surface`: `"filled" | "ghost" | "borderless" | "accent_bar"`, optional `gauge`: `{"type": "ring" | "range", ...}`), `textbox` (`font_size` in `10–140`), `shape` (`rounded_rect`, `rect`, `ellipse`, `pill`, or custom `svg_path`), `chart` (13 types: `column`, `bar`, `pie`, `donut`, `line`, `area`, `stacked_column`, `stacked_bar`, `scatter`, `waterfall`, `football_field`, `radar`, `progress_bars`, with `highlight_categories`, `estimate_from`, `reference_lines`), `table` (`cell_tones`, `target_rows`, `highlight_cols`, `highlight_rows`), inline `diagram`, `connectors`, and custom `palette`.
+     - **10 Built-in Preset Layouts (optional tools, never mandatory defaults)**: `metrics_cards`, `flow_dag`, `pinned_flow`, `proportion_bar`, `comparison_matrix`, `comparison`, `horizontal_flow`, `vertical_flow`, `architecture_evolution`, `sequence_timeline`, `hub_spoke`. Use `use_templates: true` only when enforcing strict preset-only decks.
+3. **Design the Narrative Arc Across Scenes**:
    For each scene in the Stage 0 brief, define:
-   - `visual_intent`: one of `price_value_gap`, `profit_bridge`, `decay_trajectory`, `categorical_ranking`, `methodology_tradeoff`, `tension_radiation`, `whole_to_parts`, `nonlinear_loop`, `causal_flow`, `proportion_share` (also declare `"visual_intent"` on the Stage 1 scene so `keyflow audit` verifies `intent_form_alignment`)
+   - `visual_intent`: open-ended design description (`audience_takeaway`, `visual_metaphor`, `visual_focus`, `relationships`, `emotional_tone`)
    - `claim`: the single takeaway the audience must remember from this scene
    - `metric_scope`: exact denominator/unit/era when numbers appear
    - `source_quote`: verbatim anchor from the source text backing every metric or factual claim
    - `protagonist` & `supporting`: what takes visual focus (`variant: "accent"`, `active_flow_node`, `focus_nodes`) vs muted context
-   - `transition_intent`: how this scene connects to the previous/next scene (zoom in from `pinned_flow`, fork capacity bottleneck, contrast counter-argument, return to synthesis)
+   - `transition_intent`: how this scene connects to the previous/next scene
 4. **Content-to-Visual Fidelity & Anti-Overclaim Check (Gate Before Stage 1)**:
    Verify against the source before writing JSON:
    - Did any scene omit the central thesis, key competitors/market context, or counter-evidence?
@@ -67,9 +58,13 @@ Before authoring any Scene Graph JSON, produce a concise **Stage 0 Narrative Bri
 
 ---
 
-## Stage 1: Design Full-State Scene Graphs (Topology & Semantics)
+## Stage 1: Design Full-State Scene Graphs (Visual Director -> Critic Loop)
 
-Translate the Stage 0 brief into clean Stage 1 diagrams. Do **not** hand-write `frames` unless custom choreography is required:
+Before finalizing Stage 1 JSON, run the **Director -> Critic** loop (see `references/visual_critic_rubric.md`):
+- **Sketch 2–3 Visual Metaphors for Pivotal Scenes**: For central thesis, value-chain conflict, or valuation synthesis slides, briefly compare 2–3 distinct compositions (e.g., asymmetric `geometry`/`anchor`/`z_index` spatial gravity vs. `football_field`/`progress_bars` scale vs. `radar`/matrix) and pick the one with the fastest 3-second comprehension.
+- **Critique Before Tweaking**: If a slide looks like "boxes stacked in a grid" with no focal point, **redesign the spatial composition** rather than tweaking font sizes.
+
+Translate the Stage 0 brief into clean Stage 1 scenes. Do **not** hand-write `frames` unless custom choreography is required:
 
 1. **Zero-Bullet Canvas (1-Line Card Default)**: Default cards should hold **only 1 short `label` line** (1–4 words / ≤ 12 CJK chars). Do **not** pack `badge + label + sublabel` onto every card by default—move explanations into `note` (Presenter Notes). Add extra text layers only when they serve an explicit visual purpose:
    - `children` in-place unpack (total -> parts decomposition across frames);
@@ -96,9 +91,10 @@ Translate the Stage 0 brief into clean Stage 1 diagrams. Do **not** hand-write `
 
 Once the Stage 1 topology satisfies your Stage 0 narrative check, run the **2-tier verification loop**:
 
-1. **Tier 1 Geometry & Stability Audit (Fast, Cross-Platform)**:
+1. **Three-Tier Audit (Engineering vs. Content vs. Critique)**:
    - Run `audit_storyboard` (MCP) or `uv run keyflow audit -i stage1.json --strict` before rendering.
-   - Use structured finding fields (`target_id`, `suggested_action`, `suggestion`) to make surgical fixes (shorten labels, enable `child_layout: "grid"`, split overcrowded scenes, or merge narrow segments).
+   - `engineering` (bounds, collisions, coordinate stability) and `content` (`story_model` fidelity, scope mixing) findings block `--strict` compilation and must be fixed.
+   - `critique` findings (`visual_monotony`, `card_text_bloat`, `intent_form_alignment`) are **non-blocking design reflections**: if repeating a layout serves rigorous horizontal comparison across entities, keep it intentionally; otherwise use it as a cue to sharpen visual hierarchy.
 2. **Tier 2 Keynote Render & Targeted PNG Inspection (macOS)**:
    - Expand and compile with audit gate enabled via `pace_storyboard` -> `compile_keyx(..., preview_dir=..., fail_on_audit=True)`, or CLI:
      ```bash

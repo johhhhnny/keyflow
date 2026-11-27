@@ -77,6 +77,9 @@ class PlacedBox:
     surface: SurfaceStyle = "filled"
     align: TextAlign = "center"
     gauge: dict[str, Any] | None = None
+    z_index: int = 0
+    group: str | None = None
+    rotation: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,6 +229,9 @@ class PlacedChart:
     highlight_categories: tuple[str, ...] = ()
     estimate_from: int | None = None
     reference_lines: tuple[dict[str, Any], ...] = ()
+    z_index: int = 0
+    group: str | None = None
+    rotation: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,6 +248,9 @@ class PlacedTable:
     target_rows: tuple[int, ...] = ()
     cell_tones: tuple[tuple[str | None, ...], ...] = ()
     opacity: float = 1.0
+    z_index: int = 0
+    group: str | None = None
+    rotation: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -255,6 +264,9 @@ class PlacedTextbox:
     color_hex: str | None = None
     fill_hex: str | None = None
     opacity: float = 1.0
+    z_index: int = 0
+    group: str | None = None
+    rotation: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -271,9 +283,15 @@ class PlacedShape:
     surface: SurfaceStyle = "filled"
     align: TextAlign = "center"
     gauge: dict[str, Any] | None = None
+    z_index: int = 0
+    group: str | None = None
+    rotation: float = 0.0
     dashed: bool = False
     variant: NodeVariant = "primary"
     opacity: float = 1.0
+    z_index: int = 0
+    group: str | None = None
+    rotation: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)

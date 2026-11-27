@@ -71,18 +71,20 @@
           "source_section": { "type": "string" },
           "claim": { "type": "string" },
           "visual_intent": {
-            "type": "string",
-            "enum": [
-              "price_value_gap",
-              "profit_bridge",
-              "decay_trajectory",
-              "categorical_ranking",
-              "methodology_tradeoff",
-              "tension_radiation",
-              "whole_to_parts",
-              "nonlinear_loop",
-              "causal_flow",
-              "proportion_share"
+            "oneOf": [
+              { "type": "string", "minLength": 1 },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "audience_takeaway": { "type": "string" },
+                  "visual_metaphor": { "type": "string" },
+                  "visual_focus": { "type": "string" },
+                  "relationships": { "type": "array", "items": { "type": "string" } },
+                  "emotional_tone": { "type": "string" },
+                  "design_constraints": { "type": "array", "items": { "type": "string" } }
+                }
+              }
             ]
           },
           "metric_scope": { "type": "string" },
@@ -193,6 +195,37 @@
                 },
                 "svg_path": { "type": "string" },
                 "dashed": { "type": "boolean", "default": false },
+                "z_index": { "type": "integer", "default": 0 },
+                "group": { "type": "string", "minLength": 1 },
+                "geometry": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["x", "y", "width", "height"],
+                  "properties": {
+                    "x": { "type": "number", "minimum": 0, "maximum": 1 },
+                    "y": { "type": "number", "minimum": 0, "maximum": 1 },
+                    "width": { "type": "number", "minimum": 0.01, "maximum": 1 },
+                    "height": { "type": "number", "minimum": 0.01, "maximum": 1 },
+                    "rotation": { "type": "number", "minimum": -360, "maximum": 360, "default": 0 }
+                  }
+                },
+                "anchor": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["to"],
+                  "properties": {
+                    "to": { "type": "string", "minLength": 1 },
+                    "point": {
+                      "type": "string",
+                      "enum": ["center", "top", "bottom", "left", "right", "top_left", "top_right", "bottom_left", "bottom_right"],
+                      "default": "center"
+                    },
+                    "offset_x": { "type": "number", "minimum": -1, "maximum": 1, "default": 0 },
+                    "offset_y": { "type": "number", "minimum": -1, "maximum": 1, "default": 0 },
+                    "width": { "type": "number", "minimum": 0.01, "maximum": 1 },
+                    "height": { "type": "number", "minimum": 0.01, "maximum": 1 }
+                  }
+                },
                 "gauge": {
                   "type": "object",
                   "additionalProperties": false,

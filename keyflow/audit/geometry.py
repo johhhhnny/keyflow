@@ -233,9 +233,11 @@ def _audit_frame(
                     )
                 )
 
-    # 3. Pairwise overlap checks (excluding intentional parent group <-> own subcard nesting)
+    # 3. Pairwise overlap checks (excluding intentional parent group <-> own subcard nesting and distinct z_index layers)
     for i, a in enumerate(solid_cards):
         for b in solid_cards[i + 1 :]:
+            if getattr(a, "z_index", 0) != getattr(b, "z_index", 0):
+                continue
             if _overlap_area(a.rect, b.rect):
                 findings.append(
                     AuditFinding(
@@ -723,12 +725,17 @@ def _audit_frame(
                     )
                 )
 
-    # Check collisions between heterogeneous freeform objects (e.g., chart vs card, table vs textbox)
+    # Check collisions between heterogeneous freeform objects on the same z_index layer
+    z_map: dict[str, int] = {}
+    for o in (*frame.boxes, *frame.shapes, *frame.charts, *frame.tables, *frame.textboxes):
+        z_map[o.id] = getattr(o, "z_index", 0)
     box_ids = {b.id for b in top_cards} | {g.id for g in dashed_groups}
     for i, (id_a, rect_a) in enumerate(canvas_rects):
         for id_b, rect_b in canvas_rects[i + 1 :]:
             if id_a in box_ids and id_b in box_ids:
                 continue  # Already checked in box/group section above
+            if z_map.get(id_a, 0) != z_map.get(id_b, 0):
+                continue  # Intentional z-index layering
             if _overlap_area(rect_a, rect_b):
                 findings.append(
                     AuditFinding(

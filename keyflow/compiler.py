@@ -733,35 +733,45 @@ def _render_slide(
         contents.extend(_make_comparison_matrix_objects(slide_prefix, frame.comparison_matrix, theme))
 
     connector_rects: dict[str, BoxRect] = {}
+    layered_items: list[tuple[int, int, list[SlideObject]]] = []
+    seq = 0
     for shape in frame.shapes:
-        contents.append(_make_shape_object(slide_prefix, shape, theme))
+        sh_obj = _make_shape_object(slide_prefix, shape, theme)
+        if getattr(shape, "rotation", 0.0) and sh_obj.object.shape is not None:
+            sh_obj.object.shape.geometry.angle = float(shape.rotation)
+        layered_items.append((getattr(shape, "z_index", 0), seq, [sh_obj]))
+        seq += 1
         connector_rects[shape.id] = shape.rect
 
     for chart in frame.charts:
-        contents.extend(_make_chart_objects(slide_prefix, chart, theme))
+        layered_items.append((getattr(chart, "z_index", 0), seq, _make_chart_objects(slide_prefix, chart, theme)))
+        seq += 1
         connector_rects[chart.id] = chart.rect
 
     for table in frame.tables:
-        contents.extend(_make_table_objects(slide_prefix, table, theme))
+        layered_items.append((getattr(table, "z_index", 0), seq, _make_table_objects(slide_prefix, table, theme)))
+        seq += 1
         connector_rects[table.id] = table.rect
 
     for tb in frame.textboxes:
         t_color = _rgba(hex_to_rgb_float(tb.color_hex)) if tb.color_hex else _rgba(theme.text_rgb)
         t_fill = Fill(color=Color(rgba=_rgba(hex_to_rgb_float(tb.fill_hex)))) if tb.fill_hex else None
-        contents.append(
-            _make_textbox(
-                f"{slide_prefix}_{tb.id}",
-                tb.rect,
-                tb.text,
-                font_name=theme.font_body,
-                font_size=tb.font_size,
-                color=t_color,
-                bold=tb.bold,
-                opacity=tb.opacity,
-                fill=t_fill,
-                alignment=_ALIGN_MAP.get(tb.align, AlignmentType.CENTER),
-            )
+        tb_obj = _make_textbox(
+            f"{slide_prefix}_{tb.id}",
+            tb.rect,
+            tb.text,
+            font_name=theme.font_body,
+            font_size=tb.font_size,
+            color=t_color,
+            bold=tb.bold,
+            opacity=tb.opacity,
+            fill=t_fill,
+            alignment=_ALIGN_MAP.get(tb.align, AlignmentType.CENTER),
         )
+        if getattr(tb, "rotation", 0.0) and tb_obj.object.textbox is not None:
+            tb_obj.object.textbox.geometry.angle = float(tb.rotation)
+        layered_items.append((getattr(tb, "z_index", 0), seq, [tb_obj]))
+        seq += 1
         connector_rects[tb.id] = tb.rect
 
     caption_color = _rgba(theme.arrow_rgb)
@@ -774,8 +784,19 @@ def _render_slide(
             caption_color=caption_color,
             corner_base_px=corner_px,
         )
-        contents.extend(objs)
+        if getattr(box, "rotation", 0.0):
+            for s_obj in objs:
+                if s_obj.object.shape is not None:
+                    s_obj.object.shape.geometry.angle = float(box.rotation)
+                elif s_obj.object.textbox is not None:
+                    s_obj.object.textbox.geometry.angle = float(box.rotation)
+        layered_items.append((getattr(box, "z_index", 0), seq, objs))
+        seq += 1
         connector_rects[box.id] = box.rect
+
+    layered_items.sort(key=lambda item: (item[0], item[1]))
+    for _, _, item_objs in layered_items:
+        contents.extend(item_objs)
 
     for edge in frame.edges:
         if edge.from_id in connector_rects and edge.to_id in connector_rects:
