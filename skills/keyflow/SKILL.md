@@ -21,8 +21,18 @@ Before authoring any Scene Graph JSON, produce a concise **Stage 0 Narrative Bri
    - `inference`: author interpretation or hypothesis — **never flatten inferences into settled facts**; mark them in `badge` (e.g., `"THESIS"`, `"CLAIM"`, `"INFERENCE"`) or `note`
    - `counter_evidence`: caveats, bottlenecks, or competing explanations
    - `conclusion`: synthesized takeaway conditioned strictly on the stated qualifiers
-2. **Choose Visual Expression From Logic First (And Isolate Metric Scopes)**:
-   Decide the visual form by reasoning structure BEFORE reaching for cards, and vary visual rhythm across scenes. You have **two complementary modes** controlled by top-level `use_templates` (defaults to `false`):
+2. **Define Scene `Visual Intent` Before Picking Objects (Anti-Component-Templating)**:
+   Never default to a cookie-cutter "KPI strip + column chart + diagram/table + 2-column callout" recipe across different documents. First ask **"What visual metaphor lets the audience *see* this scene's logic without reading?"**, then pick the native primitive that embodies it:
+   - **Price / Value Gap or Headline Verdict**: Giant standalone `textbox` (`64–110pt`) + `proportion_bar` range marker (e.g., 52-week position), rather than 3 identical KPI cards.
+   - **Earnings / Cash / Cost Bridge**: `waterfall` chart (`chart_type: "waterfall"`) showing how revenue turns into operating/net profit, rather than a static table.
+   - **Multi-Year Fade / Trajectory**: `line` or `area` chart for continuous 5–10 year curves (reserve `column`/`bar` for discrete categorical comparisons).
+   - **Methodology / Multi-Variable Trade-off**: `comparison_matrix` with `formula`, `↑`/`↓` trends, and `takeaway`, rather than two prose callouts.
+   - **Multi-Perspective / Risk-Catalyst Tension**: `hub_spoke` (center verdict + radiating catalysts/risks) or `flow_dag` (causal fork-join), rather than side-by-side boxes.
+   - **In-Place Whole-to-Parts Decomposition**: `node.children` (`child_layout: "grid"`) inside `diagram` or `horizontal_flow`, only when a concept genuinely decomposes into sub-capabilities.
+   - **Nonlinear Process / Retry Loops**: `sequence_timeline` (or `diagram_layout: "sequence"`).
+   Use `snippets` (`keyflow snippets`) only as structural scaffolding when helpful—never as a rigid template that forces every article into the same 4–5 slide molds.
+
+   You have **two complementary modes** controlled by top-level `use_templates` (defaults to `false`):
    - **Freeform Compositional Canvas (`layout: "canvas"`, default `use_templates: false`) — Preferred for Heterogeneous / Analytical Scenes**:
      Combine heterogeneous visual objects on a 12-column `grid` partitioned into non-overlapping `regions` (`col`, `row`, `col_span`, `row_span`, `arrange`: `"stack" | "row" | "grid"`, `title`, `frame`), keeping **<= 3–4 regions** and **<= 5–6 top-level objects** per slide for generous breathing room:
      - `card` / `callout`: concise structural anchors or highlighted conclusions (`label`, optional `badge`, `metric`, `sublabel`, `variant`, `weight`)
