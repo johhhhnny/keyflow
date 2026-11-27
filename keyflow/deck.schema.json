@@ -195,6 +195,37 @@
                 },
                 "svg_path": { "type": "string" },
                 "dashed": { "type": "boolean", "default": false },
+                "z_index": { "type": "integer", "default": 0 },
+                "group": { "type": "string", "minLength": 1 },
+                "geometry": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["x", "y", "width", "height"],
+                  "properties": {
+                    "x": { "type": "number", "minimum": 0, "maximum": 1 },
+                    "y": { "type": "number", "minimum": 0, "maximum": 1 },
+                    "width": { "type": "number", "minimum": 0.01, "maximum": 1 },
+                    "height": { "type": "number", "minimum": 0.01, "maximum": 1 },
+                    "rotation": { "type": "number", "minimum": -360, "maximum": 360, "default": 0 }
+                  }
+                },
+                "anchor": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["to"],
+                  "properties": {
+                    "to": { "type": "string", "minLength": 1 },
+                    "point": {
+                      "type": "string",
+                      "enum": ["center", "top", "bottom", "left", "right", "top_left", "top_right", "bottom_left", "bottom_right"],
+                      "default": "center"
+                    },
+                    "offset_x": { "type": "number", "minimum": -1, "maximum": 1, "default": 0 },
+                    "offset_y": { "type": "number", "minimum": -1, "maximum": 1, "default": 0 },
+                    "width": { "type": "number", "minimum": 0.01, "maximum": 1 },
+                    "height": { "type": "number", "minimum": 0.01, "maximum": 1 }
+                  }
+                },
                 "gauge": {
                   "type": "object",
                   "additionalProperties": false,

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from keyflow.schema.models import (
+    AnchorSpec,
     CanvasObjectSpec,
     ChartSeriesSpec,
     ChartSpec,
@@ -24,6 +25,7 @@ from keyflow.schema.models import (
     ProportionItemSpec,
     RegionSpec,
     SceneSpec,
+    SpatialGeometrySpec,
     StoryClaimSpec,
     StoryModelSpec,
     StyleConfigSpec,
@@ -358,6 +360,31 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
                     svg_path=str(obj_raw["svg_path"]) if obj_raw.get("svg_path") else None,
                     dashed=bool(obj_raw.get("dashed", False)),
                     gauge=obj_raw.get("gauge") if isinstance(obj_raw.get("gauge"), dict) else None,
+                    geometry=(
+                        SpatialGeometrySpec(
+                            x=float(obj_raw["geometry"]["x"]),
+                            y=float(obj_raw["geometry"]["y"]),
+                            width=float(obj_raw["geometry"]["width"]),
+                            height=float(obj_raw["geometry"]["height"]),
+                            rotation=float(obj_raw["geometry"].get("rotation", 0.0)),
+                        )
+                        if isinstance(obj_raw.get("geometry"), dict)
+                        else None
+                    ),
+                    z_index=int(obj_raw.get("z_index", 0)),
+                    group=str(obj_raw["group"]) if obj_raw.get("group") else None,
+                    anchor=(
+                        AnchorSpec(
+                            to=str(obj_raw["anchor"]["to"]),
+                            point=str(obj_raw["anchor"].get("point", "center")),
+                            offset_x=float(obj_raw["anchor"].get("offset_x", 0.0)),
+                            offset_y=float(obj_raw["anchor"].get("offset_y", 0.0)),
+                            width=float(obj_raw["anchor"]["width"]) if obj_raw["anchor"].get("width") is not None else None,
+                            height=float(obj_raw["anchor"]["height"]) if obj_raw["anchor"].get("height") is not None else None,
+                        )
+                        if isinstance(obj_raw.get("anchor"), dict)
+                        else None
+                    ),
                     chart=chart_spec,
                     table=table_spec,
                     diagram=diagram_spec,

@@ -185,6 +185,44 @@ def _validate_canvas_scene(
             errors.append(f"{prefix}.objects['{oid}'].dashed: must be a boolean.")
         if obj.get("align") is not None and not _is_in(obj["align"], {"left", "center", "right"}):
             errors.append(f"{prefix}.objects['{oid}'].align: invalid align '{obj['align']}'.")
+        if obj.get("z_index") is not None and _as_int(obj["z_index"]) is None:
+            errors.append(f"{prefix}.objects['{oid}'].z_index: must be an integer.")
+        if obj.get("group") is not None and (not isinstance(obj["group"], str) or not obj["group"]):
+            errors.append(f"{prefix}.objects['{oid}'].group: must be a non-empty string.")
+        if obj.get("geometry") is not None:
+            geo = obj["geometry"]
+            if not isinstance(geo, dict):
+                errors.append(f"{prefix}.objects['{oid}'].geometry: must be an object.")
+            else:
+                for gk in ("x", "y", "width", "height"):
+                    gv = _as_float(geo.get(gk))
+                    lo = 0.01 if gk in ("width", "height") else 0.0
+                    if gv is None or gv < lo or gv > 1.0:
+                        errors.append(f"{prefix}.objects['{oid}'].geometry.{gk}: must be in [{lo}, 1.0].")
+                if geo.get("rotation") is not None:
+                    rot = _as_float(geo["rotation"])
+                    if rot is None or rot < -360.0 or rot > 360.0:
+                        errors.append(f"{prefix}.objects['{oid}'].geometry.rotation: must be in [-360, 360].")
+        if obj.get("anchor") is not None:
+            anc = obj["anchor"]
+            if not isinstance(anc, dict):
+                errors.append(f"{prefix}.objects['{oid}'].anchor: must be an object.")
+            else:
+                if not isinstance(anc.get("to"), str) or not anc.get("to"):
+                    errors.append(f"{prefix}.objects['{oid}'].anchor: missing 'to' object id.")
+                pts = {"center", "top", "bottom", "left", "right", "top_left", "top_right", "bottom_left", "bottom_right"}
+                if anc.get("point") is not None and not _is_in(anc["point"], pts):
+                    errors.append(f"{prefix}.objects['{oid}'].anchor.point: invalid point '{anc['point']}'.")
+                for ak in ("offset_x", "offset_y"):
+                    if anc.get(ak) is not None:
+                        av = _as_float(anc[ak])
+                        if av is None or av < -1.0 or av > 1.0:
+                            errors.append(f"{prefix}.objects['{oid}'].anchor.{ak}: must be in [-1.0, 1.0].")
+                for ak in ("width", "height"):
+                    if anc.get(ak) is not None:
+                        av = _as_float(anc[ak])
+                        if av is None or av < 0.01 or av > 1.0:
+                            errors.append(f"{prefix}.objects['{oid}'].anchor.{ak}: must be in [0.01, 1.0].")
 
         for hex_field in ("fill_hex", "border_hex", "color_hex"):
             if obj.get(hex_field) is not None and not is_valid_hex_color(str(obj[hex_field])):
@@ -326,6 +364,25 @@ def _validate_canvas_scene(
                     errors=errors,
                     warnings=warnings,
                 )
+
+    # Validate anchor targets & detect anchor cycles
+    for oid, obj in object_map.items():
+        anc = obj.get("anchor")
+        if not isinstance(anc, dict):
+            continue
+        target_id = anc.get("to")
+        if isinstance(target_id, str) and target_id not in object_map:
+            errors.append(f"{prefix}.objects['{oid}'].anchor: unknown target '{target_id}'.")
+            continue
+        seen_chain = {oid}
+        cur = target_id
+        while isinstance(cur, str) and cur in object_map:
+            if cur in seen_chain:
+                errors.append(f"{prefix}.objects['{oid}'].anchor: cyclic anchor dependency involving '{cur}'.")
+                break
+            seen_chain.add(cur)
+            next_anc = object_map[cur].get("anchor")
+            cur = next_anc.get("to") if isinstance(next_anc, dict) else None
 
     connectors = s.get("connectors", [])
     if not isinstance(connectors, list):

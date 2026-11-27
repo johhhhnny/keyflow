@@ -3086,6 +3086,117 @@ def test_visual_intent_alignment_idiom_monotony_and_outline_signals() -> None:
     assert not any(w.category == "intent_form_alignment" for w in open_rep.warnings)
 
 
+def test_p1_freeform_spatial_composition_z_index_anchor_and_rotation(tmp_path: Path) -> None:
+    from creator_studio_doc_format.core import KeyxDocument
+
+    # 1. Cyclic anchor dependency must be rejected
+    cyclic_deck = {
+        "title": "Cyclic Anchor",
+        "scenes": [
+            {
+                "id": "cyc",
+                "title": "Cycle",
+                "layout": "canvas",
+                "objects": [
+                    {"id": "a", "kind": "card", "label": "A", "anchor": {"to": "b", "point": "left"}},
+                    {"id": "b", "kind": "card", "label": "B", "anchor": {"to": "a", "point": "right"}},
+                ],
+            }
+        ],
+    }
+    cyc_val = validate_deck(cyclic_deck)
+    assert cyc_val.valid is False
+    assert any("cyclic anchor" in e for e in cyc_val.errors)
+
+    # 2. Intentional z_index layering, normalized geometry, rotation, and anchor placement
+    spatial_deck = {
+        "title": "Spatial Composition",
+        "theme": "midnight_indigo",
+        "scenes": [
+            {
+                "id": "ai_chain",
+                "title": "AI 产业链利润中心与上下游博弈",
+                "layout": "canvas",
+                "visual_intent": {
+                    "audience_takeaway": "NVIDIA commands the profit center while upstream and downstream push back.",
+                    "visual_metaphor": "Asymmetric center gravity with background profit pool",
+                },
+                "objects": [
+                    {
+                        "id": "bg_pool",
+                        "kind": "shape",
+                        "shape_type": "ellipse",
+                        "z_index": -1,
+                        "group": "center_hub",
+                        "geometry": {"x": 0.32, "y": 0.14, "width": 0.36, "height": 0.72, "rotation": 6.0},
+                        "fill_hex": "#1E293B",
+                        "border_hex": "#F59E0B",
+                        "dashed": True,
+                    },
+                    {
+                        "id": "nvda_core",
+                        "kind": "callout",
+                        "z_index": 1,
+                        "group": "center_hub",
+                        "geometry": {"x": 0.37, "y": 0.32, "width": 0.26, "height": 0.36},
+                        "badge": "PROFIT CENTER",
+                        "metric": "65.2%",
+                        "label": "NVIDIA 算力平台",
+                    },
+                    {
+                        "id": "core_note",
+                        "kind": "textbox",
+                        "z_index": 2,
+                        "group": "center_hub",
+                        "anchor": {"to": "nvda_core", "point": "bottom", "offset_y": 0.02, "width": 0.28, "height": 0.10},
+                        "text": "CUDA 生态锁定高毛利",
+                        "font_size": 18,
+                    },
+                    {
+                        "id": "upstream",
+                        "kind": "card",
+                        "z_index": 1,
+                        "surface": "accent_bar",
+                        "variant": "success",
+                        "geometry": {"x": 0.02, "y": 0.22, "width": 0.24, "height": 0.50},
+                        "label": "上游：ASML / TSMC / HBM",
+                    },
+                    {
+                        "id": "downstream",
+                        "kind": "card",
+                        "z_index": 1,
+                        "surface": "accent_bar",
+                        "variant": "warn",
+                        "geometry": {"x": 0.74, "y": 0.22, "width": 0.24, "height": 0.50},
+                        "label": "下游：云厂商自研芯片挤压",
+                    },
+                ],
+                "connectors": [
+                    {"id": "c_up", "from": "upstream", "to": "nvda_core", "label": "产能供给"},
+                    {"id": "c_dn", "from": "nvda_core", "to": "downstream", "label": "算力定价", "style": "dashed"},
+                ],
+            }
+        ],
+    }
+
+    rep = audit_deck(spatial_deck, strict=True)
+    assert rep.passed is True, [e.to_dict() for e in rep.errors]
+
+    out = tmp_path / "spatial.keyx"
+    compile_deck(spatial_deck, out)
+    assert out.exists()
+
+    with KeyxDocument.open(out) as loaded:
+        contents = loaded.payload.slides[0].contents
+        shape_ids = [c.object.shape.identifier for c in contents if c.object.shape is not None]
+        bg_idx = next(i for i, c in enumerate(contents) if c.object.shape and c.object.shape.identifier.endswith("_bg_pool"))
+        core_idx = next(i for i, c in enumerate(contents) if c.object.shape and c.object.shape.identifier.endswith("_nvda_core"))
+        assert bg_idx < core_idx  # z_index=-1 emitted before z_index=1
+        bg_shape = contents[bg_idx].object.shape
+        assert bg_shape is not None and bg_shape.geometry.angle == pytest.approx(6.0, abs=0.01)
+        assert any("nvda_core" in sid for sid in shape_ids)
+
+
 def test_batch1_visual_building_blocks(tmp_path: Path) -> None:
     from creator_studio_doc_format.core import KeyxDocument
 

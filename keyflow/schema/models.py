@@ -267,6 +267,29 @@ class DiagramSpec:
 
 
 @dataclass(slots=True)
+class SpatialGeometrySpec:
+    """Normalized [0..1] spatial placement inside the safe canvas area."""
+
+    x: float
+    y: float
+    width: float
+    height: float
+    rotation: float = 0.0
+
+
+@dataclass(slots=True)
+class AnchorSpec:
+    """Relative placement anchored to another canvas object."""
+
+    to: str
+    point: str = "center"
+    offset_x: float = 0.0
+    offset_y: float = 0.0
+    width: float | None = None
+    height: float | None = None
+
+
+@dataclass(slots=True)
 class CanvasObjectSpec:
     """One freeform visual object aligned to native .keyx primitives."""
 
@@ -294,6 +317,10 @@ class CanvasObjectSpec:
     svg_path: str | None = None
     dashed: bool = False
     gauge: dict[str, Any] | None = None
+    geometry: SpatialGeometrySpec | None = None
+    z_index: int = 0
+    group: str | None = None
+    anchor: AnchorSpec | None = None
     chart: ChartSpec | None = None
     table: TableSpec | None = None
     diagram: DiagramSpec | None = None
