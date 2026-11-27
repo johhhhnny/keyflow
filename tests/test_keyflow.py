@@ -3197,6 +3197,68 @@ def test_p1_freeform_spatial_composition_z_index_anchor_and_rotation(tmp_path: P
         assert any("nvda_core" in sid for sid in shape_ids)
 
 
+def test_p2_visual_critic_diagnostics_non_blocking() -> None:
+    raw = {
+        "title": "Visual Critic Signals",
+        "scenes": [
+            {
+                "id": "uncrafted_stack",
+                "title": "Fallback Stack + Unmarked Forecast + Flat Table",
+                "layout": "canvas",
+                "objects": [
+                    {"id": "c1", "kind": "card", "label": "Point 1"},
+                    {"id": "c2", "kind": "card", "label": "Point 2"},
+                    {"id": "c3", "kind": "card", "label": "Point 3"},
+                    {"id": "c4", "kind": "card", "label": "Point 4"},
+                ],
+            },
+            {
+                "id": "chart_and_tbl",
+                "title": "Unmarked Forecast + Flat Table",
+                "layout": "canvas",
+                "grid": {"columns": 12, "rows": 1},
+                "regions": [
+                    {"id": "left", "col": 1, "row": 1, "col_span": 6, "row_span": 1},
+                    {"id": "right", "col": 7, "row": 1, "col_span": 6, "row_span": 1},
+                ],
+                "objects": [
+                    {
+                        "id": "rev_ch",
+                        "kind": "chart",
+                        "region": "left",
+                        "chart": {
+                            "chart_type": "column",
+                            "categories": ["2024", "2025", "2026E", "2027E"],
+                            "series": [{"name": "Rev", "values": [60, 130, 215, 414]}],
+                        },
+                    },
+                    {
+                        "id": "flat_tbl",
+                        "kind": "table",
+                        "region": "right",
+                        "table": {
+                            "headers": ["A", "B", "C", "D"],
+                            "rows": [
+                                ["1", "2", "3", "4"],
+                                ["5", "6", "7", "8"],
+                                ["9", "10", "11", "12"],
+                                ["13", "14", "15", "16"],
+                            ],
+                        },
+                    },
+                ],
+            },
+        ],
+    }
+    rep = audit_deck(raw, strict=True)
+    assert rep.passed is True
+    crit_actions = {w.suggested_action for w in rep.warnings if w.category == "design_critique"}
+    assert "design_spatial_composition" in crit_actions
+    assert "consider_estimate_from" in crit_actions
+    assert "consider_table_hierarchy" in crit_actions
+    assert all(w.tier == "critique" for w in rep.warnings if w.category == "design_critique")
+
+
 def test_batch1_visual_building_blocks(tmp_path: Path) -> None:
     from creator_studio_doc_format.core import KeyxDocument
 

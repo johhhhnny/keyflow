@@ -58,9 +58,13 @@ Before authoring any Scene Graph JSON, produce a concise **Stage 0 Narrative Bri
 
 ---
 
-## Stage 1: Design Full-State Scene Graphs (Topology & Semantics)
+## Stage 1: Design Full-State Scene Graphs (Visual Director -> Critic Loop)
 
-Translate the Stage 0 brief into clean Stage 1 diagrams. Do **not** hand-write `frames` unless custom choreography is required:
+Before finalizing Stage 1 JSON, run the **Director -> Critic** loop (see `references/visual_critic_rubric.md`):
+- **Sketch 2–3 Visual Metaphors for Pivotal Scenes**: For central thesis, value-chain conflict, or valuation synthesis slides, briefly compare 2–3 distinct compositions (e.g., asymmetric `geometry`/`anchor`/`z_index` spatial gravity vs. `football_field`/`progress_bars` scale vs. `radar`/matrix) and pick the one with the fastest 3-second comprehension.
+- **Critique Before Tweaking**: If a slide looks like "boxes stacked in a grid" with no focal point, **redesign the spatial composition** rather than tweaking font sizes.
+
+Translate the Stage 0 brief into clean Stage 1 scenes. Do **not** hand-write `frames` unless custom choreography is required:
 
 1. **Zero-Bullet Canvas (1-Line Card Default)**: Default cards should hold **only 1 short `label` line** (1–4 words / ≤ 12 CJK chars). Do **not** pack `badge + label + sublabel` onto every card by default—move explanations into `note` (Presenter Notes). Add extra text layers only when they serve an explicit visual purpose:
    - `children` in-place unpack (total -> parts decomposition across frames);

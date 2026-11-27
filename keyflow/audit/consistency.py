@@ -70,6 +70,84 @@ def _audit_intent_form_alignment(
             )
 
 
+def _audit_design_critique(
+    deck: DeckSpec,
+    scene_frames: list[tuple[str, int, list[ResolvedFrame]]],
+    findings: list[AuditFinding],
+) -> None:
+    """Emit non-blocking design_critique signals for uncrafted fallback stacks, unmarked forecasts, and flat dense tables."""
+    import re
+
+    est_cat_re = re.compile(r"^(?:FY)?\d{2,4}E$|^Y\d+E$", re.IGNORECASE)
+    for sc_idx, sc in enumerate(deck.scenes):
+        if sc.layout != "canvas":
+            continue
+        first_slide = scene_frames[sc_idx][1] if sc_idx < len(scene_frames) else 1
+        has_spatial = any(o.geometry is not None or o.anchor is not None for o in sc.objects)
+        if len(sc.objects) >= 4 and not sc.regions and not has_spatial:
+            findings.append(
+                AuditFinding(
+                    severity="warning",
+                    tier="critique",
+                    category="design_critique",
+                    slide_num=first_slide,
+                    scene_id=sc.id,
+                    frame_index=0,
+                    target_id=sc.id,
+                    message=(
+                        f"Scene '{sc.id}' places {len(sc.objects)} objects into the implicit fallback 'main' vertical stack "
+                        "without 'regions', 'geometry', or 'anchor'."
+                    ),
+                    suggestion="Consider composing intentional spatial relationships (geometry/anchor/z_index or explicit regions) instead of relying on the default stack.",
+                    suggested_action="design_spatial_composition",
+                )
+            )
+
+        for obj in sc.objects:
+            if obj.kind == "chart" and obj.chart is not None and obj.chart.estimate_from is None:
+                cats = obj.chart.categories
+                est_indices = [i for i, c in enumerate(cats) if est_cat_re.match(c.strip())]
+                if est_indices and 0 < est_indices[0] < len(cats):
+                    findings.append(
+                        AuditFinding(
+                            severity="warning",
+                            tier="critique",
+                            category="design_critique",
+                            slide_num=first_slide,
+                            scene_id=sc.id,
+                            frame_index=0,
+                            target_id=obj.id,
+                            message=f"Chart '{obj.id}' mixes historical and forecast ('{cats[est_indices[0]]}') categories without 'estimate_from'.",
+                            suggestion=f"Consider setting estimate_from={est_indices[0]} so forecast periods are visually distinguished.",
+                            suggested_action="consider_estimate_from",
+                        )
+                    )
+            elif obj.kind == "table" and obj.table is not None:
+                tb = obj.table
+                if (
+                    len(tb.rows) >= 4
+                    and len(tb.headers) >= 4
+                    and not tb.cell_tones
+                    and not tb.target_rows
+                    and not tb.highlight_rows
+                    and not tb.highlight_cols
+                ):
+                    findings.append(
+                        AuditFinding(
+                            severity="warning",
+                            tier="critique",
+                            category="design_critique",
+                            slide_num=first_slide,
+                            scene_id=sc.id,
+                            frame_index=0,
+                            target_id=obj.id,
+                            message=f"Dense table '{obj.id}' ({len(tb.rows)}x{len(tb.headers)}) has no visual hierarchy markers.",
+                            suggestion="Consider highlighting the focal row/column via target_rows, cell_tones, highlight_rows, or highlight_cols.",
+                            suggested_action="consider_table_hierarchy",
+                        )
+                    )
+
+
 def _audit_cross_page_consistency(
     deck: DeckSpec,
     scene_frames: list[tuple[str, int, list[ResolvedFrame]]],
@@ -77,6 +155,7 @@ def _audit_cross_page_consistency(
 ) -> None:
     """Detect abrupt cross-scene density jumps, variant drift, visual monotony, and card text bloat."""
     _audit_intent_form_alignment(deck, scene_frames, findings)
+    _audit_design_critique(deck, scene_frames, findings)
     # 0. Card & Callout text-layer bloat check (per-object)
     for sc_idx, sc in enumerate(deck.scenes):
         if sc.layout != "canvas":

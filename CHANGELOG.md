@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Agent-Directed Spatial Composition (`geometry`, `anchor`, `z_index`, `group`)**:
+  - Added normalized `[0..1]` spatial positioning (`geometry` with `rotation`), 9-point relative `anchor` placement with topological resolution and cycle detection, `z_index` render ordering, and `group` composition identifiers across `keyflow/schema/`, `keyflow/layouts/canvas.py`, and `keyflow/compiler.py`.
+  - Upgraded `keyflow/audit/geometry.py` to allow intentional overlap across distinct `z_index` layers while strictly catching same-layer collisions.
+- **Three-Tier Audit & Visual Critic Diagnostics**:
+  - Added `tier: "engineering" | "content" | "critique"` to `AuditFinding`; `--strict` now blocks only on `engineering` and `content` issues, keeping `critique` findings (`visual_monotony`, `card_text_bloat`, `design_critique`, `intent_form_alignment`) non-blocking.
+  - Added non-blocking `design_critique` signals for uncrafted fallback stacks, unmarked forecast series (`2026E`), and flat dense tables.
+- **Visual Director -> Critic Workflow**:
+  - Replaced closed 10-way `visual_intent` enum with open-ended structured design briefs (`audience_takeaway`, `visual_metaphor`, `visual_focus`, `relationships`, `emotional_tone`).
+  - Refactored `keyflow/outline.py` to emit objective `content_signals` without prescribing components, and added `skills/keyflow/references/visual_critic_rubric.md`.
+
+---
+
 ## [0.3.2] - 2026-11-27
 
 ### Added
