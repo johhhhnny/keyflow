@@ -11,8 +11,8 @@ SLIDE_WIDTH: int = 1920
 SLIDE_HEIGHT: int = 1080
 
 # Slide header & safe area margins (in points).
-TITLE_MARGIN_X: float = 160.0
-SUBTITLE_MARGIN_X: float = 260.0
+TITLE_MARGIN_X: float = 80.0
+SUBTITLE_MARGIN_X: float = 80.0
 SAFE_AREA_BOTTOM_MARGIN: float = 72.0
 PINNED_FLOW_GAP_BELOW: float = 20.0
 
@@ -20,8 +20,10 @@ PINNED_FLOW_GAP_BELOW: float = 20.0
 DEFAULT_TITLE_MAX_SIZE: float = 58.0
 DEFAULT_TITLE_MIN_SIZE: float = 40.0
 DEFAULT_SUBTITLE_SIZE: float = 28.0
-DEFAULT_CARD_CORNER_PX: float = 15.0
+DEFAULT_CARD_CORNER_PX: float = 8.0
 DEFAULT_ARROW_WIDTH: float = 4.5
+LINE_HEIGHT_RATIO: float = 1.45
+TYPE_SCALE_LADDER: tuple[float, ...] = (48.0, 38.0, 30.0, 24.0, 19.0, 15.0)
 
 # Color & contrast tokens.
 MUTED_CARD_ALPHA: float = 0.72

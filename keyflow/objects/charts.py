@@ -135,14 +135,14 @@ def _make_chart_header_and_legend(
     is_bar_like = chart.chart_type in ("column", "bar", "stacked_column", "stacked_bar", "waterfall")
     show_title = chart.show_title if chart.show_title is not None else (not is_bar_like)
     if chart.title and show_title:
-        title_h = 40.0
+        title_h = 48.0
         objs.append(
             _make_textbox(
                 f"{slide_prefix}_{chart.id}_title",
                 BoxRect(chart.rect.x, chart.rect.y, chart.rect.w, title_h),
                 chart.title,
                 font_name=theme.font_title,
-                font_size=24.0,
+                font_size=30.0,
                 color=_rgba(theme.title_rgb),
                 bold=True,
                 opacity=chart.opacity,
@@ -291,7 +291,7 @@ def _make_vector_chart_objects(
                             BoxRect(lx, ly, 72.0, 28.0),
                             f"{_format_chart_num(float(vis_val))}",
                             font_name=theme.font_body,
-                            font_size=15.0,
+                            font_size=20.0,
                             color=_rgba(txt_rgb),
                             bold=True,
                             opacity=chart.opacity,
@@ -315,7 +315,7 @@ def _make_vector_chart_objects(
                 BoxRect(chart.rect.x + 8.0, chart.rect.y + header_h, chart.rect.w - 16.0, 22.0),
                 f"单位：{chart.unit}",
                 font_name=theme.font_body,
-                font_size=13.5,
+                font_size=16.0,
                 color=_rgba(theme.subtitle_rgb),
                 bold=False,
                 opacity=chart.opacity,
@@ -355,7 +355,7 @@ def _make_vector_chart_objects(
                     BoxRect(gx - 38.0, inner_y + inner_h + 6.0, 76.0, 24.0),
                     _format_chart_num(tv),
                     font_name=theme.font_body,
-                    font_size=13.5,
+                    font_size=16.0,
                     color=_rgba(theme.subtitle_rgb),
                     bold=False,
                     opacity=chart.opacity,
@@ -480,7 +480,7 @@ def _make_vector_chart_objects(
                                 BoxRect(bx + 2.0, by, bw - 4.0, bar_h),
                                 _format_chart_num(v),
                                 font_name=theme.font_body,
-                                font_size=13.5,
+                                font_size=16.0,
                                 color=_rgba(txt_rgb),
                                 bold=True,
                                 opacity=chart.opacity,
@@ -522,7 +522,7 @@ def _make_vector_chart_objects(
                 BoxRect(inner_x - y_label_w - 6.0, gy - 12.0, y_label_w - 4.0, 24.0),
                 _format_chart_num(tv),
                 font_name=theme.font_body,
-                font_size=13.5,
+                font_size=16.0,
                 color=_rgba(theme.subtitle_rgb),
                 bold=False,
                 opacity=chart.opacity,
@@ -658,7 +658,7 @@ def _make_vector_chart_objects(
                             BoxRect(bx + 2.0, by, bar_w - 4.0, bh),
                             _format_chart_num(v),
                             font_name=theme.font_body,
-                            font_size=13.5,
+                            font_size=16.0,
                             color=_rgba(txt_rgb),
                             bold=True,
                             opacity=chart.opacity,

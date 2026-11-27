@@ -2953,3 +2953,64 @@ def test_p0_p1_review_fixes_fidelity_chart_centering_and_box_textbox_audit(tmp_p
         # Plot width capped at 820 inside ~1760px wide region -> centered well past x=300
         assert grid0.geometry.size.width == 820.0
         assert grid0.geometry.position.x > 300.0
+
+
+def test_design_system_elevation_modular_scale_and_theme_aesthetics() -> None:
+    from keyflow.layouts import BoxRect, PlacedBox
+    from keyflow.objects.helpers import compute_box_text_layout
+    from keyflow.themes import apply_palette_overrides, contrast_ratio, get_theme
+
+    # 1. All 3 built-in themes pass surface_separation, border_visibility, and series_distinguishability
+    for theme_name in ("slate_dark", "paper_light", "midnight_indigo"):
+        th = get_theme(theme_name)
+        assert contrast_ratio(th.card_border_rgb, th.card_fill_rgb) >= 2.9
+        assert contrast_ratio(th.subcard_fill_rgb, th.card_fill_rgb) >= 1.05
+        for i in range(len(th.segment_palette) - 1):
+            assert contrast_ratio(th.segment_palette[i], th.segment_palette[i + 1]) >= 1.35
+
+    # 2. apply_palette_overrides preserves subcard delta and accent/metric text separation
+    base = get_theme("slate_dark")
+    overridden = apply_palette_overrides(
+        base,
+        {
+            "card_fill_hex": "#22262E",
+            "title_hex": "#FFFFFF",
+            "accent_border_hex": "#38BDF8",
+        },
+    )
+    assert overridden.subcard_fill_rgb != overridden.card_fill_rgb
+    assert overridden.metric_text_rgb != overridden.title_rgb
+    assert overridden.accent_text_rgb == overridden.metric_text_rgb
+
+    # 3. 1.25 modular scale & metric does not shrink label
+    box_plain = PlacedBox(id="b1", kind="card", label="Core", variant="primary", rect=BoxRect(100, 100, 320, 140))
+    box_metric = PlacedBox(id="b2", kind="card", label="Core", metric="90%", variant="primary", rect=BoxRect(100, 100, 320, 180))
+    plain_cap = next(r for r in compute_box_text_layout(box_plain, scale=1.0) if r[0] == "caption")
+    metric_cap = next(r for r in compute_box_text_layout(box_metric, scale=1.0) if r[0] == "caption")
+    metric_num = next(r for r in compute_box_text_layout(box_metric, scale=1.0) if r[0] == "metric")
+    assert plain_cap[3] == 30.0
+    assert metric_cap[3] == 30.0
+    assert metric_num[3] == 48.0
+
+    # 4. Theme aesthetic audit catches low border contrast and close series_colors
+    bad_theme_deck = {
+        "title": "Bad Palette",
+        "palette": {
+            "card_fill_hex": "#202226",
+            "card_border_hex": "#25272B",
+            "series_colors": ["#404040", "#454545"],
+        },
+        "scenes": [
+            {
+                "id": "sc1",
+                "title": "Simple",
+                "layout": "horizontal_flow",
+                "nodes": [{"id": "n1", "label": "One"}],
+                "edges": [],
+            }
+        ],
+    }
+    rep = audit_deck(bad_theme_deck, strict=False)
+    cats = {w.category for w in rep.warnings}
+    assert "border_visibility" in cats
+    assert "series_distinguishability" in cats

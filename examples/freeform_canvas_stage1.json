@@ -4,7 +4,7 @@
   "use_templates": false,
   "palette": {
     "accent_fill_hex": "#2F5AA8",
-    "series_colors": ["#F4C44E", "#4EA8DE", "#48C78E"]
+    "series_colors": ["#F4C44E", "#2B6CB0", "#48C78E"]
   },
   "story_model": {
     "core_question": "How does KeyFlow combine freeform visual composition with Magic Move coordinate lock?",

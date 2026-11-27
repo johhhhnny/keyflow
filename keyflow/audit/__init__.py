@@ -7,6 +7,7 @@ from typing import Any
 from keyflow.audit.consistency import _audit_cross_page_consistency
 from keyflow.audit.geometry import (
     _audit_frame,
+    _audit_theme_aesthetics,
     _check_rect_bounds,
     _max_point_delta,
     _max_rect_delta,
@@ -58,6 +59,7 @@ def audit_deck(
 
     base_theme = apply_palette_overrides(get_theme(deck.theme), deck.palette)
     all_findings: list[AuditFinding] = []
+    _audit_theme_aesthetics(base_theme, scene_id=deck.scenes[0].id if deck.scenes else "", slide_num=1, findings=all_findings)
     all_frames: list[ResolvedFrame] = []
     scene_ranges: list[tuple[str, int, int]] = []
     scene_frames_meta: list[tuple[str, int, list[ResolvedFrame]]] = []
@@ -66,6 +68,8 @@ def audit_deck(
 
     for scene in deck.scenes:
         scene_theme = apply_palette_overrides(base_theme, scene.palette)
+        if scene.palette:
+            _audit_theme_aesthetics(scene_theme, scene_id=scene.id, slide_num=slide_num, findings=all_findings)
         resolved = resolve_scene(
             scene,
             deck.slide_width,

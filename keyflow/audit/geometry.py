@@ -799,3 +799,61 @@ def _audit_frame(
                     )
 
 
+def _audit_theme_aesthetics(
+    theme: ThemePreset,
+    *,
+    scene_id: str,
+    slide_num: int,
+    findings: list[AuditFinding],
+) -> None:
+    """Check surface separation, card border visibility, and chart series distinguishability."""
+    sub_ratio = contrast_ratio(theme.subcard_fill_rgb, theme.card_fill_rgb)
+    if sub_ratio < 1.05:
+        findings.append(
+            AuditFinding(
+                severity="warning",
+                category="surface_separation",
+                slide_num=slide_num,
+                scene_id=scene_id,
+                frame_index=0,
+                message=f"Subcard fill and card fill have near-zero separation (contrast {sub_ratio:.2f} < 1.05).",
+                suggestion="Offset subcard_fill_rgb from card_fill_rgb by elevation_surface_delta (±0.035).",
+                suggested_action="adjust_palette_elevation",
+            )
+        )
+
+    border_ratio = contrast_ratio(theme.card_border_rgb, theme.card_fill_rgb)
+    if border_ratio < 2.2:
+        findings.append(
+            AuditFinding(
+                severity="warning",
+                category="border_visibility",
+                slide_num=slide_num,
+                scene_id=scene_id,
+                frame_index=0,
+                message=f"Card border contrast {border_ratio:.2f} vs card fill is below 2.2.",
+                suggestion="Increase card_border_rgb contrast against card_fill_rgb (>= 3.0 recommended).",
+                suggested_action="adjust_card_border",
+            )
+        )
+
+    for idx in range(len(theme.segment_palette) - 1):
+        pair_ratio = contrast_ratio(theme.segment_palette[idx], theme.segment_palette[idx + 1])
+        if pair_ratio < 1.35:
+            findings.append(
+                AuditFinding(
+                    severity="warning",
+                    category="series_distinguishability",
+                    slide_num=slide_num,
+                    scene_id=scene_id,
+                    frame_index=0,
+                    message=(
+                        f"Adjacent segment_palette[{idx}] and [{idx + 1}] have contrast "
+                        f"{pair_ratio:.2f} (< 1.35)."
+                    ),
+                    suggestion="Reorder or space series_colors into a luminance ladder with adjacent contrast >= 1.35.",
+                    suggested_action="adjust_series_colors",
+                )
+            )
+
+

@@ -60,6 +60,9 @@ class ThemePreset:
     bg_gradient_end_rgb: tuple[int, int, int] | None = None
     bg_gradient_angle: float = 135.0
     card_corner_px: float | None = None
+    elevation_surface_delta: float = 0.035
+    elevation_border_width: float = 1.5
+    elevation_shadow: bool = False
 
 
 def _rgb_int_tuple(val: Any, field_name: str) -> tuple[int, int, int]:
@@ -132,6 +135,9 @@ def theme_from_dict(raw: Mapping[str, Any]) -> ThemePreset:
         bg_gradient_end_rgb=bg_end,
         bg_gradient_angle=float(raw.get("bg_gradient_angle", 135.0)),
         card_corner_px=float(raw["card_corner_px"]) if raw.get("card_corner_px") is not None else None,
+        elevation_surface_delta=float(raw.get("elevation_surface_delta", 0.035)),
+        elevation_border_width=float(raw.get("elevation_border_width", 1.5)),
+        elevation_shadow=bool(raw.get("elevation_shadow", False)),
     )
 
 
@@ -240,18 +246,29 @@ def apply_palette_overrides(
         if isinstance(val, str):
             updates[dst_field] = hex_to_rgb_float(val)
 
+    is_dark_bg = updates.get("bg_rgb", base.bg_rgb)[0] < 128
+
     if "accent_fill_rgb" in updates and "accent_border_rgb" not in updates:
         af = updates["accent_fill_rgb"]
         if isinstance(af, tuple) and len(af) == 3:
-            is_dark_bg = (updates.get("bg_rgb", base.bg_rgb)[0] < 128)
             delta = 0.12 if is_dark_bg else -0.12
             updates["accent_border_rgb"] = tuple(max(0.0, min(1.0, c + delta)) for c in af)
 
     if "card_fill_rgb" in updates and isinstance(updates["card_fill_rgb"], tuple):
-        updates["subcard_fill_rgb"] = updates["card_fill_rgb"]
-    if "title_rgb" in updates and isinstance(updates["title_rgb"], tuple):
-        updates["accent_text_rgb"] = updates["title_rgb"]
-        updates["metric_text_rgb"] = updates["title_rgb"]
+        cf = updates["card_fill_rgb"]
+        s_delta = base.elevation_surface_delta if is_dark_bg else -base.elevation_surface_delta
+        updates["subcard_fill_rgb"] = tuple(max(0.0, min(1.0, c + s_delta)) for c in cf)
+
+    if "accent_border_rgb" in updates and isinstance(updates["accent_border_rgb"], tuple):
+        ab = updates["accent_border_rgb"]
+        updates["accent_text_rgb"] = ab
+        updates["metric_text_rgb"] = ab
+    elif "accent_fill_rgb" in updates and isinstance(updates["accent_fill_rgb"], tuple):
+        af = updates["accent_fill_rgb"]
+        t_delta = 0.25 if is_dark_bg else -0.25
+        derived = tuple(max(0.0, min(1.0, c + t_delta)) for c in af)
+        updates["accent_text_rgb"] = derived
+        updates["metric_text_rgb"] = derived
 
     series = palette.get("series_colors")
     if isinstance(series, Sequence) and not isinstance(series, (str, bytes)):

@@ -1,12 +1,12 @@
 {
   "name": "paper_light",
   "description": "Editorial monochrome: warm paper-white & charcoal-gray scale with burnt orange as the sole accent color.",
-  "bg_rgb": [249, 248, 246],
+  "bg_rgb": [243, 241, 237],
   "bg_noise_amp": 0,
   "title_rgb": [0.10, 0.10, 0.11],
   "subtitle_rgb": [0.42, 0.42, 0.44],
-  "card_fill_rgb": [1.0, 1.0, 1.0],
-  "card_border_rgb": [0.82, 0.82, 0.80],
+  "card_fill_rgb": [0.992, 0.988, 0.980],
+  "card_border_rgb": [0.56, 0.56, 0.54],
   "subcard_fill_rgb": [0.95, 0.95, 0.94],
   "accent_fill_rgb": [0.99, 0.95, 0.92],
   "accent_border_rgb": [0.82, 0.35, 0.12],
@@ -34,14 +34,17 @@
   "trend_down_rgb": [0.28, 0.28, 0.30],
   "segment_palette": [
     [0.82, 0.35, 0.12],
-    [0.20, 0.20, 0.22],
-    [0.46, 0.46, 0.48],
-    [0.68, 0.68, 0.70],
-    [0.84, 0.84, 0.85]
+    [0.18, 0.18, 0.20],
+    [0.42, 0.42, 0.44],
+    [0.64, 0.64, 0.66],
+    [0.82, 0.82, 0.84]
   ],
   "font_title": "Helvetica Neue",
   "font_body": "PingFang SC",
-  "bg_gradient_end_rgb": [244, 242, 238],
+  "bg_gradient_end_rgb": [236, 234, 229],
   "bg_gradient_angle": 180.0,
-  "card_corner_px": 8.0
+  "card_corner_px": 8.0,
+  "elevation_surface_delta": 0.035,
+  "elevation_border_width": 2.2,
+  "elevation_shadow": false
 }

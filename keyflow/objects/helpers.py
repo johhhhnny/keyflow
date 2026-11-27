@@ -87,7 +87,7 @@ from keyflow.layouts.types import (
 )
 from keyflow.schema import NodeVariant
 from keyflow.themes import ThemePreset, contrast_ratio
-from keyflow.tokens import MUTED_CARD_ALPHA
+from keyflow.tokens import LINE_HEIGHT_RATIO, MIN_READABLE_SCALE, MUTED_CARD_ALPHA
 
 _BG_PRESET_ID = "keyflow_bg_fill"
 
@@ -148,7 +148,7 @@ def _stroke_for_box(theme: ThemePreset, variant: NodeVariant, is_subcard: bool) 
     return Stroke(
         line=Line(
             color=Color(rgba=_rgba(theme.card_border_rgb)),
-            width=1.5,
+            width=theme.elevation_border_width,
             pattern=Pattern.SOLID,
         )
     )
@@ -532,46 +532,67 @@ def _card_text_payload(
     return base_para, Text(paragraphs=paragraphs)
 
 
+def _step_down_font(
+    ladder: tuple[float, ...],
+    text: str,
+    text_w: float,
+    eff_scale: float,
+    *,
+    max_lines: int = 2,
+) -> float:
+    """Pick the largest modular font size from ladder that fits cleanly without decimal drift."""
+    start_idx = 0
+    if eff_scale < 0.76 and len(ladder) > 2:
+        start_idx = 2
+    elif eff_scale < 0.88 and len(ladder) > 1:
+        start_idx = 1
+    units = _text_units(text)
+    for sz in ladder[start_idx:]:
+        est_lines = max(1, math.ceil(units * sz * 0.56 / max(40.0, text_w)))
+        if est_lines <= max_lines:
+            return sz
+    return ladder[-1]
+
+
 def compute_box_text_layout(
     box: PlacedBox,
     *,
     scale: float,
 ) -> list[tuple[str, str, str, float, bool, BoxRect]]:
-    """Compute exact (suffix, text, role, font_size, bold, rect) for each card Textbox."""
-    eff_scale = box.font_scale if box.font_scale is not None else scale
-    font_scale = max(0.68, eff_scale)
+    """Compute exact (suffix, text, role, font_size, bold, rect) using modular scale & discrete step-down."""
+    eff_scale = max(MIN_READABLE_SCALE, box.font_scale if box.font_scale is not None else scale)
     is_sub = box.kind == "subcard"
-    base_size = 29.0 if is_sub else (30.0 if box.kind == "callout" else 34.0)
-    main_size = round(base_size * font_scale, 1)
-    if box.label:
-        max_fit = max(18.0, (box.rect.w - 24.0) / max(1.0, _text_units(box.label) * 0.56))
-        main_size = round(min(main_size, max_fit), 1)
-
     pad_x = 14.0
     text_w = max(40.0, box.rect.w - 2 * pad_x)
     text_x = box.rect.x + pad_x
 
+    label_ladder = (24.0, 19.0, 15.0) if is_sub else (30.0, 24.0, 19.0)
+    main_size = _step_down_font(label_ladder, box.label, text_w, eff_scale) if box.label else label_ladder[0]
+
+    gap_sm = 4.0 if eff_scale >= 0.85 else 3.0
+    gap_md = 6.0 if eff_scale >= 0.85 else 4.0
+
     line_specs: list[tuple[str, str, str, float, bool, float, float]] = []
     if box.badge:
-        bsz = max(14.0, round(17.5 * font_scale, 1))
-        bh = round(bsz * 1.35, 1)
-        line_specs.append(("badge", box.badge, "title", bsz, True, bh, 4.0 * font_scale))
+        bsz = 15.0
+        bh = round(bsz * LINE_HEIGHT_RATIO, 1)
+        line_specs.append(("badge", box.badge, "title", bsz, True, bh, gap_sm))
     if box.metric:
-        msz = max(32.0, round(52.0 * font_scale, 1))
+        msz = 48.0 if eff_scale >= 0.85 else 38.0
         mh = round(msz * 1.25, 1)
-        line_specs.append(("metric", box.metric, "title", msz, True, mh, 6.0 * font_scale))
+        line_specs.append(("metric", box.metric, "title", msz, True, mh, gap_md))
     if box.label:
-        lsz = max(20.0, round(main_size * 0.86, 1)) if box.metric else main_size
+        lsz = main_size
         n_lines = max(1, math.ceil(_text_units(box.label) * lsz * 0.56 / text_w))
-        lh = round(lsz * 1.35 * n_lines, 1)
+        lh = round(lsz * LINE_HEIGHT_RATIO * n_lines, 1)
         line_specs.append(("caption", box.label, "body", lsz, True, lh, 0.0))
     if box.sublabel:
-        ssz = max(15.0, round(main_size * 0.64, 1))
+        ssz = 15.0 if (is_sub or eff_scale < 0.85) else 19.0
         n_lines = max(1, math.ceil(_text_units(box.sublabel) * ssz * 0.56 / text_w))
-        sh_h = round(ssz * 1.35 * n_lines, 1)
+        sh_h = round(ssz * LINE_HEIGHT_RATIO * n_lines, 1)
         if line_specs:
             prev = line_specs[-1]
-            line_specs[-1] = (*prev[:6], 4.0 * font_scale)
+            line_specs[-1] = (*prev[:6], gap_sm)
         line_specs.append(("sublabel", box.sublabel, "body", ssz, False, sh_h, 0.0))
 
     total_h = sum(spec[5] + spec[6] for spec in line_specs)
@@ -590,13 +611,12 @@ def _make_box_objects(
     *,
     scale: float,
     caption_color: RGBA,
-    corner_base_px: float = 15.0,
+    corner_base_px: float = 8.0,
 ) -> tuple[list[SlideObject], str]:
     """Create Shape (and optional external caption/badge Textbox) for a PlacedBox."""
     obj_id = f"{slide_prefix}_{box.id}"
     objs: list[SlideObject] = []
-    eff_scale = box.font_scale if box.font_scale is not None else scale
-    font_scale = max(0.68, eff_scale)
+    eff_scale = max(MIN_READABLE_SCALE, box.font_scale if box.font_scale is not None else scale)
 
     if box.kind == "group_dashed":
         objs.append(
@@ -604,19 +624,19 @@ def _make_box_objects(
                 obj_id,
                 box.rect,
                 theme,
-                corner_px=18.0 * font_scale,
+                corner_px=max(12.0, corner_base_px + 4.0),
                 opacity=box.opacity,
             )
         )
         if box.badge:
-            badge_rect = BoxRect(box.rect.x, box.rect.y - 42.0 * font_scale, box.rect.w, 34.0 * font_scale)
+            badge_rect = BoxRect(box.rect.x, box.rect.y - 42.0 * eff_scale, box.rect.w, 34.0 * eff_scale)
             objs.append(
                 _make_textbox(
                     f"{obj_id}_badge",
                     badge_rect,
                     box.badge,
                     font_name=theme.font_title,
-                    font_size=round(20.0 * font_scale, 1),
+                    font_size=19.0 if eff_scale >= 0.85 else 15.0,
                     color=_rgba(theme.badge_text_rgb),
                     bold=True,
                     opacity=box.opacity,
@@ -629,7 +649,7 @@ def _make_box_objects(
                     box.caption_rect,
                     box.caption,
                     font_name=theme.font_body,
-                    font_size=round(30.0 * font_scale, 1),
+                    font_size=30.0 if eff_scale >= 0.85 else 24.0,
                     color=caption_color,
                     bold=True,
                     opacity=box.opacity,
@@ -638,11 +658,6 @@ def _make_box_objects(
         return objs, obj_id
 
     is_sub = box.kind == "subcard"
-    base_size = 29.0 if is_sub else (30.0 if box.kind == "callout" else 34.0)
-    main_size = round(base_size * font_scale, 1)
-    if box.label:
-        max_fit = max(18.0, (box.rect.w - 24.0) / max(1.0, _text_units(box.label) * 0.56))
-        main_size = round(min(main_size, max_fit), 1)
     surface = getattr(box, "surface", "filled")
     canvas_bg_rgb = (theme.bg_rgb[0] / 255.0, theme.bg_rgb[1] / 255.0, theme.bg_rgb[2] / 255.0)
     if surface == "borderless":
@@ -653,10 +668,10 @@ def _make_box_objects(
         fill_obj = None
         bg_rgb = canvas_bg_rgb
         if box.border_hex:
-            stroke = Stroke(line=Line(color=Color(rgba=_rgba(hex_to_rgb_float(box.border_hex))), width=1.6, pattern=Pattern.SOLID))
+            stroke = Stroke(line=Line(color=Color(rgba=_rgba(hex_to_rgb_float(box.border_hex))), width=theme.elevation_border_width, pattern=Pattern.SOLID))
         else:
             base_stroke = _stroke_for_box(theme, box.variant, is_sub)
-            stroke = Stroke(line=Line(color=base_stroke.line.color, width=1.5, pattern=Pattern.SOLID)) if base_stroke.line else base_stroke
+            stroke = Stroke(line=Line(color=base_stroke.line.color, width=theme.elevation_border_width, pattern=Pattern.SOLID)) if base_stroke.line else base_stroke
     else:
         fill_rgba = _rgba(hex_to_rgb_float(box.fill_hex)) if box.fill_hex else _fill_for_variant(theme, box.variant, is_sub)
         fill_obj = Fill(color=Color(rgba=fill_rgba))
@@ -676,7 +691,7 @@ def _make_box_objects(
             ),
             path=ShapePath(
                 bezier=BezierPath(
-                    path=_rounded_rect_path(box.rect.w, box.rect.h, corner_px=corner_base_px * font_scale),
+                    path=_rounded_rect_path(box.rect.w, box.rect.h, corner_px=corner_base_px),
                     space=_UNIT_SPACE,
                 )
             ),
