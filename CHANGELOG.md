@@ -6,6 +6,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Batch 1 & Batch 2 Visual Building Blocks**:
+  - Added `surface: "accent_bar"` for `card` / `callout` (borderless tinted fill + 4.5px left semantic accent bar).
+  - Added `table.cell_tones` (`"good" | "bad" | "neutral" | null`) for semantic cell coloring with contrast-safe text and `table.target_rows` for left target-row accent bars.
+  - Added `chart.highlight_categories` and `chart.estimate_from` across `bar`, `column`, `line`, and `area` charts (highlighting target categories, dimming/dashing forecast segments, and shading the forecast region on line/area charts).
+  - Added `chart_type: "football_field"` horizontal min–median–max range bar chart with vertical `reference_lines` (`label`, `value`, `color_hex`) and top pill badges.
+  - Added `chart_type: "radar"` multi-axis polygon spider chart with concentric grid rings, dashed benchmark polygons, and axis highlighting.
+  - Added `chart_type: "progress_bars"` horizontal capsule proportion bars with automatic top-line percentage badges.
+  - Added `gauge` mini-widgets on `card` / `callout` (`type: "ring"` circular arc progress gauge and `type: "range"` horizontal slider track with marker dot).
+- **Visual Intent Contract & Diversity Audit**:
+  - Added `scene.visual_intent` contract, `recommended_visual_intents` signals in [keyflow/outline.py](keyflow/outline.py), `intent_form_alignment` & `visual_monotony` checks in [keyflow/audit/](keyflow/audit/), and Stage 0 Visual Intent guidance in [skills/keyflow/SKILL.md](skills/keyflow/SKILL.md).
+- **Design System & Magic Move Hardening**:
+  - Added 1.25 modular typography scale, unified 80px margins, elevation tokens, and `border_visibility` / `series_distinguishability` aesthetic audits.
+  - Emitted independent per-line textboxes on cards aligned with `group_dashed` Magic Move IDs and baseline stub anchors with unified `corner_px=0.0` paths for smooth Magic Move bar growth.
+  - Added `unpack_breakdown` in-place group unpack snippet template.
+
+### Fixed
+- **Table & Typography Polish**: Unified table header row strokes, added alternating tint on `highlight_cols`, tightened text-fit factor, and prevented docked ribbon title clipping.
+- **Chart & Audit Fidelity**: Fixed `waterfall` and `comparison_matrix` takeaway contrast, centered wide charts, added box textbox geometry audits, and resolved P0 story fidelity gaps.
+
+---
+
+## [0.3.1] - 2026-11-26
+
+### Added
+- **Modular Registry Architecture & Reusable Snippets**:
+  - Modularized layout solvers, canvas object renderers, schema validators, and audit checks into registry-based packages (`keyflow/layouts/`, `keyflow/objects/`, `keyflow/schema/`, `keyflow/audit/`).
+  - Added reusable freeform canvas snippets library (`keyflow/snippets.py`), `surface` styles (`filled`, `ghost`, `borderless`), `card.align`, and canvas `sequence` diagram arcs.
+  - Unlocked custom `.json` theme paths and style overrides in `keyflow-mcp`, plus cross-page consistency checks and benchmark suite.
+
+### Changed
+- **Theme Visual Differentiation**: Differentiated `midnight_indigo`, `paper_light`, and `slate_dark` visual languages (including monochrome + single-accent refinement and `paper_light` orange contrast boost).
+
+### Fixed
+- **MCP Security Hardening**: Hardened MCP path boundaries, isolated builtin snippets, and capped JSON input limits.
+
+---
+
 ## [0.3.0] - 2026-11-26
 
 ### Added
