@@ -222,6 +222,9 @@ class PlacedChart:
     opacity: float = 1.0
     render_mode: str = "auto"
     use_vector: bool = False
+    highlight_categories: tuple[str, ...] = ()
+    estimate_from: int | None = None
+    reference_lines: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -235,6 +238,8 @@ class PlacedTable:
     visible_cols: int
     highlight_cols: tuple[int, ...] = ()
     highlight_rows: tuple[int, ...] = ()
+    target_rows: tuple[int, ...] = ()
+    cell_tones: tuple[tuple[str | None, ...], ...] = ()
     opacity: float = 1.0
 
 

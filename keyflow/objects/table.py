@@ -37,7 +37,7 @@ from creator_studio_doc_format.core import (
 )
 
 from keyflow.layouts.types import BoxRect, PlacedTable
-from keyflow.objects.helpers import _make_textbox, _readable_text_rgb, _rgba
+from keyflow.objects.helpers import _make_solid_card, _make_textbox, _readable_text_rgb, _rgba
 from keyflow.objects.registry import register_object_renderer
 from keyflow.themes import ThemePreset
 
@@ -109,6 +109,30 @@ def _make_table_objects(slide_prefix: str, table: PlacedTable, theme: ThemePrese
             character_fill=Fill(color=Color(rgba=_rgba(hl_text_rgb))),
         ),
     )
+    tone_fill_map = {
+        "good": Fill(color=Color(rgba=_rgba(theme.success_fill_rgb))),
+        "bad": Fill(color=Color(rgba=_rgba(theme.warn_fill_rgb))),
+    }
+    tone_text_map = {
+        "good": ParagraphProperties(
+            alignment=AlignmentType.CENTER,
+            character_properties=CharacterProperties(
+                font_name=theme.font_body,
+                font_size=18.0,
+                bold=False,
+                character_fill=Fill(color=Color(rgba=_rgba(_readable_text_rgb(theme.success_fill_rgb, theme.text_rgb)))),
+            ),
+        ),
+        "bad": ParagraphProperties(
+            alignment=AlignmentType.CENTER,
+            character_properties=CharacterProperties(
+                font_name=theme.font_body,
+                font_size=18.0,
+                bold=False,
+                character_fill=Fill(color=Color(rgba=_rgba(_readable_text_rgb(theme.warn_fill_rgb, theme.text_rgb)))),
+            ),
+        ),
+    }
 
     col_headers = [
         ColumnHeader(
@@ -144,20 +168,28 @@ def _make_table_objects(slide_prefix: str, table: PlacedTable, theme: ThemePrese
     for r_idx, raw_row in enumerate(table.rows):
         row_visible = r_idx < table.visible_rows
         is_hl_row = r_idx in table.highlight_rows
+        row_tones = table.cell_tones[r_idx] if r_idx < len(table.cell_tones) else ()
         cells: list[Cell] = []
         for c_idx in range(n_cols):
             val = raw_row[c_idx] if (row_visible and c_idx < table.visible_cols and c_idx < len(raw_row)) else ""
             is_hl = is_hl_row or (c_idx in table.highlight_cols)
             hl_cell_fill = highlight_fill_alt if (r_idx % 2 == 1) else highlight_fill
+            tone = row_tones[c_idx] if (row_visible and c_idx < len(row_tones)) else None
+            if tone in tone_fill_map:
+                cell_fill = tone_fill_map[tone]
+                cell_tprops = tone_text_map[tone]
+            else:
+                cell_fill = hl_cell_fill if is_hl else body_fill
+                cell_tprops = highlight_text_props if is_hl else body_text_props
             cells.append(
                 Cell(
                     value=val,
                     column_index=c_idx,
                     cell_properties=CellProperties(
-                        fill=hl_cell_fill if is_hl else body_fill,
+                        fill=cell_fill,
                         vertical_alignment=VerticalAlignmentType.CENTER,
                     ),
-                    text_properties=highlight_text_props if is_hl else body_text_props,
+                    text_properties=cell_tprops,
                 )
             )
         content_rows.append(
@@ -209,6 +241,18 @@ def _make_table_objects(slide_prefix: str, table: PlacedTable, theme: ThemePrese
         content=content_rows,
     )
     objs.append(SlideObject(object=CanvasObject(table=tbl)))
+    for r_idx in table.target_rows:
+        if 0 <= r_idx < table.visible_rows:
+            objs.append(
+                _make_solid_card(
+                    f"{slide_prefix}_{table.id}_target_{r_idx}",
+                    BoxRect(table_rect.x, table_rect.y + (r_idx + 1) * row_h + 1.0, 4.5, max(4.0, row_h - 2.0)),
+                    fill_rgb=_rgba(theme.accent_border_rgb),
+                    stroke=Stroke(empty=True),
+                    corner_px=1.5,
+                    opacity=table.opacity,
+                )
+            )
     return objs
 
 

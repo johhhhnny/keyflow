@@ -297,6 +297,9 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
                     axis_max=float(ch_raw["axis_max"]) if ch_raw.get("axis_max") is not None else None,
                     reveal=ch_raw.get("reveal", "whole"),
                     render_mode=ch_raw.get("render_mode", "auto"),
+                    highlight_categories=[str(c) for c in ch_raw.get("highlight_categories", [])],
+                    estimate_from=int(ch_raw["estimate_from"]) if ch_raw.get("estimate_from") is not None else None,
+                    reference_lines=[dict(r) for r in ch_raw.get("reference_lines", []) if isinstance(r, dict)],
                 )
 
             table_spec: TableSpec | None = None
@@ -308,6 +311,11 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
                     title=str(tb_raw["title"]) if tb_raw.get("title") else None,
                     highlight_cols=[int(i) for i in tb_raw.get("highlight_cols", [])],
                     highlight_rows=[int(i) for i in tb_raw.get("highlight_rows", [])],
+                    target_rows=[int(i) for i in tb_raw.get("target_rows", [])],
+                    cell_tones=[
+                        [str(t) if t is not None else None for t in row]
+                        for row in tb_raw.get("cell_tones", [])
+                    ],
                     reveal=tb_raw.get("reveal", "whole"),
                 )
 

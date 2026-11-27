@@ -34,7 +34,7 @@ def _validate_nodes_and_edges(
 ) -> tuple[dict[str, dict[str, Any]], set[str]]:
     valid_child_layouts = {"row", "column", "grid"}
     valid_variants = {"primary", "accent", "muted", "success", "warn"}
-    valid_surfaces = {"filled", "ghost", "borderless"}
+    valid_surfaces = {"filled", "ghost", "borderless", "accent_bar"}
     node_map: dict[str, dict[str, Any]] = {}
     node_order: list[str] = []
 

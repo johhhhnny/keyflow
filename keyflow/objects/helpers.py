@@ -441,6 +441,11 @@ def _card_text_payload(
         main_rgb = hex_to_rgb_float(box.color_hex)
     elif bg_rgb is not None:
         main_rgb = _readable_text_rgb(bg_rgb, theme.text_rgb)
+    elif surface == "accent_bar":
+        fill_rgba = _rgba(hex_to_rgb_float(box.fill_hex)) if box.fill_hex else _fill_for_variant(theme, box.variant, is_sub)
+        fill_obj = Fill(color=Color(rgba=RGBA(red=fill_rgba.red, green=fill_rgba.green, blue=fill_rgba.blue, alpha=0.65)))
+        bg_rgb = (fill_rgba.red, fill_rgba.green, fill_rgba.blue)
+        stroke = Stroke(empty=True)
     else:
         main_rgb = theme.text_rgb
     text_rgba = _rgba(main_rgb)
@@ -562,7 +567,8 @@ def compute_box_text_layout(
     """Compute exact (suffix, text, role, font_size, bold, rect) using modular scale & discrete step-down."""
     eff_scale = max(MIN_READABLE_SCALE, box.font_scale if box.font_scale is not None else scale)
     is_sub = box.kind == "subcard"
-    pad_x = 14.0
+    surface = getattr(box, "surface", "filled")
+    pad_x = 18.0 if surface == "accent_bar" else 14.0
     text_w = max(40.0, box.rect.w - 2 * pad_x)
     text_x = box.rect.x + pad_x
 
@@ -672,6 +678,11 @@ def _make_box_objects(
         else:
             base_stroke = _stroke_for_box(theme, box.variant, is_sub)
             stroke = Stroke(line=Line(color=base_stroke.line.color, width=theme.elevation_border_width, pattern=Pattern.SOLID)) if base_stroke.line else base_stroke
+    elif surface == "accent_bar":
+        fill_rgba = _rgba(hex_to_rgb_float(box.fill_hex)) if box.fill_hex else _fill_for_variant(theme, box.variant, is_sub)
+        fill_obj = Fill(color=Color(rgba=RGBA(red=fill_rgba.red, green=fill_rgba.green, blue=fill_rgba.blue, alpha=0.65)))
+        bg_rgb = (fill_rgba.red, fill_rgba.green, fill_rgba.blue)
+        stroke = Stroke(empty=True)
     else:
         fill_rgba = _rgba(hex_to_rgb_float(box.fill_hex)) if box.fill_hex else _fill_for_variant(theme, box.variant, is_sub)
         fill_obj = Fill(color=Color(rgba=fill_rgba))
@@ -700,6 +711,23 @@ def _make_box_objects(
             opacity=box.opacity,
         )
         objs.append(SlideObject(object=CanvasObject(shape=sh)))
+        if surface == "accent_bar":
+            bar_color_map = {
+                "accent": theme.accent_border_rgb,
+                "success": theme.success_border_rgb,
+                "warn": theme.warn_border_rgb,
+            }
+            bar_rgb = hex_to_rgb_float(box.border_hex) if box.border_hex else bar_color_map.get(box.variant, theme.accent_border_rgb)
+            objs.append(
+                _make_solid_card(
+                    f"{obj_id}_bar",
+                    BoxRect(box.rect.x, box.rect.y, 4.5, box.rect.h),
+                    fill_rgb=_rgba(bar_rgb),
+                    stroke=Stroke(empty=True),
+                    corner_px=2.0,
+                    opacity=box.opacity,
+                )
+            )
 
     # Emit one independent Textbox per line (badge, metric, caption/label, sublabel)
     # so cards can be paced line-by-line and match group_dashed _badge/_caption IDs in Magic Move.

@@ -3053,3 +3053,117 @@ def test_visual_intent_alignment_idiom_monotony_and_outline_signals() -> None:
     cats = {w.category for w in rep.warnings}
     assert "intent_form_alignment" in cats
     assert "visual_monotony" in cats
+
+
+def test_batch1_visual_building_blocks(tmp_path: Path) -> None:
+    from creator_studio_doc_format.core import KeyxDocument
+
+    raw = {
+        "title": "Batch 1 Visual Blocks",
+        "theme": "midnight_indigo",
+        "scenes": [
+            {
+                "id": "batch1_demo",
+                "title": "NVDA Batch 1 Building Blocks",
+                "layout": "canvas",
+                "grid": {"columns": 12, "rows": 2, "gap": 24},
+                "regions": [
+                    {"id": "bull_zone", "col": 1, "row": 1, "col_span": 6, "row_span": 1},
+                    {"id": "tbl_zone", "col": 7, "row": 1, "col_span": 6, "row_span": 1},
+                    {"id": "col_zone", "col": 1, "row": 2, "col_span": 6, "row_span": 1},
+                    {"id": "ff_zone", "col": 7, "row": 2, "col_span": 6, "row_span": 1},
+                ],
+                "objects": [
+                    {
+                        "id": "bull_card",
+                        "kind": "card",
+                        "region": "bull_zone",
+                        "surface": "accent_bar",
+                        "variant": "success",
+                        "label": "看多逻辑",
+                        "note": "DCF 中值 $288.24 较现价 $162.85 具备显著安全边际",
+                    },
+                    {
+                        "id": "peer_tbl",
+                        "kind": "table",
+                        "region": "tbl_zone",
+                        "table": {
+                            "title": "Peer Multiples",
+                            "headers": ["Ticker", "P/E", "Margin"],
+                            "rows": [
+                                ["NVDA", "20.3", "65.2%"],
+                                ["AMD", "115.0", "17.7%"],
+                            ],
+                            "target_rows": [0],
+                            "cell_tones": [
+                                [None, "good", "good"],
+                                [None, "bad", "bad"],
+                            ],
+                        },
+                    },
+                    {
+                        "id": "rev_col",
+                        "kind": "chart",
+                        "region": "col_zone",
+                        "chart": {
+                            "chart_type": "column",
+                            "title": "Revenue History + Est",
+                            "categories": ["2024", "2025", "2026E", "2027E"],
+                            "series": [{"name": "Rev", "values": [60.9, 130.5, 215.9, 414.4]}],
+                            "highlight_categories": ["2025"],
+                            "estimate_from": 2,
+                        },
+                    },
+                    {
+                        "id": "val_ff",
+                        "kind": "chart",
+                        "region": "ff_zone",
+                        "chart": {
+                            "chart_type": "football_field",
+                            "title": "Valuation Football Field",
+                            "unit": "USD",
+                            "categories": ["DCF", "EV/EBITDA"],
+                            "series": [
+                                {"name": "Low", "values": [190.0, 380.0]},
+                                {"name": "High", "values": [410.0, 680.0]},
+                                {"name": "Mid", "values": [288.2, 543.2]},
+                            ],
+                            "highlight_categories": ["DCF"],
+                            "reference_lines": [
+                                {"label": "Current", "value": 162.85, "color_hex": "#F59E0B"},
+                                {"label": "Target", "value": 288.24, "color_hex": "#10B981"},
+                            ],
+                        },
+                    },
+                ],
+            }
+        ],
+    }
+
+    val = validate_deck(raw)
+    assert val.valid is True, val.errors
+
+    out = tmp_path / "batch1.keyx"
+    compile_deck(raw, out)
+    assert out.exists()
+
+    with KeyxDocument.open(out) as loaded:
+        shapes = [
+            obj.object.shape
+            for obj in loaded.payload.slides[0].contents
+            if obj.object.shape is not None
+        ]
+        ids = {s.identifier for s in shapes}
+        # 1. accent_bar emits left bar shape
+        assert any(i.endswith("_bull_card_bar") for i in ids)
+        # 2. target_rows emits left accent bar on table
+        assert any(i.endswith("_peer_tbl_target_0") for i in ids)
+        # 3. estimate_from dims 2026E / 2027E bars vs historical 2024
+        hist_bar = next(s for s in shapes if "_rev_col_c_0_0" in s.identifier)
+        est_bar = next(s for s in shapes if "_rev_col_c_0_2" in s.identifier)
+        assert est_bar.opacity < hist_bar.opacity
+        # 4. football_field emits range bars, median tick, and reference lines
+        assert any("_val_ff_ff_bar_0" in i for i in ids)
+        assert any("_val_ff_ff_mid_0" in i for i in ids)
+        assert any("_val_ff_ff_ref_0" in i for i in ids)
+        assert any("_val_ff_ff_ref_1" in i for i in ids)

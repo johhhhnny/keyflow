@@ -27,7 +27,7 @@ LayoutMode = Literal[
 ]
 NodeKind = Literal["card", "group_dashed"]
 NodeVariant = Literal["primary", "accent", "muted", "success", "warn"]
-SurfaceStyle = Literal["filled", "ghost", "borderless"]
+SurfaceStyle = Literal["filled", "ghost", "borderless", "accent_bar"]
 ChildLayout = Literal["row", "column", "grid"]
 CaptionPosition = Literal["bottom", "top", "inside"]
 EdgeStyle = Literal["solid", "dashed"]
@@ -37,7 +37,7 @@ EvidenceType = Literal["thesis", "fact", "relation", "inference", "counter_evide
 ConfidenceLevel = Literal["high", "medium", "low"]
 RegionArrange = Literal["stack", "row", "grid"]
 CanvasObjectKind = Literal["chart", "table", "card", "textbox", "shape", "callout", "diagram"]
-ChartType = Literal["column", "bar", "pie", "donut", "line", "area", "stacked_column", "stacked_bar", "scatter", "waterfall"]
+ChartType = Literal["column", "bar", "pie", "donut", "line", "area", "stacked_column", "stacked_bar", "scatter", "waterfall", "football_field"]
 ChartReveal = Literal["whole", "by_series", "by_category"]
 ChartRenderMode = Literal["auto", "vector", "native"]
 TableReveal = Literal["whole", "by_row", "by_column"]
@@ -238,6 +238,9 @@ class ChartSpec:
     axis_max: float | None = None
     reveal: ChartReveal = "whole"
     render_mode: ChartRenderMode = "auto"
+    highlight_categories: list[str] = field(default_factory=list)
+    estimate_from: int | None = None
+    reference_lines: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -249,6 +252,8 @@ class TableSpec:
     title: str | None = None
     highlight_cols: list[int] = field(default_factory=list)
     highlight_rows: list[int] = field(default_factory=list)
+    target_rows: list[int] = field(default_factory=list)
+    cell_tones: list[list[str | None]] = field(default_factory=list)
     reveal: TableReveal = "whole"
 
 

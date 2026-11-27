@@ -302,6 +302,16 @@ def _make_vector_chart_objects(
 
     ax_min = float(chart.axis_min if chart.axis_min is not None else 0.0)
     ax_max = float(chart.axis_max if chart.axis_max is not None else 1.0)
+    if chart.chart_type == "football_field" and chart.reference_lines:
+        ref_vals = [
+            float(r["value"])
+            for r in chart.reference_lines
+            if isinstance(r, dict) and r.get("value") is not None
+        ]
+        if ref_vals:
+            r_min, r_max = min(ref_vals), max(ref_vals)
+            ax_min = min(ax_min, r_min * 0.92 if r_min > 0 else r_min * 1.08)
+            ax_max = max(ax_max, r_max * 1.08 if r_max > 0 else r_max * 0.92)
     if ax_max <= ax_min:
         ax_max = ax_min + 1.0
     ax_span = ax_max - ax_min
@@ -322,6 +332,178 @@ def _make_vector_chart_objects(
                 alignment=AlignmentType.RIGHT,
             )
         )
+
+    if chart.chart_type == "football_field":
+        cat_label_w = min(
+            chart.rect.w * 0.34,
+            max(118.0, max((_text_units(c) * 10.5 + 18.0 for c in chart.categories), default=118.0)),
+        )
+        ref_top_pad = 36.0 if chart.reference_lines else 8.0
+        inner_x = chart.rect.x + cat_label_w + 16.0
+        inner_y = chart.rect.y + header_h + (24.0 if chart.unit else 6.0) + ref_top_pad
+        inner_w = max(120.0, (chart.rect.x + chart.rect.w) - inner_x - 68.0)
+        inner_h = max(80.0, (chart.rect.y + chart.rect.h) - inner_y - 36.0)
+
+        for i, tv in enumerate(tick_vals):
+            gx = inner_x + inner_w * (i / 4.0)
+            objs.append(
+                _make_open_line_shape(
+                    f"{slide_prefix}_{chart.id}_ff_grid_{i}",
+                    (gx, inner_y),
+                    (gx, inner_y + inner_h),
+                    color=_rgba(theme.card_border_rgb, 0.35),
+                    width=1.0,
+                    pattern=Pattern.SOLID,
+                    head=LineEnd.NONE,
+                    opacity=chart.opacity,
+                )
+            )
+            objs.append(
+                _make_textbox(
+                    f"{slide_prefix}_{chart.id}_ff_tick_{i}",
+                    BoxRect(gx - 40.0, inner_y + inner_h + 6.0, 80.0, 24.0),
+                    _format_chart_num(tv),
+                    font_name=theme.font_body,
+                    font_size=15.0,
+                    color=_rgba(theme.subtitle_rgb),
+                    bold=False,
+                    opacity=chart.opacity,
+                )
+            )
+
+        cat_slot_h = inner_h / cat_count
+        cat_font = round(min(17.0, max(13.0, cat_slot_h * 0.30)), 1)
+        bar_h = min(32.0, max(14.0, cat_slot_h * 0.44))
+        val_font = round(min(16.0, max(12.0, bar_h * 0.55)), 1)
+        low_sr = chart.series[0] if len(chart.series) >= 1 else None
+        high_sr = chart.series[1] if len(chart.series) >= 2 else None
+        mid_sr = chart.series[2] if len(chart.series) >= 3 else None
+
+        for c_idx, cat in enumerate(chart.categories):
+            cy = inner_y + c_idx * cat_slot_h
+            is_hl = bool(chart.highlight_categories) and (cat in chart.highlight_categories)
+            objs.append(
+                _make_textbox(
+                    f"{slide_prefix}_{chart.id}_ff_cat_{c_idx}",
+                    BoxRect(chart.rect.x + 2.0, cy, cat_label_w, cat_slot_h),
+                    cat,
+                    font_name=theme.font_body,
+                    font_size=cat_font,
+                    color=_rgba(theme.accent_border_rgb if is_hl else theme.text_rgb),
+                    bold=is_hl,
+                    opacity=chart.opacity,
+                    alignment=AlignmentType.RIGHT,
+                )
+            )
+            lo_v = low_sr.values[c_idx] if (low_sr and c_idx < len(low_sr.values)) else None
+            hi_v = high_sr.values[c_idx] if (high_sr and c_idx < len(high_sr.values)) else None
+            if lo_v is None or hi_v is None:
+                continue
+            lo, hi = min(float(lo_v), float(hi_v)), max(float(lo_v), float(hi_v))
+            x0 = inner_x + ((lo - ax_min) / ax_span) * inner_w
+            x1 = inner_x + ((hi - ax_min) / ax_span) * inner_w
+            bw = max(6.0, x1 - x0)
+            by = cy + (cat_slot_h - bar_h) / 2.0
+            bar_rgb = theme.accent_border_rgb if is_hl else (series_colors[0] if series_colors else theme.accent_border_rgb)
+            bar_op = chart.opacity * (0.62 if (chart.highlight_categories and not is_hl) else 0.92)
+            objs.append(
+                _make_solid_card(
+                    f"{slide_prefix}_{chart.id}_ff_bar_{c_idx}",
+                    BoxRect(x0, by, bw, bar_h),
+                    fill_rgb=_rgba(bar_rgb),
+                    stroke=Stroke(empty=True),
+                    corner_px=6.0,
+                    opacity=bar_op,
+                )
+            )
+            mid_v = mid_sr.values[c_idx] if (mid_sr and c_idx < len(mid_sr.values)) else None
+            if mid_v is not None:
+                xm = inner_x + ((float(mid_v) - ax_min) / ax_span) * inner_w
+                objs.append(
+                    _make_solid_card(
+                        f"{slide_prefix}_{chart.id}_ff_mid_{c_idx}",
+                        BoxRect(xm - 2.0, by - 4.0, 4.0, bar_h + 8.0),
+                        fill_rgb=_rgba(theme.text_rgb),
+                        stroke=Stroke(empty=True),
+                        corner_px=2.0,
+                        opacity=chart.opacity,
+                    )
+                )
+            if chart.show_value_labels:
+                objs.append(
+                    _make_textbox(
+                        f"{slide_prefix}_{chart.id}_ff_lo_{c_idx}",
+                        BoxRect(max(inner_x - 6.0, x0 - 76.0), by - 2.0, 70.0, bar_h + 4.0),
+                        _format_chart_num(lo),
+                        font_name=theme.font_body,
+                        font_size=val_font,
+                        color=_rgba(theme.subtitle_rgb),
+                        bold=False,
+                        opacity=chart.opacity,
+                        alignment=AlignmentType.RIGHT,
+                    )
+                )
+                objs.append(
+                    _make_textbox(
+                        f"{slide_prefix}_{chart.id}_ff_hi_{c_idx}",
+                        BoxRect(x0 + bw + 6.0, by - 2.0, 72.0, bar_h + 4.0),
+                        _format_chart_num(hi),
+                        font_name=theme.font_body,
+                        font_size=val_font,
+                        color=_rgba(theme.text_rgb),
+                        bold=True,
+                        opacity=chart.opacity,
+                        alignment=AlignmentType.LEFT,
+                    )
+                )
+
+        for r_idx, ref in enumerate(chart.reference_lines):
+            if not isinstance(ref, dict) or ref.get("value") is None:
+                continue
+            rv = float(ref["value"])
+            rlbl = str(ref.get("label", "")).strip()
+            r_rgb = hex_to_rgb_float(ref["color_hex"]) if ref.get("color_hex") else theme.accent_border_rgb
+            rx = inner_x + ((rv - ax_min) / ax_span) * inner_w
+            objs.append(
+                _make_open_line_shape(
+                    f"{slide_prefix}_{chart.id}_ff_ref_{r_idx}",
+                    (rx, inner_y - 6.0),
+                    (rx, inner_y + inner_h),
+                    color=_rgba(r_rgb, 0.95),
+                    width=2.0,
+                    pattern=Pattern.MEDIUM_DASH,
+                    head=LineEnd.NONE,
+                    opacity=chart.opacity,
+                )
+            )
+            pill_txt = f"{rlbl} {_format_chart_num(rv)}" if rlbl else _format_chart_num(rv)
+            pill_w = max(84.0, _text_units(pill_txt) * 9.5 + 18.0)
+            pill_x = max(inner_x, min(inner_x + inner_w - pill_w, rx - pill_w / 2.0))
+            pill_y = inner_y - 32.0
+            pill_txt_rgb = _readable_text_rgb(r_rgb, (1.0, 1.0, 1.0), min_ratio=4.5)
+            objs.append(
+                _make_solid_card(
+                    f"{slide_prefix}_{chart.id}_ff_refbg_{r_idx}",
+                    BoxRect(pill_x, pill_y, pill_w, 24.0),
+                    fill_rgb=_rgba(r_rgb),
+                    stroke=Stroke(empty=True),
+                    corner_px=6.0,
+                    opacity=chart.opacity,
+                )
+            )
+            objs.append(
+                _make_textbox(
+                    f"{slide_prefix}_{chart.id}_ff_reftx_{r_idx}",
+                    BoxRect(pill_x + 4.0, pill_y, pill_w - 8.0, 24.0),
+                    pill_txt,
+                    font_name=theme.font_body,
+                    font_size=13.0,
+                    color=_rgba(pill_txt_rgb),
+                    bold=True,
+                    opacity=chart.opacity,
+                )
+            )
+        return objs
 
     is_horiz = chart.chart_type in ("bar", "stacked_bar")
     if is_horiz:
@@ -390,9 +572,14 @@ def _make_vector_chart_objects(
             val_font = round(min(30.0, max(19.0, bar_h * 0.62)), 1)
             for c_idx in range(cat_count):
                 cy = inner_y + c_idx * cat_slot_h
+                cat_name = chart.categories[c_idx] if c_idx < len(chart.categories) else ""
+                is_hl = bool(chart.highlight_categories) and (cat_name in chart.highlight_categories)
+                is_dim_hl = bool(chart.highlight_categories) and not is_hl
+                is_est = chart.estimate_from is not None and c_idx >= chart.estimate_from
+                bar_op = chart.opacity * (0.48 if is_est else (0.52 if is_dim_hl else 1.0))
                 for s_idx, sr in enumerate(chart.series):
                     by = cy + (cat_slot_h - group_h) / 2.0 + s_idx * (bar_h + inner_gap)
-                    s_rgb = series_colors[s_idx]
+                    s_rgb = theme.accent_border_rgb if is_hl else series_colors[s_idx]
                     val = sr.values[c_idx] if c_idx < len(sr.values) else None
                     if val is None:
                         objs.append(
@@ -402,7 +589,7 @@ def _make_vector_chart_objects(
                                 fill_rgb=_rgba(s_rgb),
                                 stroke=Stroke(empty=True),
                                 corner_px=0.0,
-                                opacity=chart.opacity,
+                                opacity=bar_op,
                             )
                         )
                         continue
@@ -420,7 +607,7 @@ def _make_vector_chart_objects(
                             fill_rgb=_rgba(s_rgb),
                             stroke=Stroke(empty=True),
                             corner_px=0.0,
-                            opacity=chart.opacity,
+                            opacity=bar_op,
                         )
                     )
                     if chart.show_value_labels:
@@ -571,9 +758,14 @@ def _make_vector_chart_objects(
         val_font = round(min(34.0, max(20.0, bar_w * 0.48)), 1)
         for c_idx in range(cat_count):
             cx = inner_x + c_idx * cat_slot_w
+            cat_name = chart.categories[c_idx] if c_idx < len(chart.categories) else ""
+            is_hl = bool(chart.highlight_categories) and (cat_name in chart.highlight_categories)
+            is_dim_hl = bool(chart.highlight_categories) and not is_hl
+            is_est = chart.estimate_from is not None and c_idx >= chart.estimate_from
+            bar_op = chart.opacity * (0.48 if is_est else (0.52 if is_dim_hl else 1.0))
             for s_idx, sr in enumerate(chart.series):
                 bx = cx + (cat_slot_w - group_w) / 2.0 + s_idx * (bar_w + inner_gap)
-                s_rgb = series_colors[s_idx]
+                s_rgb = theme.accent_border_rgb if is_hl else series_colors[s_idx]
                 val = sr.values[c_idx] if c_idx < len(sr.values) else None
                 if val is None:
                     objs.append(
@@ -583,7 +775,7 @@ def _make_vector_chart_objects(
                             fill_rgb=_rgba(s_rgb),
                             stroke=Stroke(empty=True),
                             corner_px=0.0,
-                            opacity=chart.opacity,
+                            opacity=bar_op,
                         )
                     )
                     continue
@@ -601,7 +793,7 @@ def _make_vector_chart_objects(
                         fill_rgb=_rgba(s_rgb),
                         stroke=Stroke(empty=True),
                         corner_px=0.0,
-                        opacity=chart.opacity,
+                        opacity=bar_op,
                     )
                 )
                 if chart.show_value_labels:

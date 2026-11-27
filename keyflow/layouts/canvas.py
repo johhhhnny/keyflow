@@ -479,14 +479,15 @@ def _resolve_canvas_scene(
                     for s_idx, sr in enumerate(ch.series)
                 ]
                 use_vector = (
-                    (ch.chart_type == "waterfall")
+                    (ch.chart_type in ("waterfall", "football_field"))
+                    or bool(ch.highlight_categories or ch.estimate_from is not None or ch.reference_lines)
                     or (ch.render_mode == "vector")
                     or (ch.render_mode == "auto" and ch.reveal != "whole")
                 )
                 show_leg = (
                     ch.show_legend
                     if ch.show_legend is not None
-                    else (ch.chart_type != "waterfall" and (len(ch.series) > 1 or ch.chart_type in ("pie", "donut")))
+                    else (ch.chart_type not in ("waterfall", "football_field") and (len(ch.series) > 1 or ch.chart_type in ("pie", "donut")))
                 )
                 placed_charts.append(
                     PlacedChart(
@@ -505,6 +506,9 @@ def _resolve_canvas_scene(
                         opacity=opacity,
                         render_mode=ch.render_mode,
                         use_vector=use_vector,
+                        highlight_categories=tuple(ch.highlight_categories),
+                        estimate_from=ch.estimate_from,
+                        reference_lines=tuple(ch.reference_lines),
                     )
                 )
             elif obj.kind == "table" and obj.table is not None:
@@ -522,6 +526,8 @@ def _resolve_canvas_scene(
                         visible_cols=vis_cols,
                         highlight_cols=tuple(tb.highlight_cols),
                         highlight_rows=tuple(tb.highlight_rows),
+                        target_rows=tuple(tb.target_rows),
+                        cell_tones=tuple(tuple(r) for r in tb.cell_tones),
                         opacity=opacity,
                     )
                 )
