@@ -385,7 +385,11 @@ def parse_deck(raw: dict[str, Any]) -> DeckSpec:
                 subtitle=s_raw.get("subtitle"),
                 source_section=str(s_raw["source_section"]) if s_raw.get("source_section") else None,
                 claim=str(s_raw["claim"]) if s_raw.get("claim") is not None else None,
-                visual_intent=str(s_raw["visual_intent"]) if s_raw.get("visual_intent") is not None else None,
+                visual_intent=(
+                    dict(s_raw["visual_intent"])
+                    if isinstance(s_raw.get("visual_intent"), dict)
+                    else (str(s_raw["visual_intent"]) if s_raw.get("visual_intent") is not None else None)
+                ),
                 metric_scope=str(s_raw["metric_scope"]) if s_raw.get("metric_scope") is not None else None,
                 evidence_refs=[str(r) for r in s_raw.get("evidence_refs", [])],
                 pacing=s_raw.get("pacing", default_pacing),

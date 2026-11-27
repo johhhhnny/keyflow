@@ -17,10 +17,10 @@ def _audit_intent_form_alignment(
     scene_frames: list[tuple[str, int, list[ResolvedFrame]]],
     findings: list[AuditFinding],
 ) -> None:
-    """Verify declared scene.visual_intent matches the chosen layout/primitives."""
+    """Emit non-blocking critique hints only when a legacy string visual_intent diverges from its idiom."""
     for sc_idx, sc in enumerate(deck.scenes):
         intent = getattr(sc, "visual_intent", None)
-        if not intent:
+        if not intent or isinstance(intent, dict):
             continue
         first_slide = scene_frames[sc_idx][1] if sc_idx < len(scene_frames) else 1
         chart_types = {o.chart.chart_type for o in sc.objects if o.kind == "chart" and o.chart is not None}
@@ -32,31 +32,32 @@ def _audit_intent_form_alignment(
         mismatch_msg: str | None = None
         suggestion = ""
         if intent == "profit_bridge" and "waterfall" not in chart_types:
-            mismatch_msg = f"Scene '{sc.id}' declares visual_intent='profit_bridge' without a 'waterfall' chart."
-            suggestion = "Use chart_type='waterfall' to show how revenue bridges to profit."
+            mismatch_msg = f"Scene '{sc.id}' declares legacy visual_intent='profit_bridge' without a 'waterfall' chart."
+            suggestion = "Verify whether your chosen visual form expresses profit formation clearly, or switch to an open-ended visual_intent object."
         elif intent == "decay_trajectory" and not ({"line", "area"} & chart_types):
-            mismatch_msg = f"Scene '{sc.id}' declares visual_intent='decay_trajectory' without a 'line' or 'area' chart."
-            suggestion = "Use chart_type='line' or 'area' to render continuous multi-year decay curves."
+            mismatch_msg = f"Scene '{sc.id}' declares legacy visual_intent='decay_trajectory' without a 'line' or 'area' chart."
+            suggestion = "Verify whether your chosen visual form shows multi-period trajectory clearly, or switch to an open-ended visual_intent object."
         elif intent == "price_value_gap" and not (has_hero_tb or has_borderless_metric or sc.layout == "proportion_bar"):
-            mismatch_msg = f"Scene '{sc.id}' declares visual_intent='price_value_gap' without hero typography or range scale."
-            suggestion = "Use a giant textbox (>=60pt), borderless metric, or proportion_bar."
+            mismatch_msg = f"Scene '{sc.id}' declares legacy visual_intent='price_value_gap' without hero typography or range scale."
+            suggestion = "Consider hero typography (>=60pt), borderless metric, football_field, or proportion_bar if it sharpens the contrast."
         elif intent == "methodology_tradeoff" and sc.layout not in ("comparison_matrix", "comparison") and not has_table:
-            mismatch_msg = f"Scene '{sc.id}' declares visual_intent='methodology_tradeoff' without a matrix, comparison, or table."
-            suggestion = "Use layout='comparison_matrix' or a structured table."
+            mismatch_msg = f"Scene '{sc.id}' declares legacy visual_intent='methodology_tradeoff' without a matrix, comparison, or table."
+            suggestion = "Consider whether a comparison structure or custom spatial composition makes the trade-off easier to scan."
         elif intent == "tension_radiation" and sc.layout != "hub_spoke" and "hub_spoke" not in diag_layouts:
-            mismatch_msg = f"Scene '{sc.id}' declares visual_intent='tension_radiation' without a hub_spoke topology."
-            suggestion = "Use layout='hub_spoke' or inline diagram_layout='hub_spoke'."
+            mismatch_msg = f"Scene '{sc.id}' declares legacy visual_intent='tension_radiation' without a hub_spoke topology."
+            suggestion = "Verify whether your composition visually conveys opposing forces around the core thesis."
         elif intent == "nonlinear_loop" and sc.layout != "sequence_timeline" and "sequence" not in diag_layouts:
-            mismatch_msg = f"Scene '{sc.id}' declares visual_intent='nonlinear_loop' without a sequence_timeline/sequence diagram."
-            suggestion = "Use layout='sequence_timeline' or diagram_layout='sequence'."
-        elif intent == "proportion_share" and sc.layout != "proportion_bar" and not ({"pie", "donut", "stacked_bar", "stacked_column"} & chart_types):
-            mismatch_msg = f"Scene '{sc.id}' declares visual_intent='proportion_share' without a proportion_bar or share chart."
-            suggestion = "Use layout='proportion_bar' or chart_type='donut'/'stacked_bar'."
+            mismatch_msg = f"Scene '{sc.id}' declares legacy visual_intent='nonlinear_loop' without a sequence_timeline/sequence diagram."
+            suggestion = "Verify whether your chosen visual form makes feedback/retry loops explicit."
+        elif intent == "proportion_share" and sc.layout != "proportion_bar" and not ({"pie", "donut", "stacked_bar", "stacked_column", "progress_bars"} & chart_types):
+            mismatch_msg = f"Scene '{sc.id}' declares legacy visual_intent='proportion_share' without a proportion_bar or share chart."
+            suggestion = "Verify whether part-to-whole proportions are immediately visible."
 
         if mismatch_msg:
             findings.append(
                 AuditFinding(
                     severity="warning",
+                    tier="critique",
                     category="intent_form_alignment",
                     slide_num=first_slide,
                     scene_id=sc.id,
@@ -64,7 +65,7 @@ def _audit_intent_form_alignment(
                     target_id=sc.id,
                     message=mismatch_msg,
                     suggestion=suggestion,
-                    suggested_action="align_visual_form_to_intent",
+                    suggested_action="review_intent_visual_fit",
                 )
             )
 
@@ -93,6 +94,7 @@ def _audit_cross_page_consistency(
                 findings.append(
                     AuditFinding(
                         severity="warning",
+                        tier="critique",
                         category="card_text_bloat",
                         slide_num=first_slide,
                         scene_id=sc.id,
@@ -115,6 +117,7 @@ def _audit_cross_page_consistency(
                 findings.append(
                     AuditFinding(
                         severity="warning",
+                        tier="critique",
                         category="callout_text_bloat",
                         slide_num=first_slide,
                         scene_id=sc.id,
@@ -226,13 +229,14 @@ def _audit_cross_page_consistency(
                     findings.append(
                         AuditFinding(
                             severity="warning",
+                            tier="critique",
                             category="visual_monotony",
                             slide_num=first_slide,
                             scene_id=cur_sc.id,
                             frame_index=0,
                             message=f"3+ consecutive scenes share identical '{cur_sc.layout}' structure ending at '{cur_sc.id}'.",
-                            suggestion="Vary visual rhythm using sequence_timeline, proportion_bar, comparison_matrix, charts, or borderless hero typography.",
-                            suggested_action="diversify_scene_layouts",
+                            suggestion="Review whether identical structure aids horizontal comparison (keep it intentionally if so); otherwise vary composition to reflect narrative shift.",
+                            suggested_action="review_rhythm_necessity",
                         )
                     )
             else:
@@ -259,6 +263,7 @@ def _audit_cross_page_consistency(
                     findings.append(
                         AuditFinding(
                             severity="warning",
+                            tier="critique",
                             category="visual_monotony",
                             slide_num=monotone_first_slide,
                             scene_id=monotone_scene_ids[0],
@@ -267,8 +272,8 @@ def _audit_cross_page_consistency(
                                 f"All {monotone_card_total} cards across {len(monotone_scene_ids)} consecutive scenes "
                                 f"({', '.join(monotone_scene_ids)}) use 'surface=filled' with no charts, diagrams, or borderless typography."
                             ),
-                            suggestion="Use surface='borderless' for hero numbers/thesis statements, surface='ghost' for lightweight groups, or add nonlinear diagrams/charts.",
-                            suggested_action="reduce_filled_card_monotony",
+                            suggestion="Consider whether borderless typography, accent_bar cards, ghost frames, or diagrams would clarify hierarchy better than uniform filled boxes.",
+                            suggested_action="review_surface_variety",
                         )
                     )
                 monotone_card_total = 0
@@ -328,12 +333,13 @@ def _audit_cross_page_consistency(
                 findings.append(
                     AuditFinding(
                         severity="warning",
+                        tier="critique",
                         category="visual_monotony",
                         slide_num=1,
                         scene_id=deck.scenes[0].id,
                         frame_index=0,
                         message=f"Deck has {len(deck.scenes)} scenes but uses only {len(idioms)} basic visual idioms ({', '.join(sorted(idioms))}).",
-                        suggestion="Diversify visual metaphors using waterfall/line/donut charts, comparison_matrix, hub_spoke, sequence_timeline, or >=60pt hero typography.",
-                        suggested_action="diversify_visual_idioms",
+                        suggestion="Diagnostic note: verify whether this uniform visual vocabulary is intentional for consistent comparison, or if richer visual metaphors would help.",
+                        suggested_action="review_visual_idiom_range",
                     )
                 )

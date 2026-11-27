@@ -100,7 +100,7 @@ def audit_deck(
     errors: list[AuditFinding] = []
     warnings: list[AuditFinding] = []
     for item in all_findings:
-        if item.severity == "error" or strict:
+        if item.severity == "error" or (strict and item.tier != "critique"):
             errors.append(item)
         else:
             warnings.append(item)

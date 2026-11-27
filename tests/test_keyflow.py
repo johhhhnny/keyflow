@@ -3019,14 +3019,15 @@ def test_design_system_elevation_modular_scale_and_theme_aesthetics() -> None:
 def test_visual_intent_alignment_idiom_monotony_and_outline_signals() -> None:
     from keyflow.outline import extract_markdown_outline
 
-    # 1. outline emits recommended_visual_intents
+    # 1. outline emits objective content_signals without prescribing components
     md = "# Report\n## 盈利拆解\n营收 300B 扣除成本与研发后营业利润 197B。\n## 风险与催化\n核心风险与上行催化。\n"
     res = extract_markdown_outline(md)
     secs = res["source_summary"]["sections"]
-    assert any("profit_bridge -> chart(waterfall)" in s["recommended_visual_intents"] for s in secs)
-    assert any("tension_radiation -> hub_spoke" in s["recommended_visual_intents"] for s in secs)
+    assert any("has_profit_or_cost_breakdown" in s["content_signals"] for s in secs)
+    assert any("has_tension_or_risk_factors" in s["content_signals"] for s in secs)
+    assert all("->" not in sig for s in secs for sig in s["content_signals"])
 
-    # 2. intent_form_alignment catches mismatch + visual_monotony catches 4+ basic-idiom scenes
+    # 2. critique-tier findings (visual_monotony, intent_form_alignment) do NOT block strict=True
     mismatched_deck = {
         "title": "Intent Mismatch",
         "scenes": [
@@ -3049,10 +3050,40 @@ def test_visual_intent_alignment_idiom_monotony_and_outline_signals() -> None:
             for i in range(4)
         ],
     }
-    rep = audit_deck(mismatched_deck, strict=False)
+    rep = audit_deck(mismatched_deck, strict=True)
+    assert rep.passed is True
     cats = {w.category for w in rep.warnings}
     assert "intent_form_alignment" in cats
     assert "visual_monotony" in cats
+    assert all(w.tier == "critique" for w in rep.warnings if w.category in ("intent_form_alignment", "visual_monotony"))
+
+    # 3. Open-ended dict visual_intent validates cleanly without triggering intent_form_alignment
+    open_intent_deck = {
+        "title": "Open Visual Intent",
+        "scenes": [
+            {
+                "id": "sc_open",
+                "title": "AI Value Chain",
+                "layout": "canvas",
+                "visual_intent": {
+                    "audience_takeaway": "Profit concentrates at the platform layer while cloud hyperscalers push back.",
+                    "visual_metaphor": "Center platform surrounded by upstream suppliers and downstream squeeze",
+                    "visual_focus": "NVIDIA platform margin",
+                    "relationships": ["Upstream feeds capacity", "Hyperscalers build custom silicon"],
+                    "emotional_tone": "Investigative, restrained",
+                },
+                "grid": {"columns": 12, "rows": 1},
+                "regions": [{"id": "r1", "col": 1, "row": 1, "col_span": 12, "row_span": 1}],
+                "objects": [
+                    {"id": "center_card", "kind": "card", "region": "r1", "label": "NVIDIA Platform"}
+                ],
+            }
+        ],
+    }
+    assert validate_deck(open_intent_deck).valid is True
+    open_rep = audit_deck(open_intent_deck, strict=True)
+    assert open_rep.passed is True
+    assert not any(w.category == "intent_form_alignment" for w in open_rep.warnings)
 
 
 def test_batch1_visual_building_blocks(tmp_path: Path) -> None:

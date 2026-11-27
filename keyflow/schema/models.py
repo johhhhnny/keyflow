@@ -338,7 +338,7 @@ class SceneSpec:
     subtitle: str | None = None
     source_section: str | None = None
     claim: str | None = None
-    visual_intent: str | None = None
+    visual_intent: str | dict[str, Any] | None = None
     metric_scope: str | None = None
     evidence_refs: list[str] = field(default_factory=list)
     pacing: PacingMode = "auto"
